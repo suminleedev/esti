@@ -22,7 +22,9 @@ class ProductCatalogRepositoryTest {
     void testCreateProduct() {
         ProductCatalog product = new ProductCatalog();
         product.setName("세면대");
-        product.setSpec("600mm");
+        product.setModel("M3405");
+        product.setBrand("브랜드S");
+        product.setSpecs("600mm");
         product.setBasePrice(new BigDecimal("120000"));
         product.setDescription("화이트 세면대");
         product.setImageUrl("http://example.com/sink.png");
@@ -38,7 +40,9 @@ class ProductCatalogRepositoryTest {
     void testReadProduct() {
         ProductCatalog product = new ProductCatalog();
         product.setName("변기");
-        product.setSpec("양변기");
+        product.setModel("B3405");
+        product.setBrand("BrandS");
+        product.setSpecs("양변기");
         product.setBasePrice(new BigDecimal("200000"));
         product.setDescription("고급 변기");
         product.setImageUrl("http://example.com/toilet.png");
@@ -55,7 +59,9 @@ class ProductCatalogRepositoryTest {
     void testUpdateProduct() {
         ProductCatalog product = new ProductCatalog();
         product.setName("욕조");
-        product.setSpec("1200mm");
+        product.setModel("BT3405");
+        product.setBrand("BrandBath");
+        product.setSpecs("1200mm");
         product.setBasePrice(new BigDecimal("500000"));
         product.setDescription("기본 욕조");
         product.setImageUrl("http://example.com/bathtub.png");
@@ -72,7 +78,9 @@ class ProductCatalogRepositoryTest {
     void testDeleteProduct() {
         ProductCatalog product = new ProductCatalog();
         product.setName("거울");
-        product.setSpec("800x600");
+        product.setModel("M-021");
+        product.setBrand("BrandMirror");
+        product.setSpecs("800x600");
         product.setBasePrice(new BigDecimal("80000"));
         product.setDescription("욕실 거울");
         product.setImageUrl("http://example.com/mirror.png");

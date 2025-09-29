@@ -13,7 +13,7 @@ public interface ProductCatalogRepository extends JpaRepository<ProductCatalog, 
     List<ProductCatalog> findByNameContaining(String keyword);
 
     // 규격으로 검색
-    List<ProductCatalog> findBySpecContaining(String spec);
+    List<ProductCatalog> findBySpecsContaining(String specs);
 
     // 특정 가격 이상 제품 검색
     List<ProductCatalog> findByBasePriceGreaterThanEqual(java.math.BigDecimal price);

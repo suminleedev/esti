@@ -19,24 +19,25 @@ public class ProductCatalog extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Setter
     @Column(nullable = false, length = 100)
     private String name;        // 제품명
 
-    @Setter
     @Column(length = 100)
-    private String spec;        // 규격/모델명
+    private String model;       // 모델명
 
-    @Setter
+    @Column(length = 100)
+    private String brand;       // 브랜드
+
+    @Column(length = 255)
+    private String specs;        // 규격
+
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal basePrice;  // 기준 단가
 
-    @Setter
-    @Column(length = 255)
+    @Column(length = 500)
     private String description; // 설명
 
-    @Setter
-    @Column(length = 255)
+    @Column(length = 500)
     private String imageUrl;    // 제품 이미지 경로
 
     // ===== 기본 생성자 =====

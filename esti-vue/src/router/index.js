@@ -1,11 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 import Estimate from '../components/Estimate.vue' // 컴포넌트 경로 확인
-import EstimatePage from '../components/EstimatePage.vue' // 컴포넌트 경로 확인
+import UploadCatalog from '../components/UploadCatalog.vue'
 
 const routes = [
-  { path: '/', name: 'Estimate', component: Estimate },
-  { path: '/estimate', name: 'EstimatePage', component: EstimatePage }, // 견적서 페이지
+  { path: '/estimate', name: 'Estimate', component: Estimate }, // 견적서 페이지
+  { path: '/upload', name: 'UploadCatalog', component: UploadCatalog },
+
 ]
 
 const router = createRouter({
