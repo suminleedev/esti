@@ -1,6 +1,6 @@
 ----------------------------------------------------------------
-Mon Sep 29 20:39:45 KST 2025:
-Booting Derby version The Apache Software Foundation - Apache Derby - 10.16.1.1 - (1901046): instance a816c00e-0199-9545-867f-0000031d7e58 
+Wed Nov 26 13:57:28 KST 2025:
+Booting Derby version The Apache Software Foundation - Apache Derby - 10.16.1.1 - (1901046): instance a816c00e-019a-be86-0fb0-0000026fa240 
 on database directory memory:/Users/suminlee/IdeaProjects/esti/estimateDB with class loader jdk.internal.loader.ClassLoaders$AppClassLoader@251a69d7 
 Loaded from file:/Users/suminlee/.m2/repository/org/apache/derby/derby/10.16.1.1/derby-10.16.1.1.jar
 java.vendor=Oracle Corporation
@@ -12,5 +12,5 @@ os.version=15.6.1
 derby.system.home=null
 Database Class Loader started - derby.database.classpath=''
 ----------------------------------------------------------------
-Mon Sep 29 21:56:07 KST 2025:
-Shutting down instance a816c00e-0199-9545-867f-0000031d7e58 on database directory memory:/Users/suminlee/IdeaProjects/esti/estimateDB with class loader jdk.internal.loader.ClassLoaders$AppClassLoader@251a69d7 
+Wed Nov 26 15:21:54 KST 2025:
+Shutting down instance a816c00e-019a-be86-0fb0-0000026fa240 on database directory memory:/Users/suminlee/IdeaProjects/esti/estimateDB with class loader jdk.internal.loader.ClassLoaders$AppClassLoader@251a69d7 
