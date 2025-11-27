@@ -2,6 +2,45 @@
   <div class="container py-4">
     <h2 class="mb-4">제안서 작성</h2>
 
+    <!-- 템플릿 영역 -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div class="small text-muted">
+        현장 정보와 위생기구 구성을 제안서/템플릿으로 재사용할 수 있습니다.
+      </div>
+      <div class="d-flex gap-2">
+        <!-- 템플릿 선택 -->
+        <select
+          v-model="selectedTemplateId"
+          class="form-select form-select-sm"
+          style="width: 220px"
+        >
+          <option value="">템플릿 선택...</option>
+          <option
+            v-for="t in templates"
+            :key="t.id"
+            :value="t.id"
+          >
+            {{ t.templateName }} <span v-if="t.apartmentType">({{ t.apartmentType }})</span>
+          </option>
+        </select>
+
+        <button
+          class="btn btn-outline-secondary btn-sm"
+          :disabled="!selectedTemplateId"
+          @click="onLoadTemplate"
+        >
+          불러오기
+        </button>
+
+        <button
+          class="btn btn-outline-primary btn-sm"
+          @click="onSaveTemplate"
+        >
+          현재 구성 템플릿 저장
+        </button>
+      </div>
+    </div>
+
     <!-- Step Nav -->
     <ul class="nav nav-pills mb-3">
       <li class="nav-item" v-for="(s, i) in steps" :key="i">
@@ -274,6 +313,10 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import axios from 'axios'
 import noImg from '@/assets/no-image.png' // 없으면 임시로 주석 처리하고 onImgErr에서 대체
 
+/* ====== 템플릿 목록, 선택된 템플릿 ====== */
+const templates = ref([])           // GET /proposal-templates 결과
+const selectedTemplateId = ref('')  // 선택된 템플릿 id (문자/숫자 모두 허용)
+
 /* ====== 상단 상태 ====== */
 const steps = ['기본 정보', '평형/적용부위/유형', '품목 채우기']
 const step = ref(0)
@@ -399,6 +442,100 @@ const canSubmit = computed(() =>
   validStep1.value && validStep2.value && missingRequired.value.length === 0 && lines.length > 0
 )
 
+/* ====== 템플릿 목록 불러오기  ====== */
+async function fetchTemplates () {
+  try {
+    const res = await axios.get('/proposal-templates')
+    // 서비스에서 list() 를 간단하게 돌려주고 있으니:
+    // [{id, templateName, apartmentType}, ...] 형태라고 가정
+    templates.value = res.data
+  } catch (e) {
+    console.error('템플릿 목록 조회 실패', e)
+  }
+}
+
+/* ====== 템플릿 상세 불러오기 + 폼/라인에 반영 ====== */
+async function onLoadTemplate () {
+  if (!selectedTemplateId.value) return
+  try {
+    const res = await axios.get(`/proposal-templates/${selectedTemplateId.value}`)
+    const t = res.data
+
+    // Step 1, 2 폼 값 매핑
+    form.apartmentType = t.apartmentType || ''
+    form.areas = t.areas || []
+    form.requiredCategories = t.requiredCategories || []
+
+    // 제안 항목(lines) 초기화 후 다시 채우기
+    lines.splice(0, lines.length)
+
+    ;(t.lines || []).forEach(line => {
+      lines.push({
+        uid: Date.now() + Math.random(),
+        productId: line.productId,
+        name: line.name,
+        model: line.model,
+        brand: line.brand,
+        specs: line.specs,
+        description: line.description,
+        imageUrl: line.imageUrl,
+        area: line.area,
+        category: line.category,
+        qty: line.defaultQty || 1,
+        note: line.note || ''
+      })
+    })
+
+    // UX: 바로 Step 2 또는 3으로 이동해도 좋음
+    step.value = 2
+    alert('템플릿을 불러왔습니다.')
+  } catch (e) {
+    console.error('템플릿 불러오기 실패', e)
+    alert('템플릿을 불러오지 못했습니다.')
+  }
+}
+
+/* ====== 템플릿 저장  ====== */
+async function onSaveTemplate () {
+  // 최소한의 유효성 체크 (원하면 더 강화 가능)
+  if (!validStep1.value || !validStep2.value) {
+    alert('먼저 기본 정보와 적용 부위/필수 유형을 모두 입력하세요.')
+    return
+  }
+  if (lines.length === 0) {
+    alert('제안 항목이 없습니다. 최소 1개 이상 추가 후 저장하세요.')
+    return
+  }
+
+  const nameDefault = form.projectName || `${form.apartmentType} 기본 구성`
+  const templateName = window.prompt('템플릿 이름을 입력하세요.', nameDefault)
+  if (!templateName) return
+
+  const payload = {
+    templateName,
+    apartmentType: form.apartmentType,
+    areas: form.areas,
+    requiredCategories: form.requiredCategories,
+    lines: lines.map(l => ({
+      productId: l.productId,
+      area: l.area,
+      category: l.category,
+      defaultQty: l.qty,
+      note: l.note
+    }))
+  }
+
+  try {
+    await axios.post('/proposal-templates', payload)
+    await fetchTemplates()
+    alert('템플릿이 저장되었습니다.')
+  } catch (e) {
+    console.error('템플릿 저장 실패', e)
+    alert('템플릿 저장 중 오류가 발생했습니다.')
+  }
+}
+
+
 /* ====== 저장 (백엔드 연동 위치) ====== */
 async function submitProposal () {
   // TODO: 실제 저장 API 스펙에 맞춰 변경
@@ -431,7 +568,11 @@ async function loadCatalog () {
   }
 }
 
-onMounted(loadCatalog)
+// onMounted(loadCatalog)
+onMounted(() => {
+  loadCatalog()
+  fetchTemplates()
+})
 </script>
 
 <style scoped>
