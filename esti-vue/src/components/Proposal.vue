@@ -445,7 +445,7 @@ const canSubmit = computed(() =>
 /* ====== 템플릿 목록 불러오기  ====== */
 async function fetchTemplates () {
   try {
-    const res = await axios.get('/proposal-templates')
+    const res = await axios.get('/api/proposal-templates')
     // 서비스에서 list() 를 간단하게 돌려주고 있으니:
     // [{id, templateName, apartmentType}, ...] 형태라고 가정
     templates.value = res.data
@@ -458,7 +458,7 @@ async function fetchTemplates () {
 async function onLoadTemplate () {
   if (!selectedTemplateId.value) return
   try {
-    const res = await axios.get(`/proposal-templates/${selectedTemplateId.value}`)
+    const res = await axios.get(`/api/proposal-templates/${selectedTemplateId.value}`)
     const t = res.data
 
     // Step 1, 2 폼 값 매핑
@@ -526,7 +526,7 @@ async function onSaveTemplate () {
   }
 
   try {
-    await axios.post('/proposal-templates', payload)
+    await axios.post('/api/proposal-templates', payload)
     await fetchTemplates()
     alert('템플릿이 저장되었습니다.')
   } catch (e) {
@@ -567,7 +567,7 @@ async function submitProposal () {
   }
 
   try {
-    const res = await axios.post('/proposals', payload)
+    const res = await axios.post('/api/proposals', payload)
     console.log('제안서 저장 결과:', res.data)
     alert(`제안서가 저장되었습니다. (ID: ${res.data.id})`)
   } catch (e) {
@@ -580,7 +580,7 @@ async function submitProposal () {
 /* ====== 카탈로그 로드 ====== */
 async function loadCatalog () {
   try {
-    const res = await axios.get('/catalog/list') // Vite 프록시로 백엔드 8080
+    const res = await axios.get('/api/catalog/list') // Vite 프록시로 백엔드 8080
     items.value = res.data
   } catch (e) {
     console.error('카탈로그 조회 실패', e)

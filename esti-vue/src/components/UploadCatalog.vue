@@ -48,7 +48,7 @@ async function upload() {
     const form = new FormData()
     form.append('file', file.value)
 
-    const res = await axios.post('/catalog/import', form, {
+    const res = await axios.post('/api/catalog/import', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       onUploadProgress: (e) => {
         if (e.total) {
@@ -67,7 +67,7 @@ async function upload() {
 
 async function loadProducts() {
   try {
-    const res = await axios.get('/catalog/list')
+    const res = await axios.get('/api/catalog/list')
     products.value = res.data
   } catch (e) {
     console.error('목록 조회 실패', e)
@@ -77,7 +77,7 @@ async function loadProducts() {
 async function deleteProduct(id) {
   if (!confirm('정말 삭제하시겠습니까?')) return
   try {
-    await axios.delete(`/catalog/${id}`)
+    await axios.delete(`/api/catalog/${id}`)
     message.value = '삭제 성공'
     await loadProducts()
   } catch (e) {
@@ -96,7 +96,7 @@ function cancelEdit() {
 async function saveEdit() {
   if (!editingProduct.value) return
   try {
-    const res = await axios.put(`/catalog/${editingProduct.value.id}`, editingProduct.value)
+    const res = await axios.put(`/api/catalog/${editingProduct.value.id}`, editingProduct.value)
     message.value = '수정 성공'
     editingProduct.value = null
     await loadProducts()

@@ -17,6 +17,10 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
       // 프록시: 프론트의 /catalog → 백엔드 http://localhost:8080/catalog
       '/catalog': {
         target: 'http://localhost:8080',
