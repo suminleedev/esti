@@ -1,11 +1,40 @@
 <template>
   <div class="container py-4">
-    <h2 class="mb-4">제안서 작성</h2>
+    <!-- 제목 + 전역 버튼 영역 -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h2 class="mb-1">
+        <span v-if="isNew">새 제안서 작성</span>
+        <span v-else>제안서 #{{ proposalId }}</span>
+        <!-- 읽기 / 편집 모드 -->
+        <span v-if="!isEditMode && !isNew" class="badge bg-dark-subtle ms-2">읽기</span>
+        <span v-if="isEditMode" class="badge bg-primary ms-2">편집 중</span>
+      </h2>
+
+      <div class="d-flex gap-2">
+        <!-- 상세 보기 → 수정 -->
+        <button
+          v-if="!isNew && !isEditMode"
+          class="btn btn-outline-primary btn-sm"
+          @click="isEditMode = true">수정</button>
+        <!-- 저장 -->
+        <button
+          v-if="isEditMode"
+          class="btn btn-success btn-sm"
+          :disabled="!canSubmit"
+          @click="submitProposal">저장</button>
+        <!-- 삭제 -->
+        <button
+          v-if="!isNew"
+          class="btn btn-outline-danger btn-sm"
+          @click="deleteProposal">삭제</button>
+      </div>
+    </div>
 
     <!-- 템플릿 영역 -->
     <div class="d-flex justify-content-between align-items-center mb-3">
       <div class="small text-muted">
-        현장 정보와 위생기구 구성을 제안서/템플릿으로 재사용할 수 있습니다.
+        현장 정보와 위생기구 구성을 제안서로 저장하거나 템플릿으로 재사용할 수 있습니다.<br>
+        템플릿을 활용하면 평형/적용부위/기본 구성을 자동으로 불러올 수 있습니다.
       </div>
       <div class="d-flex gap-2">
         <!-- 템플릿 선택 -->
@@ -310,8 +339,17 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import noImg from '@/assets/no-image.png' // 없으면 임시로 주석 처리하고 onImgErr에서 대체
+
+const route = useRoute()
+const router = useRouter()
+
+// URL 파라미터
+const proposalId = route.params.id   // id 없으면 undefined
+const isNew = computed(() => !proposalId)
+const isEditMode = ref(false)
 
 /* ====== 템플릿 목록, 선택된 템플릿 ====== */
 const templates = ref([])           // GET /proposal-templates 결과
@@ -536,7 +574,7 @@ async function onSaveTemplate () {
 }
 
 
-/* ====== 저장 (백엔드 연동 위치) ====== */
+/* ====== 제안서 저장 (백엔드 연동 위치) ====== */
 async function submitProposal () {
   if (!validStep1.value || !validStep2.value) {
     alert('기본 정보와 적용 부위/필수 유형을 먼저 완성하세요.')
@@ -567,12 +605,81 @@ async function submitProposal () {
   }
 
   try {
-    const res = await axios.post('/api/proposals', payload)
-    console.log('제안서 저장 결과:', res.data)
-    alert(`제안서가 저장되었습니다. (ID: ${res.data.id})`)
+    if (isNew.value) {
+      // 신규 저장 (POST)
+      const res = await axios.post('/api/proposals', payload)
+      console.log('제안서 저장 결과:', res.data)
+      alert(`제안서가 저장되었습니다. (ID: ${res.data.id})`)
+      router.push({ name: 'proposal-detail', params: { id: res.data.id } })
+    } else {
+      // 수정 저장 (PUT)
+      await axios.put(`/api/proposals/${proposalId}`, payload)
+      alert('제안서가 수정되었습니다.')
+      isEditMode.value = false
+    }
   } catch (e) {
     console.error('제안서 저장 실패', e)
     alert('제안서 저장 중 오류가 발생했습니다.')
+  }
+}
+
+/* ====== 제안서 삭제 ====== */
+async function deleteProposal() {
+  if (!confirm('정말 삭제하시겠습니까?')) return
+
+  try {
+    await axios.delete(`/api/proposals/${proposalId}`)
+    alert('삭제되었습니다.')
+    router.push({ name: 'proposal-list' })
+  } catch (e) {
+    console.error('제안서 삭제 실패', e)
+    alert('제안서 삭제 중 문제가 발생했습니다.')
+  }
+}
+
+/* ====== 기존 제안서 데이터 로드 ====== */
+async function loadProposal(id) {
+  try {
+    const res = await axios.get(`/api/proposals/${id}`)
+    const p = res.data
+
+    // Step1
+    form.projectName = p.projectName
+    form.manager = p.manager
+    form.date = p.date
+    form.apartmentType = p.apartmentType
+    form.households = p.households
+    form.note = p.note
+
+    // Step2
+    form.areas = p.areas || []
+    form.requiredCategories = p.requiredCategories || []
+
+    // Step3 (제안 항목들)
+    lines.splice(0, lines.length)
+    ;(p.lines || []).forEach(l => {
+      lines.push({
+        uid: Date.now() + Math.random(),
+        productId: l.productId,
+        name: l.name,
+        model: l.model,
+        brand: l.brand,
+        specs: l.specs,
+        description: l.description,
+        imageUrl: l.imageUrl,
+        area: l.area,
+        category: l.category,
+        qty: l.qty,
+        note: l.note
+      })
+    })
+
+    // 상세 보기 모드로 시작
+    isEditMode.value = false
+    step.value = 0
+  } catch (e) {
+    console.error('제안서 불러오기 실패', e)
+    alert('제안서를 불러오지 못했습니다.')
   }
 }
 
@@ -591,6 +698,12 @@ async function loadCatalog () {
 onMounted(() => {
   loadCatalog()
   fetchTemplates()
+
+  if (proposalId) {
+    loadProposal(proposalId)   // 상세/수정 모드
+  } else {
+    isEditMode.value = true    // 신규 작성은 바로 편집 가능
+  }
 })
 </script>
 
