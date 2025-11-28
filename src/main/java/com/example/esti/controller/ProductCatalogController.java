@@ -9,7 +9,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 
 @RestController
-@RequestMapping("/catalog")
+@RequestMapping("/api/catalog")
 public class ProductCatalogController {
 
     private final ProductCatalogService service;

@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/proposal-templates")
+@RequestMapping("/api/proposal-templates")
 @RequiredArgsConstructor
 public class ProposalTemplateController {
 

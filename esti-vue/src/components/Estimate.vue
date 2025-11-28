@@ -244,7 +244,7 @@ function currency(v) {
 // ✅ DB 카탈로그 로드
 async function loadCatalog() {
   try {
-    const res = await axios.get("/catalog/list"); // Vite 프록시 통해 백엔드 호출
+    const res = await axios.get("/api/catalog/list"); // Vite 프록시 통해 백엔드 호출
     console.log(res);
     console.log(res.data);
     console.log(res.data[0]);
