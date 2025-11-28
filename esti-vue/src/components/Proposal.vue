@@ -538,25 +538,44 @@ async function onSaveTemplate () {
 
 /* ====== 저장 (백엔드 연동 위치) ====== */
 async function submitProposal () {
-  // TODO: 실제 저장 API 스펙에 맞춰 변경
-  const payload = {
-    project: {
-      name: form.projectName,
-      manager: form.manager,
-      date: form.date,
-      apartmentType: form.apartmentType,
-      households: form.households,
-      note: form.note,
-      areas: form.areas
-    },
-    requiredCategories: form.requiredCategories,
-    lines: lines
+  if (!validStep1.value || !validStep2.value) {
+    alert('기본 정보와 적용 부위/필수 유형을 먼저 완성하세요.')
+    return
   }
-  console.log('제안서 저장 payload:', payload)
-  // 예시:
-  // await axios.post('/proposal', payload)
-  alert('제안서 데이터가 준비되었습니다. (콘솔 확인)')
+  if (lines.length === 0) {
+    alert('제안 항목이 없습니다.')
+    return
+  }
+
+  const payload = {
+    templateId: selectedTemplateId.value || null,   // 템플릿 기반이면 전달, 아니면 null
+    projectName: form.projectName,
+    manager: form.manager,
+    date: form.date,
+    apartmentType: form.apartmentType,
+    households: form.households,
+    note: form.note,
+    areas: form.areas,
+    requiredCategories: form.requiredCategories,
+    lines: lines.map(l => ({
+      productId: l.productId,
+      area: l.area,
+      category: l.category,
+      qty: l.qty,
+      note: l.note
+    }))
+  }
+
+  try {
+    const res = await axios.post('/proposals', payload)
+    console.log('제안서 저장 결과:', res.data)
+    alert(`제안서가 저장되었습니다. (ID: ${res.data.id})`)
+  } catch (e) {
+    console.error('제안서 저장 실패', e)
+    alert('제안서 저장 중 오류가 발생했습니다.')
+  }
 }
+
 
 /* ====== 카탈로그 로드 ====== */
 async function loadCatalog () {
