@@ -105,6 +105,83 @@ async function saveEdit() {
   }
 }
 
+/**
+ * 공급사 엑셀 업로드
+ */
+// ===== 공급사 단가표 엑셀 업로드 상태 =====
+const vendorCode = ref('A')          // 기본값 A사
+const vendorFile = ref(null)
+const vendorUploading = ref(false)
+const vendorProgress = ref(0)
+const vendorMessage = ref('')
+const vendorError = ref('')
+
+function onVendorFileChange(e) {
+  vendorError.value = ''
+  const f = e.target.files?.[0]
+  if (!f) {
+    vendorFile.value = null
+    return
+  }
+
+  // 간단한 확장자 체크
+  const ext = f.name.split('.').pop()?.toLowerCase()
+  if (ext !== 'xlsx') {
+    vendorError.value = '엑셀(.xlsx) 파일만 업로드 가능합니다.'
+    vendorFile.value = null
+    return
+  }
+
+  vendorFile.value = f
+}
+
+async function uploadVendorExcel() {
+  vendorError.value = ''
+  vendorMessage.value = ''
+
+  if (!vendorFile.value) {
+    vendorError.value = '업로드할 공급사 엑셀 파일을 선택하세요.'
+    return
+  }
+
+  vendorUploading.value = true
+  vendorProgress.value = 0
+
+  try {
+    const form = new FormData()
+    form.append('file', vendorFile.value)
+
+    await axios.post(`/api/vendor-catalog/upload-excel/${vendorCode.value}`, form, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress(e) {
+        if (!e.total) return
+        vendorProgress.value = Math.round((e.loaded * 100) / e.total)
+      },
+    })
+
+    vendorMessage.value = `[${vendorCode.value}] 공급사 카탈로그 업로드가 완료되었습니다.`
+    vendorFile.value = null
+    vendorProgress.value = 0
+
+    // 공급사 엑셀로 카탈로그가 갱신되니, 목록 다시 로드 (loadProducts가 기존에 있으니까 재사용)
+    if (typeof loadProducts === 'function') {
+      await loadProducts()
+    }
+  } catch (err) {
+    console.error(err)
+    vendorError.value =
+      '공급사 엑셀 업로드 중 오류가 발생했습니다: ' +
+      (err?.response?.data || err?.message || '')
+  } finally {
+    vendorUploading.value = false
+  }
+}
+
+
+
+
 onMounted(() => {
   loadProducts()
 })
@@ -130,6 +207,60 @@ onMounted(() => {
             선택됨: <strong>{{ file.name }}</strong>
             ({{ (file.size/1024/1024).toFixed(2) }} MB)
           </div>
+        </div>
+
+        <!-- 공급사 단가표 엑셀 업로드 -->
+        <div class="mt-4 p-3 border rounded bg-light">
+          <h5 class="mb-3">공급사 단가표 엑셀 업로드</h5>
+
+          <div class="row g-2 align-items-end">
+            <div class="col-md-3">
+              <label class="form-label">공급사 선택</label>
+              <select v-model="vendorCode" class="form-select">
+                <option value="A">아메리칸스탠다드</option>
+                <option value="B">이누스</option>
+              </select>
+            </div>
+
+            <div class="col-md-5">
+              <label class="form-label">엑셀 파일 (.xlsx)</label>
+              <input
+                type="file"
+                class="form-control"
+                accept=".xlsx"
+                @change="onVendorFileChange"
+              />
+            </div>
+
+            <div class="col-md-4 d-grid">
+              <button
+                class="btn btn-outline-primary"
+                :disabled="!vendorFile || vendorUploading"
+                @click="uploadVendorExcel"
+              >
+                {{ vendorUploading ? '공급사 엑셀 업로드 중...' : '공급사 단가표 업로드' }}
+              </button>
+            </div>
+          </div>
+
+          <div v-if="vendorUploading" class="mt-2">
+            <div class="progress">
+              <div
+                class="progress-bar"
+                role="progressbar"
+                :style="{ width: vendorProgress + '%' }"
+              >
+                {{ vendorProgress }}%
+              </div>
+            </div>
+          </div>
+
+          <p v-if="vendorMessage" class="mt-2 text-success small">
+            {{ vendorMessage }}
+          </p>
+          <p v-if="vendorError" class="mt-2 text-danger small">
+            {{ vendorError }}
+          </p>
         </div>
 
         <!-- 진행률 -->
