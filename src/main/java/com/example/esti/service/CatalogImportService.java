@@ -26,6 +26,10 @@ public class CatalogImportService {
     private final VendorItemPriceRepository vendorItemPriceRepository;
     // private final ItemComponentRepository itemComponentRepository; // 필요시 주입
 
+    public List<VendorItemPrice> getVendorCatalog(String vendorCode) {
+        return vendorItemPriceRepository.findByVendor_VendorCode(vendorCode);
+    }
+
     /**
      * 공급사(vendorCode)별 카탈로그 엑셀 업로드
      * 예: vendorCode = "A" 또는 "B"

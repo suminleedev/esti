@@ -115,6 +115,7 @@ const vendorUploading = ref(false)
 const vendorProgress = ref(0)
 const vendorMessage = ref('')
 const vendorError = ref('')
+const vendorRows = ref([])   // 미리보기용 A사 파싱 결과
 
 function onVendorFileChange(e) {
   vendorError.value = ''
@@ -126,8 +127,8 @@ function onVendorFileChange(e) {
 
   // 간단한 확장자 체크
   const ext = f.name.split('.').pop()?.toLowerCase()
-  if (ext !== 'xlsx') {
-    vendorError.value = '엑셀(.xlsx) 파일만 업로드 가능합니다.'
+  if (ext !== 'xlsx' && ext !== 'xls') {
+    vendorError.value = '엑셀(.xlsx, .xls) 파일만 업로드 가능합니다.'
     vendorFile.value = null
     return
   }
@@ -151,7 +152,7 @@ async function uploadVendorExcel() {
     const form = new FormData()
     form.append('file', vendorFile.value)
 
-    await axios.post(`/api/vendor-catalog/upload-excel/${vendorCode.value}`, form, {
+    const res = await axios.post(`/api/vendor-catalog/upload-excel/${vendorCode.value}`, form, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -161,6 +162,10 @@ async function uploadVendorExcel() {
       },
     })
 
+    // A사면 파싱 결과를 화면 미리보기 테이블에 넣기
+    if (vendorCode.value === 'A') {
+      vendorRows.value = Array.isArray(res.data) ? res.data : []
+    }
     vendorMessage.value = `[${vendorCode.value}] 공급사 카탈로그 업로드가 완료되었습니다.`
     vendorFile.value = null
     vendorProgress.value = 0
@@ -179,11 +184,24 @@ async function uploadVendorExcel() {
   }
 }
 
+/**
+ * 공급사 카탈로그 조회
+ */
+const vendorCatalogs = ref([])
 
+async function loadVendorCatalog() {
+  try {
+    const res = await axios.get(`/api/vendor-catalog/list/${vendorCode.value}`)
+    vendorCatalogs.value = res.data
+  } catch (e) {
+    console.error('공급사 카탈로그 목록 조회 실패', e)
+  }
+}
 
 
 onMounted(() => {
-  loadProducts()
+  //loadProducts() // 기존 카탈로그 목록 조회
+  loadVendorCatalog()
 })
 </script>
 
@@ -223,11 +241,11 @@ onMounted(() => {
             </div>
 
             <div class="col-md-5">
-              <label class="form-label">엑셀 파일 (.xlsx)</label>
+              <label class="form-label">엑셀 파일 (.xlsx, .xls)</label>
               <input
                 type="file"
                 class="form-control"
-                accept=".xlsx"
+                accept=".xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 @change="onVendorFileChange"
               />
             </div>
@@ -261,10 +279,51 @@ onMounted(() => {
           <p v-if="vendorError" class="mt-2 text-danger small">
             {{ vendorError }}
           </p>
+
+          <!-- A사 기준 공급사 단가 미리보기 -->
+          <div class="mt-3" v-if="vendorCode === 'A'">
+            <h6 class="mb-2">A사 세트 단가 미리보기</h6>
+            <table
+              v-if="vendorRows && vendorRows.length > 0"
+              class="table table-sm table-bordered align-middle"
+            >
+              <thead class="table-light">
+              <tr>
+                <th style="width: 40px">#</th>
+                <th>대분류</th>
+                <th>세트명</th>
+                <th>대표 품목명</th>
+                <th>신품번</th>
+                <th>구품번</th>
+                <th class="text-end">세트 합계 단가</th>
+              </tr>
+              </thead>
+              <tbody>
+              <tr v-for="(row, idx) in vendorRows" :key="idx">
+                <td>{{ idx + 1 }}</td>
+                <td>{{ row.categoryLarge }}</td>
+                <td>{{ row.categorySmall }}</td>
+                <!-- productName: 세트명, vendorItemName: 대표 품목명 -->
+                <td>{{ row.vendorItemName || row.productName }}</td>
+                <td>{{ row.mainItemCode }}</td>
+                <td>{{ row.oldItemCode }}</td>
+                <td class="text-end">
+                  {{ Number(row.unitPrice || 0).toLocaleString() }}
+                </td>
+              </tr>
+              </tbody>
+            </table>
+            <p
+              v-else
+              class="text-muted small mt-1"
+            >
+              업로드된 A사 세트 단가 데이터가 없습니다.
+            </p>
+          </div>
         </div>
 
         <!-- 진행률 -->
-        <div v-if="uploading" class="mb-3">
+        <div v-if="uploading" class="mb-3 mt-3">
           <div class="progress">
             <div
               class="progress-bar progress-bar-striped progress-bar-animated"
@@ -280,7 +339,7 @@ onMounted(() => {
         </div>
 
         <!-- 액션 -->
-        <div class="d-flex gap-2 mb-3">
+        <div class="d-flex gap-2 mb-3 mt-3">
           <button
             class="btn btn-primary"
             :disabled="uploading || !file"
@@ -297,7 +356,7 @@ onMounted(() => {
         <div v-if="message" class="alert alert-success" role="alert">{{ message }}</div>
         <div v-if="error" class="alert alert-danger" role="alert">{{ error }}</div>
 
-        <!-- 목록 테이블 -->
+        <!-- 기존 카탈로그 목록 (그대로 두고, 위에 A사 전용 미리보기 추가한 상태) -->
         <div class="mt-4">
           <h5>카탈로그 목록</h5>
           <table class="table table-striped table-bordered mt-2 align-middle">
@@ -323,7 +382,13 @@ onMounted(() => {
                 <td><input v-model="editingProduct.model" class="form-control" /></td>
                 <td><input v-model="editingProduct.brand" class="form-control" /></td>
                 <td><input v-model="editingProduct.specs" class="form-control" /></td>
-                <td><input v-model="editingProduct.basePrice" type="number" class="form-control" /></td>
+                <td>
+                  <input
+                    v-model="editingProduct.basePrice"
+                    type="number"
+                    class="form-control"
+                  />
+                </td>
                 <td><input v-model="editingProduct.description" class="form-control" /></td>
                 <td><input v-model="editingProduct.imageUrl" class="form-control" /></td>
                 <td class="d-flex gap-1">
