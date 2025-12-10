@@ -1,5 +1,7 @@
 package com.example.esti.excel;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
 import org.springframework.stereotype.Component;
@@ -13,6 +15,7 @@ import java.util.List;
 @Component
 @RequiredArgsConstructor
 public class VendorAExcelParser implements VendorExcelParser {
+    private static final Logger logger = LoggerFactory.getLogger(VendorAExcelParser.class);
 
     @Override
     public String getVendorCode() {
@@ -117,7 +120,7 @@ public class VendorAExcelParser implements VendorExcelParser {
                     // if (isBlank(newCode)) { continue; }
 
                     VendorExcelRow dto = new VendorExcelRow(
-                            "A",                     // vendorCode
+                            "A",          // vendorCode
                             currentCategory,         // categoryLarge (대분류)
                             currentSetName,          // categorySmall (세트/시리즈명)
                             currentSetName,          // productName (세트명)
