@@ -192,7 +192,11 @@ const vendorCatalogs = ref([])
 async function loadVendorCatalog() {
   try {
     const res = await axios.get(`/api/vendor-catalog/list/${vendorCode.value}`)
-    vendorCatalogs.value = res.data
+    console.log("type:", typeof res.data);
+    console.log("isArray:", Array.isArray(res.data));
+    console.log("keys:", Object.keys(res.data));
+    console.log("data:", res.data);
+    vendorCatalogs.value = res.data;
   } catch (e) {
     console.error('공급사 카탈로그 목록 조회 실패', e)
   }
@@ -363,6 +367,8 @@ onMounted(() => {
             <thead class="table-light">
             <tr>
               <th>#</th>
+              <th>대분류</th>
+              <th>소분류</th>
               <th>제품명</th>
               <th>모델명</th>
               <th>브랜드</th>
@@ -374,22 +380,24 @@ onMounted(() => {
             </tr>
             </thead>
             <tbody>
-            <tr v-for="(p, idx) in products" :key="p.id">
-              <template v-if="editingProduct && editingProduct.id === p.id">
+            <tr v-for="(p, idx) in vendorCatalogs" :key="p.catalogId">
+              <template v-if="editingProduct && editingProduct.catalogId === p.catalogId">
                 <!-- 수정 모드 -->
                 <td>{{ idx + 1 }}</td>
-                <td><input v-model="editingProduct.name" class="form-control" /></td>
-                <td><input v-model="editingProduct.model" class="form-control" /></td>
-                <td><input v-model="editingProduct.brand" class="form-control" /></td>
-                <td><input v-model="editingProduct.specs" class="form-control" /></td>
+                <td><input v-model="editingProduct.categoryLarge" class="form-control" /></td>
+                <td><input v-model="editingProduct.categorySmall" class="form-control" /></td>
+                <td><input v-model="editingProduct.productName" class="form-control" /></td>
+                <td><input v-model="editingProduct.mainItemCode" class="form-control" /></td>
+                <td><input v-model="editingProduct.vendorName" class="form-control" /></td>
+                <td><input v-model="editingProduct.remark" class="form-control" /></td>
                 <td>
                   <input
-                    v-model="editingProduct.basePrice"
+                    v-model="editingProduct.unitPrice"
                     type="number"
-                    class="form-control"
+                    class="form-control text-end"
                   />
                 </td>
-                <td><input v-model="editingProduct.description" class="form-control" /></td>
+                <td><input v-model="editingProduct.oldItemCode" class="form-control" /></td>
                 <td><input v-model="editingProduct.imageUrl" class="form-control" /></td>
                 <td class="d-flex gap-1">
                   <button class="btn btn-success btn-sm" @click="saveEdit">저장</button>
@@ -399,12 +407,14 @@ onMounted(() => {
               <template v-else>
                 <!-- 조회 모드 -->
                 <td>{{ idx + 1 }}</td>
-                <td>{{ p.name }}</td>
-                <td>{{ p.model }}</td>
-                <td>{{ p.brand }}</td>
-                <td>{{ p.specs }}</td>
-                <td>{{ p.basePrice }}</td>
-                <td>{{ p.description }}</td>
+                <td>{{ p.categoryLarge }}</td>
+                <td>{{ p.categorySmall }}</td>
+                <td>{{ p.productName }}</td>
+                <td>{{ p.mainItemCode }}</td>
+                <td>{{ p.vendorName }}</td>
+                <td>{{ p.remark }}</td>
+                <td class="text-end">{{ p.unitPrice?.toLocaleString() }}</td>
+                <td>{{ p.oldItemCode }}</td>
                 <td>
                   <img
                     v-if="p.imageUrl"
@@ -415,7 +425,7 @@ onMounted(() => {
                 </td>
                 <td class="d-flex gap-1">
                   <button class="btn btn-warning btn-sm" @click="startEdit(p)">수정</button>
-                  <button class="btn btn-danger btn-sm" @click="deleteProduct(p.id)">삭제</button>
+                  <button class="btn btn-danger btn-sm" @click="deleteProduct(p.catalogId)">삭제</button>
                 </td>
               </template>
             </tr>
