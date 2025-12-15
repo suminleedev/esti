@@ -2,121 +2,18 @@
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
 
-const file = ref(null)
-const uploading = ref(false)
-const progress = ref(0)
 const message = ref('')
 const error = ref('')
-const products = ref([])
 const editingProduct = ref(null) // 수정 중인 제품
-
-function onFileChange(e) {
-  error.value = ''
-  const f = e.target.files?.[0]
-  validateAndSet(f)
-}
-
-function validateAndSet(f) {
-  if (!f) return
-  const isXlsx =
-    f.name.toLowerCase().endsWith('.xlsx') ||
-    f.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-  if (!isXlsx) {
-    error.value = '엑셀(.xlsx) 파일만 업로드 가능합니다.'
-    file.value = null
-    return
-  }
-  if (f.size > 20 * 1024 * 1024) {
-    error.value = '파일 용량은 20MB 이하여야 합니다.'
-    file.value = null
-    return
-  }
-  file.value = f
-  message.value = ''
-}
-
-async function upload() {
-  if (!file.value) {
-    error.value = '업로드할 파일을 선택하세요.'
-    return
-  }
-  error.value = ''
-  message.value = ''
-  uploading.value = true
-  progress.value = 0
-  try {
-    const form = new FormData()
-    form.append('file', file.value)
-
-    const res = await axios.post('/api/catalog/import', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      onUploadProgress: (e) => {
-        if (e.total) {
-          progress.value = Math.round((e.loaded * 100) / e.total)
-        }
-      },
-    })
-    message.value = typeof res.data === 'string' ? res.data : '엑셀 업로드 성공!'
-    await loadProducts()
-  } catch (e) {
-    error.value = e?.response?.data ? String(e.response.data) : (e?.message || '업로드 실패')
-  } finally {
-    uploading.value = false
-  }
-}
-
-async function loadProducts() {
-  try {
-    const res = await axios.get('/api/catalog/list')
-    products.value = res.data
-  } catch (e) {
-    console.error('목록 조회 실패', e)
-  }
-}
-
-async function deleteProduct(id) {
-  if (!confirm('정말 삭제하시겠습니까?')) return
-  try {
-    await axios.delete(`/api/catalog/${id}`)
-    message.value = '삭제 성공'
-    await loadProducts()
-  } catch (e) {
-    error.value = '삭제 실패: ' + (e?.response?.data || e?.message)
-  }
-}
-
-function startEdit(p) {
-  editingProduct.value = { ...p } // 복사본
-}
-
-function cancelEdit() {
-  editingProduct.value = null
-}
-
-async function saveEdit() {
-  if (!editingProduct.value) return
-  try {
-    const res = await axios.put(`/api/catalog/${editingProduct.value.id}`, editingProduct.value)
-    message.value = '수정 성공'
-    editingProduct.value = null
-    await loadProducts()
-  } catch (e) {
-    error.value = '수정 실패: ' + (e?.response?.data || e?.message)
-  }
-}
-
-/**
- * 공급사 엑셀 업로드
- */
-// ===== 공급사 단가표 엑셀 업로드 상태 =====
+/* ===== 공급사 단가표 엑셀 업로드 상태 ===== */
 const vendorCode = ref('A')          // 기본값 A사
 const vendorFile = ref(null)
 const vendorUploading = ref(false)
 const vendorProgress = ref(0)
 const vendorMessage = ref('')
 const vendorError = ref('')
-const vendorRows = ref([])   // 미리보기용 A사 파싱 결과
 
+/** 파일 유효성 검사 */
 function onVendorFileChange(e) {
   vendorError.value = ''
   const f = e.target.files?.[0]
@@ -136,6 +33,9 @@ function onVendorFileChange(e) {
   vendorFile.value = f
 }
 
+/**
+ * 공급사 엑셀 업로드
+ */
 async function uploadVendorExcel() {
   vendorError.value = ''
   vendorMessage.value = ''
@@ -162,17 +62,13 @@ async function uploadVendorExcel() {
       },
     })
 
-    // A사면 파싱 결과를 화면 미리보기 테이블에 넣기
-    if (vendorCode.value === 'A') {
-      vendorRows.value = Array.isArray(res.data) ? res.data : []
-    }
     vendorMessage.value = `[${vendorCode.value}] 공급사 카탈로그 업로드가 완료되었습니다.`
     vendorFile.value = null
     vendorProgress.value = 0
 
-    // 공급사 엑셀로 카탈로그가 갱신되니, 목록 다시 로드 (loadProducts가 기존에 있으니까 재사용)
-    if (typeof loadProducts === 'function') {
-      await loadProducts()
+    // 공급사 엑셀로 카탈로그 갱신 후 목록 재조회
+    if (typeof loadVendorCatalog === 'function') {
+      await loadVendorCatalog()
     }
   } catch (err) {
     console.error(err)
@@ -202,9 +98,45 @@ async function loadVendorCatalog() {
   }
 }
 
+/**
+ * 카탈로그 수정
+ */
+function startEdit(p) {
+  editingProduct.value = { ...p } // 복사본
+}
+
+function cancelEdit() {
+  editingProduct.value = null
+}
+
+async function saveEdit() {
+  if (!editingProduct.value) return
+  try {
+    const res = await axios.put(`/api/catalog/${editingProduct.value.id}`, editingProduct.value)
+    message.value = '수정 성공'
+    editingProduct.value = null
+    await loadVendorCatalog()
+  } catch (e) {
+    error.value = '수정 실패: ' + (e?.response?.data || e?.message)
+  }
+}
+
+/**
+ * 카탈로그 삭제
+ */
+async function deleteProduct(id) {
+  if (!confirm('정말 삭제하시겠습니까?')) return
+  try {
+    await axios.delete(`/api/catalog/${id}`)
+    message.value = '삭제 성공'
+    await loadVendorCatalog()
+  } catch (e) {
+    error.value = '삭제 실패: ' + (e?.response?.data || e?.message)
+  }
+}
+
 
 onMounted(() => {
-  //loadProducts() // 기존 카탈로그 목록 조회
   loadVendorCatalog()
 })
 </script>
@@ -214,22 +146,6 @@ onMounted(() => {
     <div class="card shadow-sm">
       <div class="card-body">
         <h2 class="card-title h4 mb-4">제품 카탈로그 엑셀 업로드</h2>
-
-        <!-- 파일 업로드 -->
-        <div class="mb-3">
-          <label for="file" class="form-label">엑셀 파일 선택 (.xlsx)</label>
-          <input
-            id="file"
-            type="file"
-            class="form-control"
-            accept=".xlsx"
-            @change="onFileChange"
-          />
-          <div v-if="file" class="form-text">
-            선택됨: <strong>{{ file.name }}</strong>
-            ({{ (file.size/1024/1024).toFixed(2) }} MB)
-          </div>
-        </div>
 
         <!-- 공급사 단가표 엑셀 업로드 -->
         <div class="mt-4 p-3 border rounded bg-light">
@@ -265,6 +181,7 @@ onMounted(() => {
             </div>
           </div>
 
+          <!-- 진행률 -->
           <div v-if="vendorUploading" class="mt-2">
             <div class="progress">
               <div
@@ -276,96 +193,23 @@ onMounted(() => {
               </div>
             </div>
           </div>
-
+          <!-- 메시지 -->
           <p v-if="vendorMessage" class="mt-2 text-success small">
             {{ vendorMessage }}
           </p>
           <p v-if="vendorError" class="mt-2 text-danger small">
             {{ vendorError }}
           </p>
-
-          <!-- A사 기준 공급사 단가 미리보기 -->
-          <div class="mt-3" v-if="vendorCode === 'A'">
-            <h6 class="mb-2">A사 세트 단가 미리보기</h6>
-            <table
-              v-if="vendorRows && vendorRows.length > 0"
-              class="table table-sm table-bordered align-middle"
-            >
-              <thead class="table-light">
-              <tr>
-                <th style="width: 40px">#</th>
-                <th>대분류</th>
-                <th>세트명</th>
-                <th>대표 품목명</th>
-                <th>신품번</th>
-                <th>구품번</th>
-                <th class="text-end">세트 합계 단가</th>
-              </tr>
-              </thead>
-              <tbody>
-              <tr v-for="(row, idx) in vendorRows" :key="idx">
-                <td>{{ idx + 1 }}</td>
-                <td>{{ row.categoryLarge }}</td>
-                <td>{{ row.categorySmall }}</td>
-                <!-- productName: 세트명, vendorItemName: 대표 품목명 -->
-                <td>{{ row.vendorItemName || row.productName }}</td>
-                <td>{{ row.mainItemCode }}</td>
-                <td>{{ row.oldItemCode }}</td>
-                <td class="text-end">
-                  {{ Number(row.unitPrice || 0).toLocaleString() }}
-                </td>
-              </tr>
-              </tbody>
-            </table>
-            <p
-              v-else
-              class="text-muted small mt-1"
-            >
-              업로드된 A사 세트 단가 데이터가 없습니다.
-            </p>
-          </div>
         </div>
 
-        <!-- 진행률 -->
-        <div v-if="uploading" class="mb-3 mt-3">
-          <div class="progress">
-            <div
-              class="progress-bar progress-bar-striped progress-bar-animated"
-              role="progressbar"
-              :style="{ width: progress + '%' }"
-              :aria-valuenow="progress"
-              aria-valuemin="0"
-              aria-valuemax="100"
-            >
-              {{ progress }}%
-            </div>
-          </div>
-        </div>
 
-        <!-- 액션 -->
-        <div class="d-flex gap-2 mb-3 mt-3">
-          <button
-            class="btn btn-primary"
-            :disabled="uploading || !file"
-            @click="upload"
-          >
-            업로드
-          </button>
-          <a href="/product_catalog_sample.xlsx" class="btn btn-outline-secondary" download>
-            샘플 템플릿 다운로드
-          </a>
-        </div>
 
-        <!-- 메시지 -->
-        <div v-if="message" class="alert alert-success" role="alert">{{ message }}</div>
-        <div v-if="error" class="alert alert-danger" role="alert">{{ error }}</div>
-
-        <!-- 기존 카탈로그 목록 (그대로 두고, 위에 A사 전용 미리보기 추가한 상태) -->
+        <!-- 카탈로그 목록 -->
         <div class="mt-4">
           <h5>카탈로그 목록</h5>
           <table class="table table-striped table-bordered mt-2 align-middle">
             <thead class="table-light">
-            <tr>
+            <tr class="text-center">
               <th>#</th>
               <th>대분류</th>
               <th>소분류</th>
@@ -429,8 +273,8 @@ onMounted(() => {
                 </td>
               </template>
             </tr>
-            <tr v-if="products.length === 0">
-              <td colspan="9" class="text-center text-muted">등록된 제품이 없습니다</td>
+            <tr v-if="vendorCatalogs.length === 0">
+              <td colspan="11" class="text-center text-muted">등록된 제품이 없습니다</td>
             </tr>
             </tbody>
           </table>

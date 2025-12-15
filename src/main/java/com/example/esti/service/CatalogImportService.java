@@ -30,6 +30,15 @@ public class CatalogImportService {
         return vendorItemPriceRepository.findByVendor_VendorCode(vendorCode);
     }
 
+    /** 브랜드명 매핑 */
+    private static String resolveVendorName(String vendorCode) {
+        return switch (vendorCode) {
+            case "A" -> "아메리칸스탠다드";
+            case "B" -> "이누스"; // 필요하면 채우기
+            default  -> vendorCode + "사";
+        };
+    }
+
     /**
      * 공급사(vendorCode)별 카탈로그 엑셀 업로드
      * 예: vendorCode = "A" 또는 "B"
@@ -37,12 +46,13 @@ public class CatalogImportService {
     @Transactional
     public void importVendorCatalog(String vendorCode, MultipartFile file) {
 
+
         // 1. 공급사 조회 or 생성
         Vendor vendor = vendorRepository.findByVendorCode(vendorCode)
                 .orElseGet(() -> {
                     Vendor v = new Vendor();
                     v.setVendorCode(vendorCode);
-                    v.setVendorName(vendorCode + "사");
+                    v.setVendorName(resolveVendorName(vendorCode));
                     return vendorRepository.save(v);
                 });
 
