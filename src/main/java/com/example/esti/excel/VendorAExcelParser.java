@@ -243,6 +243,7 @@ public class VendorAExcelParser implements VendorExcelParser {
 
         String t = smallCategory.replaceAll("\\s+", ""); // 공백 제거
 
+        if (t.equals("비데일체형양변기")) return "양변기";
         if (t.contains("비데")) return "비데";
         if (t.contains("양변기") || t.contains("변기")) return "양변기";
 
