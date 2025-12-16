@@ -259,9 +259,6 @@ public class VendorAExcelParser implements VendorExcelParser {
         if (t.contains("액세서리") || t.contains("휴지걸이") || t.contains("수건걸이")
                 || t.contains("거울") || t.contains("선반")) return "액세서리";
 
-        // 수전인데 구체 구분이 안 되면 보수적으로 null (오분류 방지)
-        if (t.contains("수전")) return null;
-
         return null;
     }
 
