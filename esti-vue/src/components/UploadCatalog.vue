@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import {ref, onMounted, watch} from 'vue'
 import axios from 'axios'
 
 const message = ref('')
@@ -84,17 +84,49 @@ async function uploadVendorExcel() {
  * 공급사 카탈로그 조회
  */
 const vendorCatalogs = ref([])
-
+// 기존 : 리스트 반환
+// async function loadVendorCatalog() {
+//   try {
+//     const res = await axios.get(`/api/vendor-catalog/list/${vendorCode.value}`)
+//     console.log("type:", typeof res.data);
+//     console.log("isArray:", Array.isArray(res.data));
+//     console.log("keys:", Object.keys(res.data));
+//     console.log("data:", res.data);
+//     vendorCatalogs.value = res.data;
+//   } catch (e) {
+//     console.error('공급사 카탈로그 목록 조회 실패', e)
+//   }
+// }
+// 신규 : 페이지 반환
+const page = ref(0)          // 0부터 시작
+const size = ref(20)
+const totalPages = ref(0)
+const totalElements = ref(0)
+const loadingCatalog = ref(false)
 async function loadVendorCatalog() {
+  loadingCatalog.value = true
   try {
-    const res = await axios.get(`/api/vendor-catalog/list/${vendorCode.value}`)
-    console.log("type:", typeof res.data);
-    console.log("isArray:", Array.isArray(res.data));
-    console.log("keys:", Object.keys(res.data));
-    console.log("data:", res.data);
-    vendorCatalogs.value = res.data;
+    const res = await axios.get(`/api/vendor-catalog/page/${vendorCode.value}`, {
+      params: {
+        page: page.value,
+        size: size.value,
+        sort: 'id,desc', // 서버 엔티티 필드 기준. (DTO의 catalogId로 sort하면 안 먹을 수 있음)
+      }
+    })
+
+    vendorCatalogs.value = res.data?.content ?? []
+    totalPages.value = res.data?.totalPages ?? 0
+    totalElements.value = res.data?.totalElements ?? 0
+
+    // 서버가 보정한 현재 페이지
+    page.value = res.data?.number ?? page.value
   } catch (e) {
     console.error('공급사 카탈로그 목록 조회 실패', e)
+    vendorCatalogs.value = []
+    totalPages.value = 0
+    totalElements.value = 0
+  } finally {
+    loadingCatalog.value = false
   }
 }
 
@@ -135,6 +167,27 @@ async function deleteProduct(id) {
   }
 }
 
+/**
+ * 페이징 함수
+ */
+function goToPage(p) {
+  if (p < 0 || p >= totalPages.value) return
+  page.value = p
+  loadVendorCatalog()
+}
+
+function prevPage() {
+  goToPage(page.value - 1)
+}
+function nextPage() {
+  goToPage(page.value + 1)
+}
+
+// 공급사 바꾸면 0페이지부터 다시 조회
+watch(vendorCode, async () => {
+  page.value = 0
+  await loadVendorCatalog()
+})
 
 onMounted(() => {
   loadVendorCatalog()
@@ -206,7 +259,21 @@ onMounted(() => {
 
         <!-- 카탈로그 목록 -->
         <div class="mt-4">
-          <h5>카탈로그 목록</h5>
+          <div class="d-flex justify-content-between align-items-center">
+            <h5>카탈로그 목록</h5>
+
+            <div class="d-flex align-items-center gap-2">
+              <small class="text-muted">총 {{ totalElements.toLocaleString() }}건</small>
+              <select v-model.number="size" class="form-select form-select-sm" style="width: 90px"
+                      @change="page = 0; loadVendorCatalog()">
+                <option :value="10">10</option>
+                <option :value="20">20</option>
+                <option :value="50">50</option>
+                <option :value="100">100</option>
+              </select>
+            </div>
+          </div>
+
           <table class="table table-striped table-bordered mt-2 align-middle">
             <thead class="table-light">
             <tr class="text-center">
@@ -278,6 +345,22 @@ onMounted(() => {
             </tr>
             </tbody>
           </table>
+
+          <!-- 페이지네이션 -->
+          <div class="d-flex justify-content-between align-items-center">
+            <small class="text-muted">
+              {{ totalPages === 0 ? 0 : page + 1 }} / {{ totalPages }} 페이지
+            </small>
+
+            <div class="btn-group">
+              <button class="btn btn-outline-secondary btn-sm" :disabled="page <= 0" @click="prevPage">
+                이전
+              </button>
+              <button class="btn btn-outline-secondary btn-sm" :disabled="page >= totalPages - 1" @click="nextPage">
+                다음
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
