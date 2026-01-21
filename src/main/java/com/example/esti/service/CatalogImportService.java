@@ -10,11 +10,14 @@ import com.example.esti.repository.ProductCatalogRepository;
 import com.example.esti.repository.VendorItemPriceRepository;
 import com.example.esti.repository.VendorRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.math.BigDecimal;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +31,11 @@ public class CatalogImportService {
 
     public List<VendorItemPrice> getVendorCatalog(String vendorCode) {
         return vendorItemPriceRepository.findByVendor_VendorCode(vendorCode);
+    }
+
+    // ==== 페이징 처리 목록 ====
+    public Page<VendorItemPrice> getVendorCatalogPage(String vendorCode, Pageable pageable) {
+        return vendorItemPriceRepository.findByVendor_VendorCode(vendorCode, pageable);
     }
 
     /** 브랜드명 매핑 */
@@ -126,7 +134,13 @@ public class CatalogImportService {
         vip.setVendorItemName(row.vendorItemName());
         vip.setVendorSpec(row.vendorSpec());
         vip.setRemark(row.remark());
-        vip.setUnitPrice(row.unitPrice());
+
+        if (row.unitPrice() == null) {
+            String r = row.remark();
+            vip.setRemark((r == null ? "" : r + " | ") + "단가누락(0원처리)");
+        }
+
+        vip.setUnitPrice(row.unitPrice() != null ? row.unitPrice() : BigDecimal.ZERO);
         vip.setPriceType(row.priceType());
         vip.setCurrency("KRW"); // 필요시 변경
 

@@ -4,6 +4,10 @@ import com.example.esti.dto.VendorCatalogView;
 import com.example.esti.service.CatalogImportService;
 import com.example.esti.service.VendorCatalogQueryService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -43,5 +47,18 @@ public class VendorCatalogController {
                 vendorCatalogQueryService.getVendorCatalog(vendorCode)
         );
     }
+
+    // GET /api/vendor-catalog/page/B?page=0&size=20&sort=id,desc
+    @GetMapping("/page/{vendorCode}")
+    public ResponseEntity<Page<VendorCatalogView>> getVendorCatalogPage(
+            @PathVariable String vendorCode,
+            @PageableDefault(size = 20, sort = "id", direction = Sort.Direction.DESC)
+            Pageable pageable
+    ) {
+        return ResponseEntity.ok(
+                vendorCatalogQueryService.getVendorCatalogPage(vendorCode, pageable)
+        );
+    }
+
 }
 
