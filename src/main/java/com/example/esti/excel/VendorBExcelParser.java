@@ -42,121 +42,147 @@ public class VendorBExcelParser implements VendorExcelParser {
         return "B";
     }
 
+    /** 기존 parse 함수 -> InputStream 오버로드함수로 위임 */
     @Override
     public List<VendorExcelRow> parse(MultipartFile file) {
+        try (InputStream is = file.getInputStream()) {
+            return parse(is); // InputStream 버전으로 위임
+        } catch (Exception e) {
+            throw wrap("B사 엑셀 파싱 중 오류", e);
+        }
+    }
+
+    /** 비동기/임시파일/테스트에서 재사용 가능한 InputStream 버전 */
+    public List<VendorExcelRow> parse(InputStream is) {
+        try (Workbook workbook = WorkbookFactory.create(is)) {
+            return parseWorkbook(workbook); // 실제 파싱 로직
+        } catch (Exception e) {
+            throw wrap("B사 엑셀 파싱 중 오류", e);
+        }
+    }
+
+    /** (선택) Path로도 바로 받을 수 있게 */
+    public List<VendorExcelRow> parse(java.nio.file.Path path) {
+        try (InputStream is = java.nio.file.Files.newInputStream(path)) {
+            return parse(is);
+        } catch (Exception e) {
+            throw wrap("B사 엑셀 파싱 중 오류", e);
+        }
+    }
+
+    /** 예외처리 함수 */
+    private RuntimeException wrap(String msg, Exception e) {
+        Throwable root = e;
+        while (root.getCause() != null) root = root.getCause();
+        return new RuntimeException(msg + ": " + root.getClass().getName() + " - " + root.getMessage(), e);
+    }
+
+    /** 기존 parse() 안의 대부분 로직을 여기로 그대로 옮기면 됨 */
+    private List<VendorExcelRow> parseWorkbook(Workbook workbook) {
         List<VendorExcelRow> result = new ArrayList<>();
 
-        try (InputStream is = file.getInputStream();
-             Workbook workbook = WorkbookFactory.create(is)) {
+        DataFormatter formatter = new DataFormatter();
+        FormulaEvaluator evaluator = workbook.getCreationHelper().createFormulaEvaluator();
 
-            DataFormatter formatter = new DataFormatter();
-            FormulaEvaluator evaluator = workbook.getCreationHelper().createFormulaEvaluator();
+        // 디버그용(원하면 false로)
+        boolean debug = true;
 
-            // 디버그용(원하면 false로)
-            boolean debug = true;
+        for (int sheetIdx = 0; sheetIdx < workbook.getNumberOfSheets(); sheetIdx++) {
+            Sheet sheet = workbook.getSheetAt(sheetIdx);
+            if (sheet == null) continue;
 
-            for (int sheetIdx = 0; sheetIdx < workbook.getNumberOfSheets(); sheetIdx++) {
-                Sheet sheet = workbook.getSheetAt(sheetIdx);
-                if (sheet == null) continue;
+            String categoryLarge = sheet.getSheetName();
 
-                String categoryLarge = sheet.getSheetName();
+            // 1) 헤더 자동 탐지 + 컬럼맵 생성(상/하위 헤더 2줄을 합쳐서 인식)
+            HeaderInfo headerInfo = detectHeader(sheet, formatter, evaluator);
+            if (headerInfo == null) continue;
 
-                // 1) 헤더 자동 탐지 + 컬럼맵 생성(상/하위 헤더 2줄을 합쳐서 인식)
-                HeaderInfo headerInfo = detectHeader(sheet, formatter, evaluator);
-                if (headerInfo == null) continue;
+            Map<String, Integer> colMap = headerInfo.colMap;
+            int headerRowIdx = headerInfo.headerRowIdx;
 
-                Map<String, Integer> colMap = headerInfo.colMap;
-                int headerRowIdx = headerInfo.headerRowIdx;
-
-                if (debug) {
-                    System.out.println("[B][COLMAP] sheet=" + categoryLarge +
-                            " headerRow=" + headerRowIdx +
-                            " keys=" + colMap.keySet());
-                }
-
-                // 2) 데이터 시작 행: 기본은 헤더 다음 행
-                int dataStartRowIdx = headerRowIdx + 1;
-
-                // 2-1) 헤더 바로 아래가 하위 헤더(하부/상부...) 행이면 1줄 더 스킵
-                if (looksLikeSubHeaderRow(sheet.getRow(dataStartRowIdx), formatter, evaluator)) {
-                    dataStartRowIdx += 1;
-                }
-
-                int zeroPriceRows = 0;
-                int parsedRows = 0;
-
-                // 3) 데이터 순회
-                int lastRowNum = sheet.getLastRowNum();
-                for (int rowIdx = dataStartRowIdx; rowIdx <= lastRowNum; rowIdx++) {
-                    Row row = sheet.getRow(rowIdx);
-                    if (row == null) continue;
-
-                    // 3-1) 원문 추출
-                    String categorySmall = normalizeSpace(getByKey(row, colMap, COL_CATEGORY_SMALL, formatter, evaluator));
-                    String productCodeRaw = getByKey(row, colMap, COL_PRODUCT_CODE, formatter, evaluator);
-                    String subCodeRaw     = getByKey(row, colMap, COL_SUB_CODE, formatter, evaluator);
-
-                    // 3-2) 코드값 정리(공백정리 + 괄호설명 제거 + 50자 컷)
-                    String productCode = normalizeCode(productCodeRaw, CODE_MAX_LEN);
-                    String subCode     = normalizeCode(subCodeRaw, CODE_MAX_LEN);
-
-                    // 3-3) 중간 반복 헤더/구분행 스킵
-                    if (isHeaderLikeCode(productCodeRaw) || isHeaderLikeCode(productCode)) {
-                        continue;
-                    }
-
-                    // 3-4) 품번 없으면 스킵
-                    if (isBlank(productCode)) continue;
-
-                    // 3-5) 비고/단가
-                    String remark = normalizeSpace(getByKey(row, colMap, COL_REMARK, formatter, evaluator));
-                    BigDecimal totalPrice = getDecimalByKey(row, colMap, COL_TOTAL_PRICE, formatter, evaluator);
-
-                    // 3-6) 단가 정책: 없으면 0원
-                    if (totalPrice == null) {
-                        totalPrice = BigDecimal.ZERO;
-                        zeroPriceRows++;
-
-                        // (선택) 파싱 실패 흔적 남기고 싶으면 사용
-                        // remark = (remark == null ? "" : remark + " | ") + "단가누락(0원)";
-                    }
-
-                    parsedRows++;
-
-                    // 3-7) 제품명 없으면 null 방지용으로 조합
-                    String productName = safeProductName(categoryLarge, categorySmall, productCode);
-
-                    VendorExcelRow dto = new VendorExcelRow(
-                            "B",
-                            categoryLarge,     // 대분류(시트명)
-                            categorySmall,     // 소분류
-                            productName,       // 제품명(없으면 조합)
-                            productCode,       // masterCodeHint
-                            productCode,       // proposalItemCode (VARCHAR(50) 안전)
-                            productCode,       // mainItemCode
-                            subCode,           // subItemCode
-                            null,              // oldItemCode
-                            productName,       // vendorItemName (없으면 제품명 대체)
-                            remark,            // vendorSpec (B사 파일에선 비고/규격이 섞이는 경우가 많아 remark 재사용)
-                            remark,            // remark
-                            totalPrice,        // unitPrice
-                            "SET"
-                    );
-
-                    result.add(dto);
-                }
-
-                if (debug) {
-                    System.out.println("[B][SHEET] " + categoryLarge +
-                            " parsedRows=" + parsedRows +
-                            " zeroPriceRows=" + zeroPriceRows);
-                }
+            if (debug) {
+                System.out.println("[B][COLMAP] sheet=" + categoryLarge +
+                        " headerRow=" + headerRowIdx +
+                        " keys=" + colMap.keySet());
             }
 
-        } catch (Exception e) {
-            Throwable root = e;
-            while (root.getCause() != null) root = root.getCause();
-            throw new RuntimeException("B사 엑셀 파싱 중 오류: " + root.getClass().getName() + " - " + root.getMessage(), e);
+            // 2) 데이터 시작 행: 기본은 헤더 다음 행
+            int dataStartRowIdx = headerRowIdx + 1;
+
+            // 2-1) 헤더 바로 아래가 하위 헤더(하부/상부...) 행이면 1줄 더 스킵
+            if (looksLikeSubHeaderRow(sheet.getRow(dataStartRowIdx), formatter, evaluator)) {
+                dataStartRowIdx += 1;
+            }
+
+            int zeroPriceRows = 0;
+            int parsedRows = 0;
+
+            // 3) 데이터 순회
+            int lastRowNum = sheet.getLastRowNum();
+            for (int rowIdx = dataStartRowIdx; rowIdx <= lastRowNum; rowIdx++) {
+                Row row = sheet.getRow(rowIdx);
+                if (row == null) continue;
+
+                // 3-1) 원문 추출
+                String categorySmall = normalizeSpace(getByKey(row, colMap, COL_CATEGORY_SMALL, formatter, evaluator));
+                String productCodeRaw = getByKey(row, colMap, COL_PRODUCT_CODE, formatter, evaluator);
+                String subCodeRaw     = getByKey(row, colMap, COL_SUB_CODE, formatter, evaluator);
+
+                // 3-2) 코드값 정리(공백정리 + 괄호설명 제거 + 50자 컷)
+                String productCode = normalizeCode(productCodeRaw, CODE_MAX_LEN);
+                String subCode     = normalizeCode(subCodeRaw, CODE_MAX_LEN);
+
+                // 3-3) 중간 반복 헤더/구분행 스킵
+                if (isHeaderLikeCode(productCodeRaw) || isHeaderLikeCode(productCode)) {
+                    continue;
+                }
+
+                // 3-4) 품번 없으면 스킵
+                if (isBlank(productCode)) continue;
+
+                // 3-5) 비고/단가
+                String remark = normalizeSpace(getByKey(row, colMap, COL_REMARK, formatter, evaluator));
+                BigDecimal totalPrice = getDecimalByKey(row, colMap, COL_TOTAL_PRICE, formatter, evaluator);
+
+                // 3-6) 단가 정책: 없으면 0원
+                if (totalPrice == null) {
+                    totalPrice = BigDecimal.ZERO;
+                    zeroPriceRows++;
+
+                    // (선택) 파싱 실패 흔적 남기고 싶으면 사용
+                    // remark = (remark == null ? "" : remark + " | ") + "단가누락(0원)";
+                }
+
+                parsedRows++;
+
+                // 3-7) 제품명 없으면 null 방지용으로 조합
+                String productName = safeProductName(categoryLarge, categorySmall, productCode);
+
+                VendorExcelRow dto = new VendorExcelRow(
+                        "B",
+                        categoryLarge,     // 대분류(시트명)
+                        categorySmall,     // 소분류
+                        productName,       // 제품명(없으면 조합)
+                        productCode,       // masterCodeHint
+                        productCode,       // proposalItemCode (VARCHAR(50) 안전)
+                        productCode,       // mainItemCode
+                        subCode,           // subItemCode
+                        null,              // oldItemCode
+                        productName,       // vendorItemName (없으면 제품명 대체)
+                        remark,            // vendorSpec (B사 파일에선 비고/규격이 섞이는 경우가 많아 remark 재사용)
+                        remark,            // remark
+                        totalPrice,        // unitPrice
+                        "SET"
+                );
+
+                result.add(dto);
+            }
+
+            if (debug) {
+                System.out.println("[B][SHEET] " + categoryLarge +
+                        " parsedRows=" + parsedRows +
+                        " zeroPriceRows=" + zeroPriceRows);
+            }
         }
 
         return result;

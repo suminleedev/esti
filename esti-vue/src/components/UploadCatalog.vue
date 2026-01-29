@@ -1,5 +1,5 @@
 <script setup>
-import {ref, onMounted, watch, computed} from 'vue'
+import { ref, onMounted, watch, computed, onBeforeUnmount } from 'vue'
 import axios from 'axios'
 
 const message = ref('')
@@ -33,6 +33,66 @@ function onVendorFileChange(e) {
   vendorFile.value = f
 }
 
+// 서버 진행률 폴링용
+const vendorJobId = ref(null)
+let progressTimer = null
+
+function stopProgressPolling() {
+  if (progressTimer) {
+    clearInterval(progressTimer)
+    progressTimer = null
+  }
+}
+
+/**
+ * 공급사 엑셀 업로드 진행률 api
+ */
+async function startProgressPolling(jobId) {
+  stopProgressPolling()
+  vendorJobId.value = jobId
+
+  progressTimer = setInterval(async () => {
+    try {
+      const res = await axios.get(`/api/vendor-catalog/upload-progress/${jobId}`)
+      const data = res.data || {}
+
+      // 서버가 주는 percent(0~100)를 그대로 쓰되,
+      // 업로드 전송을 0~30에서 이미 사용하므로,
+      // 서버 percent는 서비스에서 30부터 시작하도록(백엔드 코드가 그렇게 업데이트함) 맞춰두는 게 깔끔함.
+      if (typeof data.percent === 'number') {
+        vendorProgress.value = Math.max(vendorProgress.value, data.percent)
+      }
+
+      // 서버 메시지 표시(선택)
+      if (data.message) {
+        vendorMessage.value = data.message
+      }
+
+      // 완료 처리
+      if (data.done) {
+        stopProgressPolling()
+        vendorUploading.value = false
+
+        if (data.error) {
+          vendorError.value = data.message || '서버 처리 중 오류가 발생했습니다.'
+          return
+        }
+
+        vendorMessage.value = data.message || '업로드/반영 완료'
+        vendorProgress.value = 100
+
+        // 업로드 후 1페이지로 리셋
+        page.value = 0
+        // 공급사 엑셀로 카탈로그 갱신 후 목록 재조회
+        await loadVendorCatalog()
+      }
+    } catch (e) {
+      // 네트워크 순간 오류 정도는 무시해도 됨
+      console.error('진행률 조회 실패', e)
+    }
+  }, 500) // 0.8초마다 폴링
+}
+
 /**
  * 공급사 엑셀 업로드
  */
@@ -58,23 +118,32 @@ async function uploadVendorExcel() {
       },
       onUploadProgress(e) {
         if (!e.total) return
-        vendorProgress.value = Math.round((e.loaded * 100) / e.total)
+        // 업로드 전송은 0~30% 까지만 사용
+        const uploadPct = Math.round((e.loaded * 100) / e.total)
+        vendorProgress.value = Math.min(30, Math.round(uploadPct * 0.3))
+        vendorMessage.value = `업로드 중... (${uploadPct}%)`
       },
     })
 
-    vendorMessage.value = `[${vendorCode.value}] 공급사 카탈로그 업로드가 완료되었습니다.`
-    vendorFile.value = null
-    vendorProgress.value = 0
+    // 업로드 성공 → 서버 비동기 처리 진행률 폴링 시작
+    const jobId = res.data?.jobId
+    if (!jobId) {
+      throw new Error('서버에서 jobId를 받지 못했습니다.')
+    }
 
-    // 업로드 후 1페이지로 리셋
-    page.value = 0
-    // 공급사 엑셀로 카탈로그 갱신 후 목록 재조회
-    await loadVendorCatalog()
+    vendorFile.value = null
+    vendorMessage.value = '서버 처리 시작...'
+    vendorProgress.value = Math.max(vendorProgress.value, 30)
+
+    await startProgressPolling(jobId)
 
   } catch (err) {
     console.error(err)
+    stopProgressPolling()
+    vendorUploading.value = false
+
     vendorError.value =
-      '공급사 엑셀 업로드 중 오류가 발생했습니다: ' +
+      '공급사 엑셀 업로드/처리 중 오류가 발생했습니다: ' +
       (err?.response?.data || err?.message || '')
   } finally {
     vendorUploading.value = false
@@ -226,9 +295,21 @@ function nextBlock() {
 }
 
 // 공급사 바꾸면 0페이지부터 다시 조회
+// 업로드 중 vendorCode 바꾸면 업로드 중지
 watch(vendorCode, async () => {
+  stopProgressPolling()
+  vendorUploading.value = false
+  vendorProgress.value = 0
+  vendorMessage.value = ''
+  vendorError.value = ''
+
   page.value = 0
   await loadVendorCatalog()
+})
+
+// 컴포넌트 unmount 시 타이머 정리
+onBeforeUnmount(() => {
+  stopProgressPolling()
 })
 
 onMounted(() => {
