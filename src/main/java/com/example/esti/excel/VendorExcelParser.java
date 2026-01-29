@@ -9,5 +9,9 @@ public interface VendorExcelParser {
     String getVendorCode(); // 'A', 'B' 등
 
     List<VendorExcelRow> parse(MultipartFile file);
+
+    default List<VendorExcelRow> parse(java.nio.file.Path path) {
+        throw new UnsupportedOperationException("Path parse not implemented");
+    }
 }
 
