@@ -1,6 +1,6 @@
 ----------------------------------------------------------------
-Wed Jan 21 23:38:04 KST 2026:
-Booting Derby version The Apache Software Foundation - Apache Derby - 10.16.1.1 - (1901046): instance a816c00e-019b-e0fd-bf66-00000428b270 
+Thu Jan 29 20:23:38 KST 2026:
+Booting Derby version The Apache Software Foundation - Apache Derby - 10.16.1.1 - (1901046): instance a816c00e-019c-097e-9a13-00000232b018 
 on database directory memory:/Users/suminlee/IdeaProjects/esti/estimateDB with class loader jdk.internal.loader.ClassLoaders$AppClassLoader@251a69d7 
 Loaded from file:/Users/suminlee/.m2/repository/org/apache/derby/derby/10.16.1.1/derby-10.16.1.1.jar
 java.vendor=Oracle Corporation

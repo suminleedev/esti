@@ -1,5 +1,5 @@
 <script setup>
-import {ref, onMounted, watch} from 'vue'
+import {ref, onMounted, watch, computed} from 'vue'
 import axios from 'axios'
 
 const message = ref('')
@@ -66,10 +66,11 @@ async function uploadVendorExcel() {
     vendorFile.value = null
     vendorProgress.value = 0
 
+    // 업로드 후 1페이지로 리셋
+    page.value = 0
     // 공급사 엑셀로 카탈로그 갱신 후 목록 재조회
-    if (typeof loadVendorCatalog === 'function') {
-      await loadVendorCatalog()
-    }
+    await loadVendorCatalog()
+
   } catch (err) {
     console.error(err)
     vendorError.value =
@@ -170,6 +171,27 @@ async function deleteProduct(id) {
 /**
  * 페이징 함수
  */
+// 페이지 버튼에 보여줄 최대 개수
+const pageBlockSize = ref(10)
+
+// page: 0부터 시작이라고 가정
+const pageNumbers = computed(() => {
+  const tp = totalPages.value || 0
+  if (tp === 0) return []
+
+  const block = pageBlockSize.value // 10
+  const current = page.value
+
+  // 현재 페이지가 속한 블록의 시작(0-based)
+  // 예: current=0~9 -> 0, 10~19 -> 10 ...
+  const start = Math.floor(current / block) * block
+  const end = Math.min(tp - 1, start + block - 1)
+
+  const pages = []
+  for (let p = start; p <= end; p++) pages.push(p)
+  return pages
+})
+
 function goToPage(p) {
   if (p < 0 || p >= totalPages.value) return
   page.value = p
@@ -181,6 +203,26 @@ function prevPage() {
 }
 function nextPage() {
   goToPage(page.value + 1)
+}
+
+// 처음/끝 이동
+function firstPage() { goToPage(0) }
+function lastPage() { goToPage(totalPages.value - 1) }
+
+function prevBlock() {
+  const block = pageBlockSize.value
+  const start = Math.floor(page.value / block) * block
+  const target = start - block
+  if (target < 0) return
+  goToPage(target)
+}
+
+function nextBlock() {
+  const block = pageBlockSize.value
+  const start = Math.floor(page.value / block) * block
+  const target = start + block
+  if (target >= totalPages.value) return
+  goToPage(target)
 }
 
 // 공급사 바꾸면 0페이지부터 다시 조회
@@ -273,96 +315,138 @@ onMounted(() => {
               </select>
             </div>
           </div>
-
-          <table class="table table-striped table-bordered mt-2 align-middle">
-            <thead class="table-light">
-            <tr class="text-center">
-              <th>#</th>
-              <th>대분류</th>
-              <th>소분류</th>
-              <th>제품명</th>
-              <th>모델명</th>
-              <th>브랜드</th>
-              <th>규격</th>
-              <th>단가</th>
-              <th>설명</th>
-              <th>이미지</th>
-              <th>액션</th>
-            </tr>
-            </thead>
-            <tbody>
-            <tr v-for="(p, idx) in vendorCatalogs" :key="p.catalogId">
-              <template v-if="editingProduct && editingProduct.catalogId === p.catalogId">
-                <!-- 수정 모드 -->
-                <td>{{ idx + 1 }}</td>
-                <td><input v-model="editingProduct.categoryLarge" class="form-control" /></td>
-                <td><input v-model="editingProduct.categorySmall" class="form-control" /></td>
-                <td><input v-model="editingProduct.productName" class="form-control" /></td>
-                <td><input v-model="editingProduct.mainItemCode" class="form-control" /></td>
-                <td><input v-model="editingProduct.vendorName" class="form-control" /></td>
-                <td><input v-model="editingProduct.remark" class="form-control" /></td>
-                <td>
-                  <input
-                    v-model="editingProduct.unitPrice"
-                    type="number"
-                    class="form-control text-end"
-                  />
-                </td>
-                <td><input v-model="editingProduct.oldItemCode" class="form-control" /></td>
-                <td><input v-model="editingProduct.imageUrl" class="form-control" /></td>
-                <td class="d-flex gap-1">
-                  <button class="btn btn-success btn-sm" @click="saveEdit">저장</button>
-                  <button class="btn btn-secondary btn-sm" @click="cancelEdit">취소</button>
-                </td>
-              </template>
-              <template v-else>
-                <!-- 조회 모드 -->
-                <td>{{ idx + 1 }}</td>
-                <td>{{ p.categoryLarge }}</td>
-                <td>{{ p.categorySmall }}</td>
-                <td>{{ p.productName }}</td>
-                <td>{{ p.mainItemCode }}</td>
-                <td>{{ p.vendorName }}</td>
-                <td>{{ p.remark }}</td>
-                <td class="text-end">{{ p.unitPrice?.toLocaleString() }}</td>
-                <td>{{ p.oldItemCode }}</td>
-                <td>
-                  <img
-                    v-if="p.imageUrl"
-                    :src="p.imageUrl"
-                    alt="상품 이미지"
-                    style="max-width: 80px; max-height: 60px"
-                  />
-                </td>
-                <td class="d-flex gap-1">
-                  <button class="btn btn-warning btn-sm" @click="startEdit(p)">수정</button>
-                  <button class="btn btn-danger btn-sm" @click="deleteProduct(p.catalogId)">삭제</button>
-                </td>
-              </template>
-            </tr>
-            <tr v-if="vendorCatalogs.length === 0">
-              <td colspan="11" class="text-center text-muted">등록된 제품이 없습니다</td>
-            </tr>
-            </tbody>
-          </table>
+          <div class="table-scroll mt-2"><!-- 테이블 내부 스크롤 -->
+            <table class="table table-striped table-bordered mt-2 align-middle">
+              <thead class="table-light">
+              <tr class="text-center">
+                <th>#</th>
+                <th>대분류</th>
+                <th>소분류</th>
+                <th>제품명</th>
+                <th>모델명</th>
+                <th>브랜드</th>
+                <th>규격</th>
+                <th>단가</th>
+                <th>설명</th>
+                <th>이미지</th>
+                <th>액션</th>
+              </tr>
+              </thead>
+              <tbody>
+              <tr v-for="(p, idx) in vendorCatalogs" :key="p.catalogId">
+                <template v-if="editingProduct && editingProduct.catalogId === p.catalogId">
+                  <!-- 수정 모드 -->
+                  <td>{{ idx + 1 }}</td>
+                  <td><input v-model="editingProduct.categoryLarge" class="form-control" /></td>
+                  <td><input v-model="editingProduct.categorySmall" class="form-control" /></td>
+                  <td><input v-model="editingProduct.productName" class="form-control" /></td>
+                  <td><input v-model="editingProduct.mainItemCode" class="form-control" /></td>
+                  <td><input v-model="editingProduct.vendorName" class="form-control" /></td>
+                  <td><input v-model="editingProduct.remark" class="form-control" /></td>
+                  <td>
+                    <input
+                      v-model="editingProduct.unitPrice"
+                      type="number"
+                      class="form-control text-end"
+                    />
+                  </td>
+                  <td><input v-model="editingProduct.oldItemCode" class="form-control" /></td>
+                  <td><input v-model="editingProduct.imageUrl" class="form-control" /></td>
+                  <td class="d-flex gap-1">
+                    <button class="btn btn-success btn-sm" @click="saveEdit">저장</button>
+                    <button class="btn btn-secondary btn-sm" @click="cancelEdit">취소</button>
+                  </td>
+                </template>
+                <template v-else>
+                  <!-- 조회 모드 -->
+                  <td>{{ idx + 1 }}</td>
+                  <td>{{ p.categoryLarge }}</td>
+                  <td>{{ p.categorySmall }}</td>
+                  <td>{{ p.productName }}</td>
+                  <td>{{ p.mainItemCode }}</td>
+                  <td>{{ p.vendorName }}</td>
+                  <td>{{ p.remark }}</td>
+                  <td class="text-end">{{ p.unitPrice?.toLocaleString() }}</td>
+                  <td>{{ p.oldItemCode }}</td>
+                  <td>
+                    <img
+                      v-if="p.imageUrl"
+                      :src="p.imageUrl"
+                      alt="상품 이미지"
+                      style="max-width: 80px; max-height: 60px"
+                    />
+                  </td>
+                  <td class="d-flex gap-1">
+                    <button class="btn btn-warning btn-sm" @click="startEdit(p)">수정</button>
+                    <button class="btn btn-danger btn-sm" @click="deleteProduct(p.catalogId)">삭제</button>
+                  </td>
+                </template>
+              </tr>
+              <tr v-if="vendorCatalogs.length === 0">
+                <td colspan="11" class="text-center text-muted">등록된 제품이 없습니다</td>
+              </tr>
+              </tbody>
+            </table>
+          </div>
 
           <!-- 페이지네이션 -->
-          <div class="d-flex justify-content-between align-items-center">
-            <small class="text-muted">
-              {{ totalPages === 0 ? 0 : page + 1 }} / {{ totalPages }} 페이지
-            </small>
+          <nav class="d-flex justify-content-center mt-3" aria-label="Page navigation" v-if="totalPages > 1">
+            <ul class="pagination pagination-sm mb-0">
+              <!-- 맨앞 -->
+              <li class="page-item" :class="{ disabled: page === 0 }">
+                <button class="page-link" @click="firstPage" :disabled="page === 0">«</button>
+              </li>
+              <!-- 10개 이전 블록 -->
+              <li class="page-item" :class="{ disabled: page < pageBlockSize }">
+                <button class="page-link" @click="prevBlock" :disabled="page < pageBlockSize"> ‹ </button>
+              </li>
+              <!-- 이전 -->
+<!--              <li class="page-item" :class="{ disabled: page === 0 }">-->
+<!--                <button class="page-link" @click="prevPage" :disabled="page === 0">이전</button>-->
+<!--              </li>-->
+              <!-- 숫자 페이지 -->
+              <li v-for="p in pageNumbers" :key="p" class="page-item" :class="{ active: p === page }">
+                <button class="page-link" @click="goToPage(p)">{{ p + 1 }}</button>
+              </li>
+              <!-- 다음 -->
+<!--              <li class="page-item" :class="{ disabled: page >= totalPages - 1 }">-->
+<!--                <button class="page-link" @click="nextPage" :disabled="page >= totalPages - 1">다음</button>-->
+<!--              </li>-->
+              <!-- 10개 다음 블록 -->
+              <li class="page-item" :class="{ disabled: Math.floor(page / pageBlockSize) === Math.floor((totalPages - 1) / pageBlockSize) }">
+                <button class="page-link" @click="nextBlock"
+                        :disabled="Math.floor(page / pageBlockSize) === Math.floor((totalPages - 1) / pageBlockSize)"> › </button>
+              </li>
+              <!-- 맨끝 -->
+              <li class="page-item" :class="{ disabled: page >= totalPages - 1 }">
+                <button class="page-link" @click="lastPage" :disabled="page >= totalPages - 1">»</button>
+              </li>
+            </ul>
+          </nav>
 
-            <div class="btn-group">
-              <button class="btn btn-outline-secondary btn-sm" :disabled="page <= 0" @click="prevPage">
-                이전
-              </button>
-              <button class="btn btn-outline-secondary btn-sm" :disabled="page >= totalPages - 1" @click="nextPage">
-                다음
-              </button>
-            </div>
+          <!-- 하단 요약(선택) -->
+          <div class="text-center text-muted small mt-2">
+            {{ totalElements.toLocaleString() }}건 중
+            {{ (page * size + 1).toLocaleString() }} -
+            {{ Math.min((page + 1) * size, totalElements).toLocaleString() }} 표시
           </div>
         </div>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+/** 테이블 내 스크롤 영역 **/
+.table-scroll {
+  max-height: 520px;   /* 원하는 높이로 조절 */
+  overflow-y: auto;
+}
+
+/* 헤더 고정(선택) */
+.table-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+</style>
