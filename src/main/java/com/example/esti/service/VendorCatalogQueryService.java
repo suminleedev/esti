@@ -60,5 +60,12 @@ public class VendorCatalogQueryService {
                 .findByVendor_VendorCode(vendorCode, pageable)
                 .map(VendorCatalogView::from);
     }
+
+    // 전체 페이지 목록 조회
+    @Transactional(readOnly = true)
+    public Page<VendorCatalogView> getVendorCatalogPageAll(Pageable pageable) {
+        return vendorItemPriceRepository.findAll(pageable)
+                .map(VendorCatalogView::from);
+    }
 }
 
