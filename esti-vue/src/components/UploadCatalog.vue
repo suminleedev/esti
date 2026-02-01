@@ -455,9 +455,9 @@ onMounted(() => {
                   </td>
                   <td><input v-model="editingProduct.oldItemCode" class="form-control" /></td>
                   <td><input v-model="editingProduct.imageUrl" class="form-control" /></td>
-                  <td class="d-flex gap-1">
-                    <button class="btn btn-success btn-sm" @click="saveEdit">저장</button>
-                    <button class="btn btn-secondary btn-sm" @click="cancelEdit">취소</button>
+                  <td class="d-flex justify-content-center align-items-center gap-1">
+                    <button class="btn btn-success btn-sm" @click="saveEdit" title="저장">✔️</button>
+                    <button class="btn btn-secondary btn-sm" @click="cancelEdit" title="취소">❌</button>
                   </td>
                 </template>
                 <template v-else>
