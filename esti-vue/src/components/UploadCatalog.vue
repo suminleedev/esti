@@ -6,7 +6,8 @@ const message = ref('')
 const error = ref('')
 const editingProduct = ref(null) // 수정 중인 제품
 /* ===== 공급사 단가표 엑셀 업로드 상태 ===== */
-const vendorCode = ref('A')          // 기본값 A사
+const uploadVendorCode = ref('A')   // 업로드 영역 전용 : 기본값 A사
+const filterVendorCode = ref('') // 목록 필터 전용 : ALL/A/B
 const vendorFile = ref(null)
 const vendorUploading = ref(false)
 const vendorProgress = ref(0)
@@ -71,7 +72,7 @@ async function startProgressPolling(jobId) {
       // 완료 처리
       if (data.done) {
         stopProgressPolling()
-        vendorUploading.value = false
+        // vendorUploading.value = false
 
         if (data.error) {
           vendorError.value = data.message || '서버 처리 중 오류가 발생했습니다.'
@@ -81,16 +82,23 @@ async function startProgressPolling(jobId) {
         vendorMessage.value = data.message || '업로드/반영 완료'
         vendorProgress.value = 100
 
+        // 1초 정도 완료 상태 보여주고 UI 종료
+        setTimeout(() => {
+          vendorUploading.value = false
+          vendorJobId.value = null // 원하면 초기화
+        }, 1000)
+
         // 업로드 후 1페이지로 리셋
         page.value = 0
         // 공급사 엑셀로 카탈로그 갱신 후 목록 재조회
+        filterVendorCode.value = uploadVendorCode.value
         await loadVendorCatalog()
       }
     } catch (e) {
       // 네트워크 순간 오류 정도는 무시해도 됨
       console.error('진행률 조회 실패', e)
     }
-  }, 500) // 0.8초마다 폴링
+  }, 100) // 0.1초마다 폴링
 }
 
 /**
@@ -112,7 +120,7 @@ async function uploadVendorExcel() {
     const form = new FormData()
     form.append('file', vendorFile.value)
 
-    const res = await axios.post(`/api/vendor-catalog/upload-excel/${vendorCode.value}`, form, {
+    const res = await axios.post(`/api/vendor-catalog/upload-excel/${uploadVendorCode.value}`, form, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -176,7 +184,7 @@ const loadingCatalog = ref(false)
 async function loadVendorCatalog() {
   loadingCatalog.value = true
   try {
-    const res = await axios.get(`/api/vendor-catalog/page/${vendorCode.value}`, {
+    const res = await axios.get(`/api/vendor-catalog/page/${filterVendorCode.value}`, {
       params: {
         page: page.value,
         size: size.value,
@@ -295,16 +303,18 @@ function nextBlock() {
 }
 
 // 공급사 바꾸면 0페이지부터 다시 조회
+watch(filterVendorCode, async () =>{
+  page.value = 0
+  await loadVendorCatalog()
+})
+
 // 업로드 중 vendorCode 바꾸면 업로드 중지
-watch(vendorCode, async () => {
+watch(uploadVendorCode, async () => {
   stopProgressPolling()
   vendorUploading.value = false
   vendorProgress.value = 0
   vendorMessage.value = ''
   vendorError.value = ''
-
-  page.value = 0
-  await loadVendorCatalog()
 })
 
 // 컴포넌트 unmount 시 타이머 정리
@@ -330,7 +340,7 @@ onMounted(() => {
           <div class="row g-2 align-items-end">
             <div class="col-md-3">
               <label class="form-label">공급사 선택</label>
-              <select v-model="vendorCode" class="form-select">
+              <select v-model="uploadVendorCode" class="form-select">
                 <option value="A">아메리칸스탠다드</option>
                 <option value="B">이누스</option>
               </select>
@@ -358,7 +368,7 @@ onMounted(() => {
           </div>
 
           <!-- 진행률 -->
-          <div v-if="vendorUploading" class="mt-2">
+          <div v-if="vendorJobId" class="mt-2">
             <div class="progress">
               <div
                 class="progress-bar"
@@ -383,10 +393,22 @@ onMounted(() => {
         <!-- 카탈로그 목록 -->
         <div class="mt-4">
           <div class="d-flex justify-content-between align-items-center">
-            <h5>카탈로그 목록</h5>
-
-            <div class="d-flex align-items-center gap-2">
+            <!-- 왼쪽 -->
+            <h5 class="mb-0">카탈로그 목록</h5>
+            <!-- 오른쪽 -->
+            <div class="d-flex align-items-center gap-3">
+              <!-- 공급사 필터 -->
+              <div class="d-flex align-items-center gap-2">
+              <small class="text-muted">공급사</small>
+                <select v-model="filterVendorCode" class="form-select w-auto">
+                  <option value="">전체</option>
+                  <option value="A">아메리칸스탠다드</option>
+                  <option value="B">이누스</option>
+                </select>
+              </div>
+              <!-- 총 건수 -->
               <small class="text-muted">총 {{ totalElements.toLocaleString() }}건</small>
+              <!-- 페이지 사이즈 -->
               <select v-model.number="size" class="form-select form-select-sm" style="width: 90px"
                       @change="page = 0; loadVendorCatalog()">
                 <option :value="10">10</option>
@@ -457,9 +479,9 @@ onMounted(() => {
                       style="max-width: 80px; max-height: 60px"
                     />
                   </td>
-                  <td class="d-flex gap-1">
-                    <button class="btn btn-warning btn-sm" @click="startEdit(p)">수정</button>
-                    <button class="btn btn-danger btn-sm" @click="deleteProduct(p.catalogId)">삭제</button>
+                  <td class="d-flex justify-content-center align-items-center gap-1">
+                    <button class="btn btn-warning btn-sm" @click="startEdit(p)" title="수정">✍🏻</button>
+                    <button class="btn btn-danger btn-sm" @click="deleteProduct(p.catalogId)" title="삭제">␡</button>
                   </td>
                 </template>
               </tr>

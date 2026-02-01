@@ -1,6 +1,6 @@
 ----------------------------------------------------------------
-Thu Jan 29 23:04:34 KST 2026:
-Booting Derby version The Apache Software Foundation - Apache Derby - 10.16.1.1 - (1901046): instance a816c00e-019c-0a11-f0a3-000002298d08 
+Sun Feb 01 20:34:24 KST 2026:
+Booting Derby version The Apache Software Foundation - Apache Derby - 10.16.1.1 - (1901046): instance a816c00e-019c-18fb-8c51-0000020fcf90 
 on database directory memory:/Users/suminlee/IdeaProjects/esti/estimateDB with class loader jdk.internal.loader.ClassLoaders$AppClassLoader@251a69d7 
 Loaded from file:/Users/suminlee/.m2/repository/org/apache/derby/derby/10.16.1.1/derby-10.16.1.1.jar
 java.vendor=Oracle Corporation
@@ -12,11 +12,11 @@ os.version=26.2
 derby.system.home=null
 Database Class Loader started - derby.database.classpath=''
 ----------------------------------------------------------------
-Thu Jan 29 23:11:13 KST 2026:
-Shutting down instance a816c00e-019c-0a11-f0a3-000002298d08 on database directory memory:/Users/suminlee/IdeaProjects/esti/estimateDB with class loader jdk.internal.loader.ClassLoaders$AppClassLoader@251a69d7 
+Sun Feb 01 20:45:22 KST 2026:
+Shutting down instance a816c00e-019c-18fb-8c51-0000020fcf90 on database directory memory:/Users/suminlee/IdeaProjects/esti/estimateDB with class loader jdk.internal.loader.ClassLoaders$AppClassLoader@251a69d7 
 ----------------------------------------------------------------
-Thu Jan 29 23:11:14 KST 2026:
-Booting Derby version The Apache Software Foundation - Apache Derby - 10.16.1.1 - (1901046): instance 691b658a-019c-0a11-f0a3-000002298d08 
+Sun Feb 01 20:45:23 KST 2026:
+Booting Derby version The Apache Software Foundation - Apache Derby - 10.16.1.1 - (1901046): instance f4bc21e1-019c-18fb-8c51-0000020fcf90 
 on database directory memory:/Users/suminlee/IdeaProjects/esti/estimateDB with class loader jdk.internal.loader.ClassLoaders$AppClassLoader@251a69d7 
 Loaded from file:/Users/suminlee/.m2/repository/org/apache/derby/derby/10.16.1.1/derby-10.16.1.1.jar
 java.vendor=Oracle Corporation

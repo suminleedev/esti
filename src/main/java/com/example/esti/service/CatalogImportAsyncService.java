@@ -60,7 +60,7 @@ public class CatalogImportAsyncService {
             List<VendorExcelRow> rows = parser.parse(savedPath);
 
             int total = Math.max(rows.size(), 1);
-            progressStore.update(jobId, 35, "DB 저장 시작 (0 / " + total + ")");
+            progressStore.update(jobId, 35, "DB 저장 시작");
 
             int done = 0;
             for (VendorExcelRow row : rows) {
@@ -77,11 +77,11 @@ public class CatalogImportAsyncService {
 
                 // 너무 잦은 업데이트 방지(10건마다/마지막)
                 if (done % 10 == 0 || done == total) {
-                    progressStore.update(jobId, percent, "DB 저장 중... (" + done + "/" + total + ")");
+                    progressStore.update(jobId, percent, "DB 저장 중...");
                 }
             }
 
-            progressStore.done(jobId, "완료! (" + total + "건 반영)");
+            progressStore.done(jobId, "완료!");
 
         } catch (Exception e) {
             progressStore.fail(jobId, "실패: " + e.getClass().getSimpleName() + " - " + e.getMessage());

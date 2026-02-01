@@ -116,5 +116,19 @@ public class VendorCatalogController {
         );
     }
 
+    /**
+     * 전체 페이징 목록 조회
+     * GET /api/vendor-catalog/page/?page=0&size=20&sort=id,desc
+     */
+    @GetMapping("/page/")
+    public ResponseEntity<Page<VendorCatalogView>> getVendorCatalogPageAll(
+            @PageableDefault(size = 20, sort = "id", direction = Sort.Direction.DESC)
+            Pageable pageable
+    ) {
+        return ResponseEntity.ok(
+                vendorCatalogQueryService.getVendorCatalogPageAll(pageable)
+        );
+    }
+
 }
 
