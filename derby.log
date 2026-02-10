@@ -1,6 +1,6 @@
 ----------------------------------------------------------------
-Sun Feb 01 20:34:24 KST 2026:
-Booting Derby version The Apache Software Foundation - Apache Derby - 10.16.1.1 - (1901046): instance a816c00e-019c-18fb-8c51-0000020fcf90 
+Mon Feb 09 18:40:55 KST 2026:
+Booting Derby version The Apache Software Foundation - Apache Derby - 10.16.1.1 - (1901046): instance a816c00e-019c-41c6-84cb-00000247daa0 
 on database directory memory:/Users/suminlee/IdeaProjects/esti/estimateDB with class loader jdk.internal.loader.ClassLoaders$AppClassLoader@251a69d7 
 Loaded from file:/Users/suminlee/.m2/repository/org/apache/derby/derby/10.16.1.1/derby-10.16.1.1.jar
 java.vendor=Oracle Corporation
@@ -12,18 +12,5 @@ os.version=26.2
 derby.system.home=null
 Database Class Loader started - derby.database.classpath=''
 ----------------------------------------------------------------
-Sun Feb 01 20:45:22 KST 2026:
-Shutting down instance a816c00e-019c-18fb-8c51-0000020fcf90 on database directory memory:/Users/suminlee/IdeaProjects/esti/estimateDB with class loader jdk.internal.loader.ClassLoaders$AppClassLoader@251a69d7 
-----------------------------------------------------------------
-Sun Feb 01 20:45:23 KST 2026:
-Booting Derby version The Apache Software Foundation - Apache Derby - 10.16.1.1 - (1901046): instance f4bc21e1-019c-18fb-8c51-0000020fcf90 
-on database directory memory:/Users/suminlee/IdeaProjects/esti/estimateDB with class loader jdk.internal.loader.ClassLoaders$AppClassLoader@251a69d7 
-Loaded from file:/Users/suminlee/.m2/repository/org/apache/derby/derby/10.16.1.1/derby-10.16.1.1.jar
-java.vendor=Oracle Corporation
-java.runtime.version=17.0.8+9-LTS-211
-user.dir=/Users/suminlee/IdeaProjects/esti
-os.name=Mac OS X
-os.arch=aarch64
-os.version=26.2
-derby.system.home=null
-Database Class Loader started - derby.database.classpath=''
+Mon Feb 09 20:00:54 KST 2026:
+Shutting down instance a816c00e-019c-41c6-84cb-00000247daa0 on database directory memory:/Users/suminlee/IdeaProjects/esti/estimateDB with class loader jdk.internal.loader.ClassLoaders$AppClassLoader@251a69d7 
