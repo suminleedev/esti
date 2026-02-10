@@ -422,17 +422,17 @@ onMounted(() => {
             <table class="table table-striped table-bordered mt-2 align-middle">
               <thead class="table-light">
               <tr class="text-center">
-                <th>#</th>
-                <th>대분류</th>
-                <th>소분류</th>
-                <th>제품명</th>
-                <th>모델명</th>
-                <th>브랜드</th>
-                <th>규격</th>
-                <th>단가</th>
-                <th>설명</th>
-                <th>이미지</th>
-                <th>액션</th>
+                <th style="width:3%">#</th>
+                <th style="width:8%">대분류</th>
+                <th style="width:10%">소분류</th>
+                <th style="width:12%">제품명</th>
+                <th style="width:11%">모델명</th>
+                <th style="width:10%">브랜드</th>
+                <th style="width:13%">규격</th>
+                <th style="width:7%">단가</th>
+                <th style="width:8%">설명</th>
+                <th style="width:6%">이미지</th>
+                <th style="width:7%">액션</th>
               </tr>
               </thead>
               <tbody>
@@ -552,4 +552,31 @@ onMounted(() => {
   top: 0;
   z-index: 1;
 }
+
+/** 컬럼 너비 고정 */
+.table-scroll{
+  max-height: 480px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.table-scroll table{
+  width: 100%;
+  table-layout: fixed;
+}
+
+.table-scroll thead th{
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #f8f9fa;
+}
+
+.table td,
+.table th{
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 </style>
