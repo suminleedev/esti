@@ -26,7 +26,7 @@
               v-model="filters.keyword"
               type="text"
               class="form-control form-control-sm"
-              placeholder="예) 대덕, 이누스, 홍길동"
+              placeholder="예) 아메리칸스탠다드, 이누스, 홍길동"
             />
           </div>
           <div class="col-md-3">
@@ -73,14 +73,15 @@
           <table class="table table-sm table-hover mb-0 align-middle">
             <thead class="table-light">
             <tr>
-              <th style="width: 70px">ID</th>
-              <th>현장명</th>
-              <th style="width: 100px">평형</th>
-              <th style="width: 80px">세대수</th>
-              <th style="width: 100px">담당자</th>
-              <th style="width: 110px">작성일</th>
-              <th style="width: 120px">템플릿</th>
-              <th style="width: 120px"></th>
+              <th style="width: 5%">ID</th>
+              <th style="width: 25%">현장명</th>
+              <th style="width: 5%">평형</th>
+              <th style="width: 5%">세대수</th>
+              <th style="width: 5%">담당자</th>
+              <th style="width: 10%">작성일</th>
+              <th style="width: 10%">템플릿</th>
+              <th style="width: 10%">상태</th>
+              <th style="width: 10%">액션</th>
             </tr>
             </thead>
             <tbody>
@@ -92,7 +93,7 @@
             >
               <td class="text-muted small">#{{ p.id }}</td>
               <td>
-                <div class="fw-semibold">{{ p.projectName }}</div>
+                <div class="fw-semibold" style="text-align: left">{{ p.projectName }}</div>
                 <div class="small text-muted" v-if="p.note">
                   {{ p.note }}
                 </div>
@@ -115,6 +116,21 @@
                     직접 작성
                   </span>
               </td>
+              <td>
+                <span
+                  class="badge"
+                  :class="{
+                    'bg-secondary': p.status === 'DRAFT',
+                    'bg-warning text-dark': p.status === 'SUBMITTED',
+                    'bg-dark': p.status === 'SENT'
+                  }"
+                >
+                  {{
+                    p.status === 'DRAFT' ? '임시저장' :
+                    p.status === 'SUBMITTED' ? '저장완료' : '발송완료'
+                  }}
+                </span>
+              </td>
               <td class="text-end" @click.stop>
                 <button
                   class="btn btn-outline-secondary btn-sm me-1"
@@ -124,9 +140,17 @@
                 </button>
                 <button
                   class="btn btn-outline-danger btn-sm"
+                  v-if="p.status !== 'SENT'"
                   @click="onDelete(p)"
                 >
                   삭제
+                </button>
+                <button
+                  v-if="p.status === 'SENT'"
+                  class="btn btn-outline-primary btn-sm"
+                  @click="printProposal(p.id)"
+                >
+                  출력
                 </button>
               </td>
             </tr>
@@ -234,6 +258,8 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* 필요하면 약간의 보정만 */
+.table th, td{
+  text-align: center;
+}
 </style>
 

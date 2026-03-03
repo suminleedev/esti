@@ -5,28 +5,52 @@
       <h2 class="mb-1">
         <span v-if="isNew">새 제안서 작성</span>
         <span v-else>제안서 #{{ proposalId }}</span>
-        <!-- 읽기 / 편집 모드 -->
-        <span v-if="!isEditMode && !isNew" class="badge bg-dark-subtle ms-2">읽기</span>
-        <span v-if="isEditMode" class="badge bg-primary ms-2">편집 중</span>
+        <!-- 제목 옆 상태 뱃지 : 읽기 / 편집 모드 -->
+<!--        <span v-if="!isNew && !isEditMode" class="badge bg-dark-subtle ms-2">읽기</span>-->
+<!--        <span v-if="isNew && isEditMode" class="badge bg-success ms-2">신규작성</span>-->
+<!--        <span v-if="!isNew && isEditMode" class="badge bg-primary ms-2">편집 중</span>-->
+        <span v-if="isNew" class="badge bg-success ms-2">신규작성</span>
+        <span v-else-if="isDraft" class="badge bg-secondary ms-2">임시저장</span>
+        <span v-else-if="isSubmitted" class="badge bg-warning text-dark ms-2">저장완료</span>
+        <span v-else class="badge bg-dark ms-2">발송완료</span>
       </h2>
 
       <div class="d-flex gap-2">
         <!-- 상세 보기 → 수정 -->
         <button
-          v-if="!isNew && !isEditMode"
+          v-if="!isNew && !isEditMode && isDraft"
           class="btn btn-outline-primary btn-sm"
           @click="isEditMode = true">수정</button>
-        <!-- 저장 -->
+        <!-- 임시저장/저장/전송확정 -->
         <button
-          v-if="isEditMode"
+          v-if="isEditMode && (isNew || isDraft)"
           class="btn btn-success btn-sm"
+          :disabled="!canDraft"
+          @click="saveDraft">임시저장</button>
+        <button
+          v-if="(isNew || isDraft) && isEditMode"
+          class="btn btn-primary btn-sm"
           :disabled="!canSubmit"
-          @click="submitProposal">저장</button>
+          @click="submit">제출(저장)</button>
+        <button
+          v-if="!isNew && isSubmitted"
+          class="btn btn-dark btn-sm"
+          @click="sendFinal">전송확정</button>
         <!-- 삭제 -->
         <button
           v-if="!isNew"
           class="btn btn-outline-danger btn-sm"
+          :disabled="!canDelete"
           @click="deleteProposal">삭제</button>
+        <!-- 복사 -->
+        <button
+          v-if="!isNew && (isSubmitted || isSent)"
+          class="btn btn-outline-secondary btn-sm"
+          @click="copyToDraft">복사</button>
+        <!-- 목록 -->
+        <button class="btn btn-outline-success btn-sm" @click="goList">
+          목록
+        </button>
       </div>
     </div>
 
@@ -85,7 +109,7 @@
       <div class="row g-3">
         <div class="col-md-6">
           <label class="form-label">현장명 *</label>
-          <input v-model.trim="form.projectName" class="form-control" placeholder="예) 대덕 XX아파트 위생기구 납품" />
+          <input v-model.trim="form.projectName" class="form-control" placeholder="예) 신안 XX아파트 위생기구 납품" />
         </div>
         <div class="col-md-3">
           <label class="form-label">담당자</label>
@@ -326,7 +350,7 @@
             </div>
             <div>
               <button class="btn btn-secondary btn-sm me-2" @click="prev">이전</button>
-              <button class="btn btn-success btn-sm" :disabled="!canSubmit" @click="submitProposal">
+              <button class="btn btn-success btn-sm" v-if="isEditMode && (isNew || isDraft)" :disabled="!canSubmit" @click="submit">
                 제안서 저장
               </button>
             </div>
@@ -338,7 +362,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import noImg from '@/assets/no-image.png' // 없으면 임시로 주석 처리하고 onImgErr에서 대체
@@ -347,9 +371,16 @@ const route = useRoute()
 const router = useRouter()
 
 // URL 파라미터
-const proposalId = route.params.id   // id 없으면 undefined
-const isNew = computed(() => !proposalId)
+const proposalId = computed(() => route.params.id)   // ✅ 반응형
+const isNew = computed(() => !proposalId.value)
 const isEditMode = ref(false)
+
+/* ====== 서버 status ====== */
+const proposalStatus = ref('DRAFT') // 기본값
+
+const isDraft = computed(() => proposalStatus.value === 'DRAFT')
+const isSubmitted = computed(() => proposalStatus.value === 'SUBMITTED')
+const isSent = computed(() => proposalStatus.value === 'SENT')
 
 /* ====== 템플릿 목록, 선택된 템플릿 ====== */
 const templates = ref([])           // GET /proposal-templates 결과
@@ -480,6 +511,24 @@ const canSubmit = computed(() =>
   validStep1.value && validStep2.value && missingRequired.value.length === 0 && lines.length > 0
 )
 
+/* 임시저장 최소 충족 검증 */
+const canDraft = computed(() => {
+  // 임시저장은 정말 최소만: 예) 현장명만 있으면 OK
+  return !!form.projectName
+})
+/* 삭제 검증 */
+const canDelete = computed(() => {
+  // 정책 예시:
+  // - 신규(아직 저장 전): 삭제 의미 없음 → false
+  // - DRAFT: 삭제 가능
+  // - SUBMITTED: (선택) 삭제 가능하게 하려면 true
+  // - SENT: 절대 불가
+  if (isNew.value) return false
+  if (isSent.value) return false
+  //return proposalStatus.value === 'DRAFT' // 가장 보수적인 정책
+  return ['DRAFT', 'SUBMITTED'].includes(proposalStatus.value)
+})
+
 /* ====== 템플릿 목록 불러오기  ====== */
 async function fetchTemplates () {
   try {
@@ -573,62 +622,131 @@ async function onSaveTemplate () {
   }
 }
 
+/* payload */
+const buildPayload = () =>({
+  templateId: selectedTemplateId.value || null,   // 템플릿 기반이면 전달, 아니면 null
+  projectName: form.projectName,
+  manager: form.manager,
+  date: form.date,
+  apartmentType: form.apartmentType,
+  households: form.households,
+  note: form.note,
+  areas: form.areas,
+  requiredCategories: form.requiredCategories,
+  lines: lines.map(l => ({
+    productId: l.productId,
+    area: l.area,
+    category: l.category,
+    qty: l.qty,
+    note: l.note
+  }))
+})
 
-/* ====== 제안서 저장 (백엔드 연동 위치) ====== */
-async function submitProposal () {
-  if (!validStep1.value || !validStep2.value) {
-    alert('기본 정보와 적용 부위/필수 유형을 먼저 완성하세요.')
+/* ====== 제안서 임시 저장 ====== */
+async function saveDraft () {
+  if (!canDraft.value) {
+    alert('현장명은 최소로 입력해야 임시저장할 수 있어요.')
     return
   }
-  if (lines.length === 0) {
-    alert('제안 항목이 없습니다.')
-    return
-  }
 
-  const payload = {
-    templateId: selectedTemplateId.value || null,   // 템플릿 기반이면 전달, 아니면 null
-    projectName: form.projectName,
-    manager: form.manager,
-    date: form.date,
-    apartmentType: form.apartmentType,
-    households: form.households,
-    note: form.note,
-    areas: form.areas,
-    requiredCategories: form.requiredCategories,
-    lines: lines.map(l => ({
-      productId: l.productId,
-      area: l.area,
-      category: l.category,
-      qty: l.qty,
-      note: l.note
-    }))
-  }
+  const payload = buildPayload()
 
   try {
     if (isNew.value) {
-      // 신규 저장 (POST)
-      const res = await axios.post('/api/proposals', payload)
+      // 초안 신규 생성
+      const res = await axios.post('/api/proposals/drafts', payload)
+      alert(`임시저장되었습니다. (ID: ${res.data.id})`)
+
+      // 같은 컴포넌트 재사용될 수 있어서 replace 추천
+      await router.replace({ name: 'proposal-detail', params: { id: res.data.id } })
+
+      // 초안 만든 직후에도 계속 편집 모드 유지
+      isEditMode.value = true
+      proposalStatus.value = 'DRAFT'
+    } else {
+      // 이미 id가 있으면 초안 업데이트(백엔드에 맞게 PUT/PATCH)
+      await axios.put(`/api/proposals/${proposalId.value}/draft`, payload)
+      alert('임시저장되었습니다.')
+      proposalStatus.value = 'DRAFT'
+    }
+  } catch (e) {
+    console.error('임시저장 실패', e)
+    alert('임시저장 중 오류가 발생했습니다.')
+  }
+}
+
+
+/* ====== 제안서 저장 (백엔드 연동 위치) ====== */
+async function submit() {
+  if (!canSubmit.value) {
+    alert('필수 항목/필수 유형 충족 후 제출할 수 있어요.')
+    return
+  }
+
+  const payload = buildPayload()
+
+  try {
+    if (isNew.value) {
+      // 신규: 생성 + 저장
+      const res = await axios.post('/api/proposals/submit', payload)
       console.log('제안서 저장 결과:', res.data)
       alert(`제안서가 저장되었습니다. (ID: ${res.data.id})`)
-      router.push({ name: 'proposal-detail', params: { id: res.data.id } })
-    } else {
-      // 수정 저장 (PUT)
-      await axios.put(`/api/proposals/${proposalId}`, payload)
-      alert('제안서가 수정되었습니다.')
+      await router.replace({ name: 'proposal-detail', params: { id } })
+      proposalStatus.value = res.data.status || 'SUBMITTED'
       isEditMode.value = false
+      return
     }
+    // 기존: id 기반 제출
+    const res = await axios.post(`/api/proposals/${proposalId.value}/submit`, payload)
+
+    alert('저장되었습니다.')
+    proposalStatus.value = res.data?.status || 'SUBMITTED'
+    isEditMode.value = false
   } catch (e) {
     console.error('제안서 저장 실패', e)
     alert('제안서 저장 중 오류가 발생했습니다.')
   }
 }
 
+/* ====== 제안서 전송확정  ====== */
+async function sendFinal() {
+  if (!confirm('전송 확정하면 최종본이 되어 수정할 수 없습니다. 진행할까요?')) return
+
+  try {
+    await axios.post(`/api/proposals/${proposalId.value}/send`)
+    alert('전송 확정되었습니다.')
+    proposalStatus.value = 'SENT'
+  } catch (e) {
+    console.error(e)
+    alert('전송 확정 실패')
+  }
+}
+
+/* ====== 복사하여 수정 (새 DRAFT 생성) ====== */
+async function copyToDraft() {
+  try {
+    const res = await axios.post(`/api/proposals/${proposalId.value}/copy`)
+    const newId = res.data.id
+    alert(`복사본이 생성되었습니다. (ID: ${newId})`)
+    await router.push({ name: 'proposal-detail', params: { id: newId } })
+    proposalStatus.value = 'DRAFT'
+    isEditMode.value = true
+  } catch (e) {
+    console.error(e)
+    alert('복사 실패')
+  }
+}
+
 /* ====== 제안서 삭제 ====== */
 async function deleteProposal() {
+  if (!canDelete.value) {
+    alert('전송 완료된 최종 제안서는 삭제할 수 없습니다.')
+    return
+  }
   if (!confirm('정말 삭제하시겠습니까?')) return
 
   try {
-    await axios.delete(`/api/proposals/${proposalId}`)
+    await axios.delete(`/api/proposals/${proposalId.value}`)
     alert('삭제되었습니다.')
     router.push({ name: 'proposal-list' })
   } catch (e) {
@@ -677,12 +795,16 @@ async function loadProposal(id) {
     // 상세 보기 모드로 시작
     isEditMode.value = false
     step.value = 0
+    proposalStatus.value = p.status || 'DRAFT'
   } catch (e) {
     console.error('제안서 불러오기 실패', e)
     alert('제안서를 불러오지 못했습니다.')
   }
 }
 
+function goList() {
+  router.push({ name: 'proposal-list' })
+}
 
 /* ====== 카탈로그 로드 ====== */
 async function loadCatalog () {
@@ -694,16 +816,23 @@ async function loadCatalog () {
   }
 }
 
+watch(
+  () => proposalId.value,
+  (id) => {
+    if (id) loadProposal(id)
+    else {
+      proposalStatus.value = 'DRAFT'
+      isEditMode.value = true
+    }
+  },
+  { immediate: true }
+)
+
 // onMounted(loadCatalog)
 onMounted(() => {
   loadCatalog()
   fetchTemplates()
-
-  if (proposalId) {
-    loadProposal(proposalId)   // 상세/수정 모드
-  } else {
-    isEditMode.value = true    // 신규 작성은 바로 편집 가능
-  }
+  if (isNew.value) isEditMode.value = true // 신규 작성과 상세/수정 모드 구분
 })
 </script>
 
