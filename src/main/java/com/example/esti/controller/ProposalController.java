@@ -16,9 +16,55 @@ public class ProposalController {
 
     private final ProposalService service;
 
-    @PostMapping
-    public ResponseEntity<ProposalResponse> create(@RequestBody ProposalRequest req) throws Exception {
-        return ResponseEntity.ok(service.create(req));
+//    @PostMapping
+//    public ResponseEntity<ProposalResponse> create(@RequestBody ProposalRequest req) throws Exception {
+//        return ResponseEntity.ok(service.create(req));
+//    }
+
+    /**
+     * 기존 저장 로직에서
+     * 1. 임시저장, 2. 제출, 3. 전송 으로 수정
+     * */
+    /* 임시저장 */
+    @PostMapping("/drafts")
+    public ResponseEntity<ProposalResponse> createDraft(@RequestBody ProposalRequest req) throws Exception {
+        return ResponseEntity.ok(service.createDraft(req));
+    }
+
+    /* 임시저장 수정 */
+    @PutMapping("/{id}/draft")
+    public ResponseEntity<ProposalResponse> updateDraft(
+            @PathVariable Long id,
+            @RequestBody ProposalRequest req) throws Exception {
+
+        return ResponseEntity.ok(service.updateDraft(id, req));
+    }
+
+    /* 제출 */
+    @PostMapping("/{id}/submit")
+    public ResponseEntity<ProposalResponse> submit(
+            @PathVariable Long id,
+            @RequestBody ProposalRequest req) throws Exception {
+
+        return ResponseEntity.ok(service.submit(id, req));
+    }
+
+    /* 신규 작성 후 제출 */
+    @PostMapping("/submit")
+    public ResponseEntity<ProposalResponse> submitNew(@RequestBody ProposalRequest req) throws Exception {
+        return ResponseEntity.ok(service.submitNew(req));
+    }
+
+    /* 최종 발송 */
+    @PostMapping("/{id}/send")
+    public ResponseEntity<ProposalResponse> send(@PathVariable Long id) {
+        return ResponseEntity.ok(service.send(id));
+    }
+
+    /* 견적서 복사 */
+    @PostMapping("/{id}/copy")
+    public ResponseEntity<ProposalResponse> copy(@PathVariable Long id) throws Exception {
+        return ResponseEntity.ok(service.copyToDraft(id));
     }
 
     @GetMapping

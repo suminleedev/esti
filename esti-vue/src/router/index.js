@@ -10,7 +10,7 @@ const routes = [
   { path: '/upload', name: 'uploadCatalog', component: UploadCatalog },
   { path: '/proposal', name: 'proposal-new', component: ProposalPage },
   { path: '/proposal/:id', name: 'proposal-detail', component: ProposalPage, props: true }, // 같은 화면 재사용 (id 있으면 조회 모드)
-  { path: '/proposal-list', name: 'proposal-list', component: ProposalList },
+  { path: '/proposal/list', name: 'proposal-list', component: ProposalList },
 ]
 
 const router = createRouter({

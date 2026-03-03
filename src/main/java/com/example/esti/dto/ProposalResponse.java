@@ -18,6 +18,7 @@ public class ProposalResponse {
     private String apartmentType;
     private Integer households;
     private String note;
+    private String status; // "DRAFT" / "SUBMITTED" / "SENT"
 
     private List<String> areas;
     private List<String> requiredCategories;

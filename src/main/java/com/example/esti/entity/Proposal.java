@@ -5,12 +5,20 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "proposal", schema = "APP")
 @Getter
 @Setter
 @NoArgsConstructor
 public class Proposal extends BaseEntity {
+
+    public enum Status {
+        DRAFT,      // 임시저장 (수정 가능)
+        SUBMITTED,  // 저장 (선택) 회수하면 DRAFT로 / 혹은 수정가능 유지
+        SENT,       // 제출 (수정 불가)
+    }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -43,5 +51,16 @@ public class Proposal extends BaseEntity {
 
     @Column(length = 1000)
     private String requiredCategoriesJson; // ["양변기","세면기"] JSON 문자열
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private Status status;              // 상태
+
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;    // 삭제일시
+
+    // 선택
+    @Column(name = "deleted_by")        // 삭제자
+    private Long deletedBy;
 }
 
