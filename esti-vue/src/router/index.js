@@ -1,11 +1,13 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
+import Home from '@/components/Home.vue';
 import Estimate from '../components/Estimate.vue' // 컴포넌트 경로 확인
 import UploadCatalog from '../components/UploadCatalog.vue'
 import ProposalPage from "@/components/Proposal.vue";
 import ProposalList from "@/components/ProposalList.vue";
 
 const routes = [
+  { path: "/", name: "home", component: Home },
   { path: '/estimate', name: 'estimate', component: Estimate }, // 견적서 페이지
   { path: '/upload', name: 'uploadCatalog', component: UploadCatalog },
   { path: '/proposal', name: 'proposal-new', component: ProposalPage },
