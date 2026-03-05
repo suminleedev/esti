@@ -4,6 +4,7 @@ import com.example.esti.dto.ProposalRequest;
 import com.example.esti.dto.ProposalResponse;
 import com.example.esti.service.ProposalService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -82,4 +83,25 @@ public class ProposalController {
         service.delete(id);
         return ResponseEntity.noContent().build();
     }
+
+    /**
+     * 전체 페이징 목록 조회
+     * GET /api/proposals/page?page=0&size=10&keyword=&apartmentType=&templateFilter=
+     *
+     * templateFilter:
+     *  - (빈값) 전체
+     *  - templated : template != null
+     *  - manual    : template == null
+     */
+    @GetMapping("/page")
+    public Page<ProposalResponse> page(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String apartmentType,
+            @RequestParam(required = false) String templateFilter
+    ) {
+        return service.getProposalPage(page, size, keyword, apartmentType, templateFilter);
+    }
+
 }

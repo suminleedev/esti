@@ -57,7 +57,7 @@
     </div>
 
     <!-- List -->
-    <div class="card">
+    <div class="card list-card">
       <div class="card-header d-flex justify-content-between align-items-center">
         <span>제안서 {{ filteredProposals.length }}건</span>
         <small class="text-muted">클릭하면 상세 페이지로 이동합니다.</small>
@@ -70,6 +70,7 @@
           검색 조건에 해당하는 제안서가 없습니다.
         </div>
         <div v-else class="table-responsive">
+          <div class="table-scroll">
           <table class="table table-sm table-hover mb-0 align-middle">
             <thead class="table-light">
             <tr>
@@ -94,7 +95,7 @@
               <td class="text-muted small">#{{ p.id }}</td>
               <td>
                 <div class="fw-semibold" style="text-align: left">{{ p.projectName }}</div>
-                <div class="small text-muted" v-if="p.note">
+                <div class="small text-muted" style="text-align: left" v-if="p.note">
                   {{ p.note }}
                 </div>
               </td>
@@ -156,16 +157,36 @@
             </tr>
             </tbody>
           </table>
+          </div>
         </div>
       </div>
     </div>
+
+    <div class="card-footer">
+      <!-- Pagination -->
+      <Pagination
+        :page="page"
+        :size="size"
+        :totalPages="totalPages"
+        :pageNumbers="pageNumbers"
+        :blockSize="blockSize"
+        @go="goToPage"
+        @first="firstPage"
+        @last="lastPage"
+        @prevBlock="prevBlock"
+        @nextBlock="nextBlock"
+      />
+      </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import {ref, computed, onMounted, watch} from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
+
+import { usePagination } from "@/composables/usePagination"
+import Pagination from "@/components/Pagination.vue";
 
 const router = useRouter()
 
@@ -181,15 +202,36 @@ const filters = ref({
   templateFilter: '' // '', 'templated', 'manual'
 })
 
+// 페이징
+const {
+  page, size, totalPages, totalElements, blockSize, pageNumbers,
+  goToPage, firstPage, lastPage, prevBlock, nextBlock, resetToFirst
+} = usePagination(loadProposals)
+
 // 제안서 목록 로드
 async function loadProposals () {
   loading.value = true
   try {
-    const res = await axios.get('/api/proposals') // 백엔드 ProposalController.list()
-    proposals.value = res.data
+    const res = await axios.get('/api/proposals/page', {
+      params: {
+        page: page.value,
+        size: size.value,
+        keyword: filters.value.keyword?.trim() || "",
+        apartmentType: filters.value.apartmentType || "",
+        templateFilter: filters.value.templateFilter || "",
+      }
+    })
+
+    proposals.value = res.data?.content ?? []
+    totalPages.value = res.data?.totalPages ?? 0
+    totalElements.value = res.data?.totalElements ?? 0
+    page.value = res.data?.number ?? page.value // 서버 보정 반영
   } catch (e) {
     console.error('제안서 목록 조회 실패', e)
     alert('제안서 목록 조회 중 오류가 발생했습니다.')
+    proposals.value = []
+    totalPages.value = 0
+    totalElements.value = 0
   } finally {
     loading.value = false
   }
@@ -205,7 +247,16 @@ function resetFilters () {
     apartmentType: '',
     templateFilter: ''
   }
+  resetToFirst()
+  loadProposals()
 }
+
+// 필터 바뀌면 0페이지로 리셋하고 재조회
+watch(filters, () => {
+  resetToFirst()
+  loadProposals()
+}, { deep: true })
+
 
 // 필터링 로직
 const filteredProposals = computed(() => {
@@ -234,8 +285,6 @@ const filteredProposals = computed(() => {
 
 // 상세 페이지 이동
 function goDetail (p) {
-  // 라우터 네이밍은 프로젝트에 맞게 수정
-  // 예) /proposal/:id 상세보기 라우트가 있다 가정
   router.push({ name: 'proposal-detail', params: { id: p.id } })
 }
 
@@ -245,6 +294,7 @@ async function onDelete (p) {
 
   try {
     await axios.delete(`/api/proposals/${p.id}`)
+    await loadProposals() // 현재 페이지 재조회
     proposals.value = proposals.value.filter(x => x.id !== p.id)
   } catch (e) {
     console.error('제안서 삭제 실패', e)
@@ -252,12 +302,39 @@ async function onDelete (p) {
   }
 }
 
+// 출력
+function printProposal(id) {
+  window.open(`/api/proposals/${id}/print`, "_blank")
+}
+
+
 onMounted(() => {
   loadProposals()
 })
 </script>
 
 <style scoped>
+/* 화면에 맞게 높이 조절 */
+.list-card {
+  height: 64vh;           /* 또는 600px 같은 고정값 */
+  display: flex;
+  flex-direction: column;
+}
+
+.table-scroll {
+  flex: 1;                /* 남는 공간 전부 */
+  overflow-y: auto;       /* 세로 스크롤 */
+  overflow-x: auto;       /* 가로 스크롤(필요시) */
+}
+
+/* 테이블 헤더 고정 */
+.table-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bs-table-bg); /* 부트스트랩 테이블 배경 */
+}
+
 .table th, td{
   text-align: center;
 }

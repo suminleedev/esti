@@ -2,6 +2,15 @@
 import { ref, onMounted, watch, computed, onBeforeUnmount } from 'vue'
 import axios from 'axios'
 
+import { usePagination } from "@/composables/usePagination"
+import Pagination from "@/components/Pagination.vue";
+
+// 페이징
+const {
+  page, size, totalPages, totalElements, blockSize, pageNumbers,
+  goToPage, firstPage, lastPage, prevBlock, nextBlock, resetToFirst
+} = usePagination(loadVendorCatalog)
+
 const message = ref('')
 const error = ref('')
 const editingProduct = ref(null) // 수정 중인 제품
@@ -162,27 +171,9 @@ async function uploadVendorExcel() {
  * 공급사 카탈로그 조회
  */
 const vendorCatalogs = ref([])
-// 기존 : 리스트 반환
-// async function loadVendorCatalog() {
-//   try {
-//     const res = await axios.get(`/api/vendor-catalog/list/${vendorCode.value}`)
-//     console.log("type:", typeof res.data);
-//     console.log("isArray:", Array.isArray(res.data));
-//     console.log("keys:", Object.keys(res.data));
-//     console.log("data:", res.data);
-//     vendorCatalogs.value = res.data;
-//   } catch (e) {
-//     console.error('공급사 카탈로그 목록 조회 실패', e)
-//   }
-// }
-// 신규 : 페이지 반환
-const page = ref(0)          // 0부터 시작
-const size = ref(20)
-const totalPages = ref(0)
-const totalElements = ref(0)
-const loadingCatalog = ref(false)
+const loading = ref(false)
 async function loadVendorCatalog() {
-  loadingCatalog.value = true
+  loading.value = true
   try {
     const res = await axios.get(`/api/vendor-catalog/page/${filterVendorCode.value}`, {
       params: {
@@ -191,7 +182,6 @@ async function loadVendorCatalog() {
         sort: 'id,desc', // 서버 엔티티 필드 기준. (DTO의 catalogId로 sort하면 안 먹을 수 있음)
       }
     })
-
     vendorCatalogs.value = res.data?.content ?? []
     totalPages.value = res.data?.totalPages ?? 0
     totalElements.value = res.data?.totalElements ?? 0
@@ -204,7 +194,7 @@ async function loadVendorCatalog() {
     totalPages.value = 0
     totalElements.value = 0
   } finally {
-    loadingCatalog.value = false
+    loading.value = false
   }
 }
 
@@ -245,66 +235,10 @@ async function deleteProduct(id) {
   }
 }
 
-/**
- * 페이징 함수
- */
-// 페이지 버튼에 보여줄 최대 개수
-const pageBlockSize = ref(10)
-
-// page: 0부터 시작이라고 가정
-const pageNumbers = computed(() => {
-  const tp = totalPages.value || 0
-  if (tp === 0) return []
-
-  const block = pageBlockSize.value // 10
-  const current = page.value
-
-  // 현재 페이지가 속한 블록의 시작(0-based)
-  // 예: current=0~9 -> 0, 10~19 -> 10 ...
-  const start = Math.floor(current / block) * block
-  const end = Math.min(tp - 1, start + block - 1)
-
-  const pages = []
-  for (let p = start; p <= end; p++) pages.push(p)
-  return pages
-})
-
-function goToPage(p) {
-  if (p < 0 || p >= totalPages.value) return
-  page.value = p
-  loadVendorCatalog()
-}
-
-function prevPage() {
-  goToPage(page.value - 1)
-}
-function nextPage() {
-  goToPage(page.value + 1)
-}
-
-// 처음/끝 이동
-function firstPage() { goToPage(0) }
-function lastPage() { goToPage(totalPages.value - 1) }
-
-function prevBlock() {
-  const block = pageBlockSize.value
-  const start = Math.floor(page.value / block) * block
-  const target = start - block
-  if (target < 0) return
-  goToPage(target)
-}
-
-function nextBlock() {
-  const block = pageBlockSize.value
-  const start = Math.floor(page.value / block) * block
-  const target = start + block
-  if (target >= totalPages.value) return
-  goToPage(target)
-}
-
 // 공급사 바꾸면 0페이지부터 다시 조회
 watch(filterVendorCode, async () =>{
   page.value = 0
+  resetToFirst()
   await loadVendorCatalog()
 })
 
@@ -492,47 +426,21 @@ onMounted(() => {
             </table>
           </div>
 
-          <!-- 페이지네이션 -->
-          <nav class="d-flex justify-content-center mt-3" aria-label="Page navigation" v-if="totalPages > 1">
-            <ul class="pagination pagination-sm mb-0">
-              <!-- 맨앞 -->
-              <li class="page-item" :class="{ disabled: page === 0 }">
-                <button class="page-link" @click="firstPage" :disabled="page === 0">«</button>
-              </li>
-              <!-- 10개 이전 블록 -->
-              <li class="page-item" :class="{ disabled: page < pageBlockSize }">
-                <button class="page-link" @click="prevBlock" :disabled="page < pageBlockSize"> ‹ </button>
-              </li>
-              <!-- 이전 -->
-<!--              <li class="page-item" :class="{ disabled: page === 0 }">-->
-<!--                <button class="page-link" @click="prevPage" :disabled="page === 0">이전</button>-->
-<!--              </li>-->
-              <!-- 숫자 페이지 -->
-              <li v-for="p in pageNumbers" :key="p" class="page-item" :class="{ active: p === page }">
-                <button class="page-link" @click="goToPage(p)">{{ p + 1 }}</button>
-              </li>
-              <!-- 다음 -->
-<!--              <li class="page-item" :class="{ disabled: page >= totalPages - 1 }">-->
-<!--                <button class="page-link" @click="nextPage" :disabled="page >= totalPages - 1">다음</button>-->
-<!--              </li>-->
-              <!-- 10개 다음 블록 -->
-              <li class="page-item" :class="{ disabled: Math.floor(page / pageBlockSize) === Math.floor((totalPages - 1) / pageBlockSize) }">
-                <button class="page-link" @click="nextBlock"
-                        :disabled="Math.floor(page / pageBlockSize) === Math.floor((totalPages - 1) / pageBlockSize)"> › </button>
-              </li>
-              <!-- 맨끝 -->
-              <li class="page-item" :class="{ disabled: page >= totalPages - 1 }">
-                <button class="page-link" @click="lastPage" :disabled="page >= totalPages - 1">»</button>
-              </li>
-            </ul>
-          </nav>
+          <!-- Pagination -->
+          <Pagination
+            :page="page"
+            :size="size"
+            :totalPages="totalPages"
+            :totalElements="totalElements"
+            :pageNumbers="pageNumbers"
+            :blockSize="blockSize"
+            @go="goToPage"
+            @first="firstPage"
+            @last="lastPage"
+            @prevBlock="prevBlock"
+            @nextBlock="nextBlock"
+          />
 
-          <!-- 하단 요약(선택) -->
-          <div class="text-center text-muted small mt-2">
-            {{ totalElements.toLocaleString() }}건 중
-            {{ (page * size + 1).toLocaleString() }} -
-            {{ Math.min((page + 1) * size, totalElements).toLocaleString() }} 표시
-          </div>
         </div>
       </div>
     </div>
