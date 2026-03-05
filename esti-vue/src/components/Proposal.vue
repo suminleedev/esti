@@ -691,7 +691,7 @@ async function submit() {
       const res = await axios.post('/api/proposals/submit', payload)
       console.log('제안서 저장 결과:', res.data)
       alert(`제안서가 저장되었습니다. (ID: ${res.data.id})`)
-      await router.replace({ name: 'proposal-detail', params: { id } })
+      await router.replace({ name: 'proposal-detail', params: { id: res.data.id } })
       proposalStatus.value = res.data.status || 'SUBMITTED'
       isEditMode.value = false
       return

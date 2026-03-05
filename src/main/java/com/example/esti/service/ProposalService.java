@@ -10,8 +10,14 @@ import com.example.esti.repository.ProductCatalogRepository;
 import com.example.esti.repository.ProposalLineRepository;
 import com.example.esti.repository.ProposalRepository;
 import com.example.esti.repository.ProposalTemplateRepository;
+import com.example.esti.repository.spec.ProposalSpecs;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -252,19 +258,9 @@ public class ProposalService {
     @Transactional(readOnly = true)
     public List<ProposalResponse> list() {
 //        return proposalRepo.findAll().stream().map(p -> {
-        return proposalRepo.findByDeletedAtIsNull().stream().map(p -> {
-            ProposalResponse res = new ProposalResponse();
-            res.setId(p.getId());
-            res.setTemplateId(p.getTemplate() != null ? p.getTemplate().getId() : null);
-            res.setProjectName(p.getProjectName());
-            res.setManager(p.getManager());
-            res.setDate(p.getDate());
-            res.setApartmentType(p.getApartmentType());
-            res.setHouseholds(p.getHouseholds());
-            res.setStatus(p.getStatus().name());
-            // 상세 areas/lines 는 생략 (필요하면 확장)
-            return res;
-        }).collect(Collectors.toList());
+        return proposalRepo.findByDeletedAtIsNull().stream().map(
+                this::toResponse
+        ).collect(Collectors.toList());
     }
 
     /* DETAIL */
@@ -274,17 +270,7 @@ public class ProposalService {
         Proposal p = proposalRepo.findByIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new RuntimeException("Proposal not found"));
 
-        ProposalResponse res = new ProposalResponse();
-        res.setId(p.getId());
-        res.setTemplateId(p.getTemplate() != null ? p.getTemplate().getId() : null);
-
-        res.setProjectName(p.getProjectName());
-        res.setManager(p.getManager());
-        res.setDate(p.getDate());
-        res.setApartmentType(p.getApartmentType());
-        res.setHouseholds(p.getHouseholds());
-        res.setNote(p.getNote());
-        res.setStatus(p.getStatus().name());
+        ProposalResponse res = toResponse(p);
 
         try {
             res.setAreas(Arrays.asList(mapper.readValue(p.getAreasJson(), String[].class)));
@@ -353,5 +339,40 @@ public class ProposalService {
 
 
     }
-}
 
+    /* 페이지 조회 */
+    public Page<ProposalResponse> getProposalPage(
+            int page, int size,
+            String keyword,
+            String apartmentType,
+            String templateFilter
+    ) {
+        Pageable pageable = PageRequest.of(
+                Math.max(page, 0),
+                Math.min(Math.max(size, 1), 100),
+                Sort.by(Sort.Direction.DESC, "id")
+        );
+
+        Specification<Proposal> spec = ProposalSpecs.search(keyword, apartmentType, templateFilter);
+
+        return proposalRepo.findAll(spec, pageable).map(this::toResponse);
+    }
+
+    /* response dto 반환 */
+    private ProposalResponse toResponse(Proposal p) {
+
+        ProposalResponse res = new ProposalResponse();
+
+        res.setId(p.getId());
+        res.setTemplateId(p.getTemplate() != null ? p.getTemplate().getId() : null);
+        res.setProjectName(p.getProjectName());
+        res.setManager(p.getManager());
+        res.setDate(p.getDate());
+        res.setApartmentType(p.getApartmentType());
+        res.setHouseholds(p.getHouseholds());
+        res.setNote(p.getNote());
+        res.setStatus(p.getStatus().name());
+        // 상세 areas/lines 는 생략 (필요하면 확장)
+        return res;
+    }
+}
