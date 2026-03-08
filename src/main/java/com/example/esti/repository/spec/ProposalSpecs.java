@@ -7,11 +7,12 @@ public class ProposalSpecs {
 
     private ProposalSpecs() {}
 
-    public static Specification<Proposal> search(String keyword, String apartmentType, String templateFilter) {
+    public static Specification<Proposal> search(String keyword, String apartmentType, String templateFilter, String status) {
         return Specification.<Proposal>unrestricted()
                 .and(keywordLike(keyword))
                 .and(apartmentTypeEq(apartmentType))
-                .and(templateFilter(templateFilter));
+                .and(templateFilter(templateFilter))
+                .and(statusEq(status));
     }
 
     /** projectName LIKE %keyword% (필요하면 manager 등 OR 조건으로 확장 가능) */
@@ -20,8 +21,12 @@ public class ProposalSpecs {
             if (keyword == null || keyword.trim().isEmpty()) return cb.conjunction();
             String like = "%" + keyword.trim() + "%";
 
-            // ✅ 필드명 맞추기: projectName
-            return cb.like(root.get("projectName"), like);
+            // ✅ 필드명 맞추기: projectName, manager
+            // return cb.like(root.get("projectName"), like);
+            return cb.or(
+                    cb.like(root.get("projectName"), like),
+                    cb.like(root.get("manager"), like)
+            );
         };
     }
 
@@ -37,10 +42,8 @@ public class ProposalSpecs {
 
     /**
      * templateFilter:
-     *  - templated: templateId IS NOT NULL
-     *  - manual:    templateId IS NULL
-     *
-     * ✅ ProposalResponse에 templateId가 있으니 이 방식이 가장 자연스러움
+     *  - templated: template IS NOT NULL
+     *  - manual:    template IS NULL
      */
     public static Specification<Proposal> templateFilter(String templateFilter) {
         return (root, query, cb) -> {
@@ -48,9 +51,9 @@ public class ProposalSpecs {
 
             String tf = templateFilter.trim().toLowerCase();
 
-            // ✅ 필드명 맞추기: templateId
-            if ("templated".equals(tf)) return cb.isNotNull(root.get("templateId"));
-            if ("manual".equals(tf)) return cb.isNull(root.get("templateId"));
+            // ✅ 필드명 맞추기: template
+            if ("templated".equals(tf)) return cb.isNotNull(root.get("template"));
+            if ("manual".equals(tf)) return cb.isNull(root.get("template"));
 
             return cb.conjunction();
         };
