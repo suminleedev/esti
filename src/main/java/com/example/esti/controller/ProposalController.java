@@ -99,9 +99,10 @@ public class ProposalController {
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String apartmentType,
-            @RequestParam(required = false) String templateFilter
+            @RequestParam(required = false) String templateFilter,
+            @RequestParam(required = false) String status
     ) {
-        return service.getProposalPage(page, size, keyword, apartmentType, templateFilter);
+        return service.getProposalPage(page, size, keyword, apartmentType, templateFilter, status);
     }
 
 }

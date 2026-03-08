@@ -44,6 +44,15 @@
               <option value="manual">직접 작성</option>
             </select>
           </div>
+          <div class="col-md-3">
+            <label class="form-label small mb-1">상태</label>
+            <select v-model="filters.status" class="form-select form-select-sm">
+              <option value="">전체</option>
+              <option value="DRAFT">임시저장</option>
+              <option value="SUBMITTED">제출완료</option>
+              <option value="SENT">전송확정</option>
+            </select>
+          </div>
           <div class="col-md-2 text-end">
             <button class="btn btn-outline-secondary btn-sm me-2" @click="resetFilters">
               초기화
@@ -199,7 +208,8 @@ const apartmentTypes = ['24평', '32평', '40평', '48평', '59㎡', '74㎡', '8
 const filters = ref({
   keyword: '',
   apartmentType: '',
-  templateFilter: '' // '', 'templated', 'manual'
+  templateFilter: '', // '', 'templated', 'manual'
+  status: ''
 })
 
 // 페이징
@@ -219,6 +229,7 @@ async function loadProposals () {
         keyword: filters.value.keyword?.trim() || "",
         apartmentType: filters.value.apartmentType || "",
         templateFilter: filters.value.templateFilter || "",
+        status: filters.value.status || "",
       }
     })
 

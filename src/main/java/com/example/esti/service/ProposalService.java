@@ -345,15 +345,15 @@ public class ProposalService {
             int page, int size,
             String keyword,
             String apartmentType,
-            String templateFilter
-    ) {
+            String templateFilter,
+            String status) {
         Pageable pageable = PageRequest.of(
                 Math.max(page, 0),
                 Math.min(Math.max(size, 1), 100),
                 Sort.by(Sort.Direction.DESC, "id")
         );
 
-        Specification<Proposal> spec = ProposalSpecs.search(keyword, apartmentType, templateFilter);
+        Specification<Proposal> spec = ProposalSpecs.search(keyword, apartmentType, templateFilter, status);
 
         return proposalRepo.findAll(spec, pageable).map(this::toResponse);
     }
