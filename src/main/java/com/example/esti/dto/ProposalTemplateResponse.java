@@ -3,6 +3,7 @@ package com.example.esti.dto;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Getter
@@ -24,12 +25,17 @@ public class ProposalTemplateResponse {
         private Long id;
         private Long productId;
 
-        private String name;
-        private String model;
-        private String brand;
         private String specs;
         private String description;
         private String imageUrl;
+
+        private String vendorCode;
+        private String vendorName;
+        private String vendorItemName;
+        private String mainItemCode;
+        private String oldItemCode;
+        private BigDecimal unitPrice;
+        private String remark;
 
         private String area;
         private String category;

@@ -328,7 +328,7 @@
                     <tr v-for="(r, idx) in lines" :key="r.uid">
                       <td>{{ r.category }}</td>
                       <td>
-                        {{ r.productName }}
+                        {{ r.vendorItemName }}
                         <div class="small text-muted">{{ r.mainItemCode }} · {{ r.vendorName }}</div>
                         <div class="small text-muted">
                           {{ Number(r.unitPrice || 0).toLocaleString() }}원
@@ -598,20 +598,25 @@ async function onLoadTemplate () {
     ;(t.lines || []).forEach(line => {
       lines.push({
         uid: Date.now() + Math.random(),
-        productId: lines.catalogId,
-        productName: lines.productName,
-        vendorCode: lines.vendorCode,
-        vendorName: lines.vendorName,
-        vendorItemName: lines.vendorItemName,
-        mainItemCode: lines.mainItemCode,
-        oldItemCode: lines.oldItemCode,
-        unitPrice: lines.unitPrice,
-        remark: lines.remark,
-        imageUrl: lines.imageUrl,
-        area: lines.area,
-        category: lines.category,
-        qty: lines.defaultQty || 1,
-        note: lines.note || ''
+        id: line.id,
+        productId: line.productId,
+        name: line.name || '',
+        model: line.model || '',
+        brand: line.brand || '',
+        specs: line.specs || '',
+        description: line.description || '',
+        imageUrl: line.imageUrl || '',
+        vendorCode: line.vendorCode || '',
+        vendorName: line.vendorName || '',
+        vendorItemName: line.vendorItemName || '',
+        mainItemCode: line.mainItemCode || '',
+        oldItemCode: line.oldItemCode || '',
+        unitPrice: line.unitPrice || 0,
+        remark: line.remark || '',
+        area: line.area || '',
+        category: line.category || '',
+        qty: line.defaultQty || 1,
+        note: line.note || ''
       })
     })
 
@@ -640,19 +645,7 @@ async function onSaveTemplate () {
   const templateName = window.prompt('템플릿 이름을 입력하세요.', nameDefault)
   if (!templateName) return
 
-  const payload = {
-    templateName,
-    apartmentType: form.apartmentType,
-    areas: form.areas,
-    requiredCategories: form.requiredCategories,
-    lines: lines.map(l => ({
-      productId: l.productId,
-      area: l.area,
-      category: l.category,
-      defaultQty: l.qty,
-      note: l.note
-    }))
-  }
+  const payload = buildTemplatePayload(form, lines, templateName)
 
   try {
     await axios.post('/api/proposal-templates', payload)
@@ -664,7 +657,38 @@ async function onSaveTemplate () {
   }
 }
 
-/* payload */
+/* Template payload */
+function buildTemplatePayload(form, lines, templateName) {
+  return {
+    templateName,
+    apartmentType: form.apartmentType,
+    areas: form.areas || [],
+    requiredCategories: form.requiredCategories || [],
+    lines: lines.map(l => ({
+      id: l.id,
+      productId: l.productId,
+      name: l.name,
+      model: l.model,
+      brand: l.brand,
+      specs: l.specs,
+      description: l.description,
+      imageUrl: l.imageUrl,
+      vendorCode: l.vendorCode,
+      vendorName: l.vendorName,
+      vendorItemName: l.vendorItemName,
+      mainItemCode: l.mainItemCode,
+      oldItemCode: l.oldItemCode,
+      unitPrice: l.unitPrice,
+      remark: l.remark,
+      area: l.area,
+      category: l.category,
+      defaultQty: l.qty,
+      note: l.note || ''
+    }))
+  }
+}
+
+/* Proposal payload */
 const buildPayload = () => ({
   templateId: selectedTemplateId.value || null,
   projectName: form.projectName,
@@ -740,7 +764,6 @@ async function submit() {
     if (isNew.value) {
       // 신규: 생성 + 저장
       const res = await axios.post('/api/proposals/submit', payload)
-      console.log('제안서 저장 결과:', res.data)
       alert(`제안서가 저장되었습니다. (ID: ${res.data.id})`)
       await router.replace({ name: 'proposal-detail', params: { id: res.data.id } })
       proposalStatus.value = res.data.status || 'SUBMITTED'
@@ -866,7 +889,6 @@ async function loadCatalog () {
     // const res = await axios.get('/api/catalog/list') // Vite 프록시로 백엔드 8080
     const res = await axios.get('/api/vendor-catalog/list') // Vite 프록시로 백엔드 8080
     items.value = res.data
-    console.log(res.data)
   } catch (e) {
     console.error('카탈로그 조회 실패', e)
   }
