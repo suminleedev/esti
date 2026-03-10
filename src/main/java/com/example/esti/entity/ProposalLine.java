@@ -23,24 +23,45 @@ public class ProposalLine extends BaseEntity {
     @JoinColumn(name = "proposal_id", nullable = false)
     private Proposal proposal;
 
-    // 카탈로그 FK
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "product_id", nullable = false)
-    private ProductCatalog product;
-
-    @Column(length = 50)
-    private String area;         // 욕실1, 주방 등
-
-    @Column(length = 100)
-    private String category;     // 양변기, 세면기, ...
-
-    private Integer qty;         // 제안 수량
+    @Column(name = "product_id", nullable = false)
+    private Long productId;
 
     @Column(length = 200)
-    private String note;         // 색상/옵션 등
+    private String productName;
 
-    // 옵션: 나중 견적 전환을 위해 참조 단가를 저장하고 싶다면
+    @Column(length = 20)
+    private String vendorCode;
+
+    @Column(length = 100)
+    private String vendorName;
+
+    @Column(length = 200)
+    private String vendorItemName;
+
+    @Column(length = 100)
+    private String mainItemCode;
+
+    @Column(length = 100)
+    private String oldItemCode;
+
     @Column(precision = 15, scale = 2)
-    private BigDecimal unitPrice;  // 선택사항 (지금은 안 써도 됨)
+    private BigDecimal unitPrice;
+
+    @Column(length = 500)
+    private String remark;
+
+    @Column(length = 500)
+    private String imageUrl;
+
+    @Column(length = 50)
+    private String area;
+
+    @Column(length = 100)
+    private String category;
+
+    private Integer qty;
+
+    @Column(length = 200)
+    private String note;
 }
 
