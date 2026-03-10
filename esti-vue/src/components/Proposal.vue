@@ -222,7 +222,7 @@
               <ul class="list-group list-group-flush overflow-auto" style="max-height: 560px">
                 <li
                   v-for="item in filteredItems"
-                  :key="item.id"
+                  :key="item.catalogId"
                   class="list-group-item d-flex align-items-center"
                   @click="selectCandidate(item)"
                   style="cursor:pointer"
@@ -234,9 +234,9 @@
                     @error="onImgErr($event)"
                   />
                   <div class="flex-grow-1">
-                    <div class="fw-bold">{{ item.name }}</div>
-                    <small class="text-muted">{{ item.model }} · {{ item.brand }}</small>
-                    <div class="small text-muted">{{ item.specs }}</div>
+                    <div class="fw-bold">{{ item.productName }}</div>
+                    <small class="text-muted">{{ item.mainItemCode }} · {{ item.vendorName}}</small>
+                    <div class="small text-muted">{{ item.specs }}</div> <!-- 규격 -->
                   </div>
                   <div class="text-end small text-muted">
                     <!-- 제안서는 가격 표시 안 하거나 옵션으로 -->
@@ -261,11 +261,11 @@
                 </div>
                 <div class="mb-3">
                   <h6 class="mb-1 text-center">
-                    {{ candidate.name || '품목을 선택하세요' }}
-                    <small v-if="candidate.model" class="text-muted">({{ candidate.model }})</small>
+                    {{ candidate.productName || '품목을 선택하세요' }}
+                    <small v-if="candidate.mainItemCode" class="text-muted">({{ candidate.mainItemCode }})</small>
                   </h6>
                   <dl class="row mb-0 small">
-                    <dt class="col-4">브랜드</dt><dd class="col-8">{{ candidate.brand || '-' }}</dd>
+                    <dt class="col-4">브랜드</dt><dd class="col-8">{{ candidate.vendorName || '-' }}</dd>
                     <dt class="col-4">규격</dt><dd class="col-8">{{ candidate.specs || '-' }}</dd>
                     <dt class="col-4">특징</dt><dd class="col-8">{{ candidate.description || '-' }}</dd>
                   </dl>
@@ -295,7 +295,7 @@
                 </div>
 
                 <div class="mt-auto d-flex gap-2">
-                  <button class="btn btn-primary btn-sm" :disabled="!candidate.id || !lineValid" @click="addLine">
+                  <button class="btn btn-primary btn-sm" :disabled="!candidate.catalogId || !lineValid" @click="addLine">
                     제안 항목 추가
                   </button>
                   <button class="btn btn-outline-secondary btn-sm" @click="resetLine">초기화</button>
@@ -328,8 +328,11 @@
                     <tr v-for="(r, idx) in lines" :key="r.uid">
                       <td>{{ r.category }}</td>
                       <td>
-                        {{ r.name }}
-                        <div class="small text-muted">{{ r.model }} · {{ r.brand }}</div>
+                        {{ r.productName }}
+                        <div class="small text-muted">{{ r.mainItemCode }} · {{ r.vendorName }}</div>
+                        <div class="small text-muted">
+                          {{ Number(r.unitPrice || 0).toLocaleString() }}원
+                        </div>
                       </td>
                       <td>{{ r.area }}</td>
                       <td>
@@ -427,7 +430,14 @@ const filteredItems = computed(() => {
   const q = search.value.trim().toLowerCase()
   if (!q) return items.value
   return items.value.filter((i) =>
-    [i.name, i.model, i.brand, i.specs, i.description]
+    [
+      i.productName,
+      i.vendorName,
+      i.vendorItemName,
+      i.mainItemCode,
+      i.oldItemCode,
+      i.remark
+    ]
       .filter(Boolean)
       .some((f) => f.toLowerCase().includes(q))
   )
@@ -435,8 +445,15 @@ const filteredItems = computed(() => {
 
 /* ====== 상세 선택 + 입력 ====== */
 const candidate = reactive({
-  id: null, name: '', model: '', brand: '', specs: '',
-  description: '', imageUrl: ''
+  catalogId: null,
+  productName: '',
+  vendorName: '',
+  vendorItemName: '',
+  mainItemCode: '',
+  oldItemCode: '',
+  unitPrice: 0,
+  remark: '',
+  imageUrl: ''
 })
 
 const lineInput = reactive({
@@ -451,15 +468,17 @@ const lineValid = computed(() =>
 const lines = reactive([])
 
 function addLine () {
-  if (!candidate.id || !lineValid.value) return
+  if (!candidate.catalogId || !lineValid.value) return
   lines.push({
     uid: Date.now() + Math.random(),
-    productId: candidate.id,
-    name: candidate.name,
-    model: candidate.model,
-    brand: candidate.brand,
-    specs: candidate.specs,
-    description: candidate.description,
+    productId: candidate.catalogId,
+    productName: candidate.productName,
+    vendorName: candidate.vendorName,
+    vendorItemName: candidate.vendorItemName,
+    mainItemCode: candidate.mainItemCode,
+    oldItemCode: candidate.oldItemCode,
+    unitPrice: candidate.unitPrice,
+    remark: candidate.remark,
     imageUrl: candidate.imageUrl,
     area: lineInput.area,
     category: lineInput.category,
@@ -474,7 +493,17 @@ function removeLine (idx) {
 }
 
 function resetLine () {
-  Object.assign(candidate, { id: null, name: '', model: '', brand: '', specs: '', description: '', imageUrl: '' })
+  Object.assign(candidate, {
+    catalogId: null,
+    productName: '',
+    vendorName: '',
+    vendorItemName: '',
+    mainItemCode: '',
+    oldItemCode: '',
+    unitPrice: 0,
+    remark: '',
+    imageUrl: ''
+  })
   Object.assign(lineInput, { area: '', category: '', qty: 1, note: '' })
 }
 
@@ -485,12 +514,14 @@ function onImgErr (e) {
 
 function selectCandidate (item) {
   Object.assign(candidate, {
-    id: item.id,
-    name: item.name,
-    model: item.model,
-    brand: item.brand,
-    specs: item.specs,
-    description: item.description,
+    catalogId: item.catalogId,
+    productName: item.productName,
+    vendorName: item.vendorName,
+    vendorItemName: item.vendorItemName,
+    mainItemCode: item.mainItemCode,
+    oldItemCode: item.oldItemCode,
+    unitPrice: item.unitPrice,
+    remark: item.remark,
     imageUrl: item.imageUrl
   })
   // area/category는 사용자가 선택
@@ -567,17 +598,20 @@ async function onLoadTemplate () {
     ;(t.lines || []).forEach(line => {
       lines.push({
         uid: Date.now() + Math.random(),
-        productId: line.productId,
-        name: line.name,
-        model: line.model,
-        brand: line.brand,
-        specs: line.specs,
-        description: line.description,
-        imageUrl: line.imageUrl,
-        area: line.area,
-        category: line.category,
-        qty: line.defaultQty || 1,
-        note: line.note || ''
+        productId: lines.catalogId,
+        productName: lines.productName,
+        vendorCode: lines.vendorCode,
+        vendorName: lines.vendorName,
+        vendorItemName: lines.vendorItemName,
+        mainItemCode: lines.mainItemCode,
+        oldItemCode: lines.oldItemCode,
+        unitPrice: lines.unitPrice,
+        remark: lines.remark,
+        imageUrl: lines.imageUrl,
+        area: lines.area,
+        category: lines.category,
+        qty: lines.defaultQty || 1,
+        note: lines.note || ''
       })
     })
 
@@ -631,8 +665,8 @@ async function onSaveTemplate () {
 }
 
 /* payload */
-const buildPayload = () =>({
-  templateId: selectedTemplateId.value || null,   // 템플릿 기반이면 전달, 아니면 null
+const buildPayload = () => ({
+  templateId: selectedTemplateId.value || null,
   projectName: form.projectName,
   manager: form.manager,
   date: form.date,
@@ -643,6 +677,15 @@ const buildPayload = () =>({
   requiredCategories: form.requiredCategories,
   lines: lines.map(l => ({
     productId: l.productId,
+    productName: l.productName,
+    vendorCode: l.vendorCode,
+    vendorName: l.vendorName,
+    vendorItemName: l.vendorItemName,
+    mainItemCode: l.mainItemCode,
+    oldItemCode: l.oldItemCode,
+    unitPrice: l.unitPrice,
+    remark: l.remark,
+    imageUrl: l.imageUrl,
     area: l.area,
     category: l.category,
     qty: l.qty,
@@ -787,11 +830,14 @@ async function loadProposal(id) {
       lines.push({
         uid: Date.now() + Math.random(),
         productId: l.productId,
-        name: l.name,
-        model: l.model,
-        brand: l.brand,
-        specs: l.specs,
-        description: l.description,
+        productName: l.productName,
+        vendorCode: l.vendorCode,
+        vendorName: l.vendorName,
+        vendorItemName: l.vendorItemName,
+        mainItemCode: l.mainItemCode,
+        oldItemCode: l.oldItemCode,
+        unitPrice: l.unitPrice,
+        remark: l.remark,
         imageUrl: l.imageUrl,
         area: l.area,
         category: l.category,
@@ -817,8 +863,10 @@ function goList() {
 /* ====== 카탈로그 로드 ====== */
 async function loadCatalog () {
   try {
-    const res = await axios.get('/api/catalog/list') // Vite 프록시로 백엔드 8080
+    // const res = await axios.get('/api/catalog/list') // Vite 프록시로 백엔드 8080
+    const res = await axios.get('/api/vendor-catalog/list') // Vite 프록시로 백엔드 8080
     items.value = res.data
+    console.log(res.data)
   } catch (e) {
     console.error('카탈로그 조회 실패', e)
   }
