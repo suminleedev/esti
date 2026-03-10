@@ -2,11 +2,9 @@ package com.example.esti.service;
 
 import com.example.esti.dto.ProposalRequest;
 import com.example.esti.dto.ProposalResponse;
-import com.example.esti.entity.ProductCatalog;
 import com.example.esti.entity.Proposal;
 import com.example.esti.entity.ProposalLine;
 import com.example.esti.entity.ProposalTemplate;
-import com.example.esti.repository.ProductCatalogRepository;
 import com.example.esti.repository.ProposalLineRepository;
 import com.example.esti.repository.ProposalRepository;
 import com.example.esti.repository.ProposalTemplateRepository;
@@ -34,8 +32,7 @@ public class ProposalService {
     private final ProposalRepository proposalRepo;
     private final ProposalLineRepository lineRepo;
     private final ProposalTemplateRepository templateRepo;
-    private final ProductCatalogRepository catalogRepo;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper;
 
 //    /* CREATE */
 //    public ProposalResponse create(ProposalRequest req) throws Exception {
@@ -193,12 +190,20 @@ public class ProposalService {
         for (ProposalLine l : srcLines) {
             ProposalLine nl = new ProposalLine();
             nl.setProposal(p);
-            nl.setProduct(l.getProduct());
+            nl.setProductId(l.getProductId());
+            nl.setProductName(l.getProductName());
+            nl.setVendorCode(l.getVendorCode());
+            nl.setVendorName(l.getVendorName());
+            nl.setVendorItemName(l.getVendorItemName());
+            nl.setMainItemCode(l.getMainItemCode());
+            nl.setOldItemCode(l.getOldItemCode());
+            nl.setUnitPrice(l.getUnitPrice());
+            nl.setRemark(l.getRemark());
+            nl.setImageUrl(l.getImageUrl());
             nl.setArea(l.getArea());
             nl.setCategory(l.getCategory());
             nl.setQty(l.getQty());
             nl.setNote(l.getNote());
-            nl.setUnitPrice(l.getUnitPrice());
             lineRepo.save(nl);
         }
 
@@ -225,14 +230,23 @@ public class ProposalService {
 
     private void saveLines(Proposal p, ProposalRequest req) {
 
+        if (req.getLines() == null || req.getLines().isEmpty()) return;
+
         for (ProposalRequest.Line lineReq : req.getLines()) {
             ProposalLine line = new ProposalLine();
             line.setProposal(p);
 
-            ProductCatalog product = catalogRepo.findById(lineReq.getProductId())
-                    .orElseThrow(() -> new RuntimeException("Product not found"));
+            line.setProductId(lineReq.getProductId());
+            line.setProductName(lineReq.getProductName());
+            line.setVendorCode(lineReq.getVendorCode());
+            line.setVendorName(lineReq.getVendorName());
+            line.setVendorItemName(lineReq.getVendorItemName());
+            line.setMainItemCode(lineReq.getMainItemCode());
+            line.setOldItemCode(lineReq.getOldItemCode());
+            line.setUnitPrice(lineReq.getUnitPrice());
+            line.setRemark(lineReq.getRemark());
+            line.setImageUrl(lineReq.getImageUrl());
 
-            line.setProduct(product);
             line.setArea(lineReq.getArea());
             line.setCategory(lineReq.getCategory());
             line.setQty(lineReq.getQty());
@@ -285,14 +299,17 @@ public class ProposalService {
         res.setLines(lines.stream().map(l -> {
             ProposalResponse.Line o = new ProposalResponse.Line();
             o.setId(l.getId());
-            o.setProductId(l.getProduct().getId());
 
-            o.setName(l.getProduct().getName());
-            o.setModel(l.getProduct().getModel());
-            o.setBrand(l.getProduct().getBrand());
-            o.setSpecs(l.getProduct().getSpecs());
-            o.setDescription(l.getProduct().getDescription());
-            o.setImageUrl(l.getProduct().getImageUrl());
+            o.setProductId(l.getProductId());
+            o.setProductName(l.getProductName());
+            o.setVendorCode(l.getVendorCode());
+            o.setVendorName(l.getVendorName());
+            o.setVendorItemName(l.getVendorItemName());
+            o.setMainItemCode(l.getMainItemCode());
+            o.setOldItemCode(l.getOldItemCode());
+            o.setUnitPrice(l.getUnitPrice());
+            o.setRemark(l.getRemark());
+            o.setImageUrl(l.getImageUrl());
 
             o.setArea(l.getArea());
             o.setCategory(l.getCategory());

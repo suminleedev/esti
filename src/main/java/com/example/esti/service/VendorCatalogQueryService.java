@@ -21,31 +21,11 @@ public class VendorCatalogQueryService {
 
     private final VendorItemPriceRepository vendorItemPriceRepository;
 
-    // 기존 : 전체 리스트
-    public List<VendorCatalogView> getVendorCatalog(String vendorCode) {
-        List<VendorItemPrice> list = vendorItemPriceRepository.findByVendor_VendorCode(vendorCode);
-
-        return list.stream()
-                .map(vip -> {
-                    Vendor v = vip.getVendor();
-                    ProductCatalog c = vip.getCatalog(); // 필드명이 다르면 getProductCatalog() 등으로 변경
-
-                    return new VendorCatalogView(
-                            c.getId(),
-                            v.getVendorCode(),
-                            v.getVendorName(),
-                            c.getCategoryLarge(),
-                            c.getCategorySmall(),
-                            c.getName(),
-                            vip.getMainItemCode(),
-                            vip.getOldItemCode(),
-                            vip.getVendorItemName(),
-                            vip.getRemark(),
-                            vip.getUnitPrice(),
-                            vip.getCatalog().getImageUrl()
-                    );
-                })
-                // 정렬은 여기서 해주면 깔끔
+    // 제안서 작성 화면 : 전체 리스트
+    @Transactional(readOnly = true)
+    public List<VendorCatalogView> getVendorCatalogAll() {
+        return vendorItemPriceRepository.findAll().stream()
+                .map(VendorCatalogView::from)
                 .sorted(Comparator
                         .comparing(VendorCatalogView::categoryLarge, Comparator.nullsLast(String::compareTo))
                         .thenComparing(VendorCatalogView::categorySmall, Comparator.nullsLast(String::compareTo))

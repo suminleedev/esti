@@ -91,13 +91,12 @@ public class VendorCatalogController {
 
     /**
      * 공급사 카탈로그 목록 조회 (기존 list)
+     * 제안서 작성 화면 카탈로그 목록
      */
-    @GetMapping("/list/{vendorCode}")
-    public ResponseEntity<List<VendorCatalogView>> getVendorCatalog(
-            @PathVariable String vendorCode
-    ) {
+    @GetMapping("/list")
+    public ResponseEntity<List<VendorCatalogView>> getVendorCatalogAll() {
         return ResponseEntity.ok(
-                vendorCatalogQueryService.getVendorCatalog(vendorCode)
+                vendorCatalogQueryService.getVendorCatalogAll()
         );
     }
 
