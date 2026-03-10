@@ -11,6 +11,7 @@ import com.example.esti.repository.ProposalTemplateRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Arrays;
 import java.util.List;
@@ -23,9 +24,10 @@ public class ProposalTemplateService {
     private final ProposalTemplateRepository templateRepo;
     private final ProposalTemplateLineRepository lineRepo;
     private final ProductCatalogRepository catalogRepo;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper;
 
     /* CREATE */
+    @Transactional
     public ProposalTemplateResponse create(ProposalTemplateRequest req) throws Exception {
         ProposalTemplate template = new ProposalTemplate();
         template.setTemplateName(req.getTemplateName());
@@ -35,21 +37,7 @@ public class ProposalTemplateService {
         templateRepo.save(template);
 
         // Lines 저장
-        for (ProposalTemplateRequest.Line lineReq : req.getLines()) {
-            ProposalTemplateLine line = new ProposalTemplateLine();
-            line.setTemplate(template);
-
-            ProductCatalog product = catalogRepo.findById(lineReq.getProductId())
-                    .orElseThrow(() -> new RuntimeException("Product not found"));
-
-            line.setProduct(product);
-            line.setArea(lineReq.getArea());
-            line.setCategory(lineReq.getCategory());
-            line.setDefaultQty(lineReq.getDefaultQty());
-            line.setNote(lineReq.getNote());
-
-            lineRepo.save(line);
-        }
+        saveLines(template, req.getLines());
 
         return get(template.getId());
     }
@@ -91,18 +79,30 @@ public class ProposalTemplateService {
                 lines.stream().map(l -> {
                     ProposalTemplateResponse.Line o = new ProposalTemplateResponse.Line();
                     o.setId(l.getId());
-                    o.setProductId(l.getProduct().getId());
-                    o.setName(l.getProduct().getName());
-                    o.setModel(l.getProduct().getModel());
-                    o.setBrand(l.getProduct().getBrand());
-                    o.setSpecs(l.getProduct().getSpecs());
-                    o.setDescription(l.getProduct().getDescription());
-                    o.setImageUrl(l.getProduct().getImageUrl());
+                    //o.setProductId(l.getProduct().getId());
+                    o.setProductId(l.getProduct() != null ? l.getProduct().getId() : null);
+
+                    o.setVendorItemName(l.getVendorItemName());
+                    o.setMainItemCode(l.getMainItemCode());
+                    o.setVendorName(l.getVendorName());
+
+                    o.setVendorCode(l.getVendorCode());
+                    o.setVendorName(l.getVendorName());
+                    o.setVendorItemName(l.getVendorItemName());
+                    o.setMainItemCode(l.getMainItemCode());
+                    o.setOldItemCode(l.getOldItemCode());
+
+                    o.setSpecs(l.getSpecs());
+                    o.setDescription(l.getDescription());
+                    o.setImageUrl(l.getImageUrl());
+                    o.setUnitPrice(l.getUnitPrice());
+                    o.setRemark(l.getRemark());
 
                     o.setArea(l.getArea());
                     o.setCategory(l.getCategory());
                     o.setDefaultQty(l.getDefaultQty());
                     o.setNote(l.getNote());
+
                     return o;
                 }).collect(Collectors.toList())
         );
@@ -111,6 +111,7 @@ public class ProposalTemplateService {
     }
 
     /* UPDATE */
+    @Transactional
     public ProposalTemplateResponse update(Long id, ProposalTemplateRequest req) throws Exception {
         ProposalTemplate template = templateRepo.findById(id)
                 .orElseThrow(() -> new RuntimeException("Template not found"));
@@ -123,30 +124,57 @@ public class ProposalTemplateService {
 
         // 기존 라인 삭제 후 재생성
         lineRepo.deleteByTemplateId(id);
+        saveLines(template, req.getLines());
 
-        for (ProposalTemplateRequest.Line lineReq : req.getLines()) {
-            ProposalTemplateLine line = new ProposalTemplateLine();
-            line.setTemplate(template);
+        return get(id);
+    }
+
+    /* DELETE */
+    @Transactional
+    public void delete(Long id) {
+        lineRepo.deleteByTemplateId(id);
+        templateRepo.deleteById(id);
+    }
+
+    private void saveLines(ProposalTemplate template, List<ProposalTemplateRequest.Line> lines) {
+        if (lines == null || lines.isEmpty()) return;
+
+        for (ProposalTemplateRequest.Line lineReq : lines) {
 
             ProductCatalog product = catalogRepo.findById(lineReq.getProductId())
                     .orElseThrow(() -> new RuntimeException("Product not found"));
 
+            ProposalTemplateLine line = new ProposalTemplateLine();
+            line.setTemplate(template);
             line.setProduct(product);
+
+            line.setVendorItemName(nvl(lineReq.getVendorItemName(), product.getName()));
+            line.setMainItemCode(nvl(lineReq.getMainItemCode(), product.getModel()));
+            line.setVendorName(nvl(lineReq.getVendorName(), product.getBrand()));
+
+            line.setSpecs(product.getSpecs());
+            line.setDescription(product.getDescription());
+            line.setImageUrl(product.getImageUrl());
+
+            line.setVendorCode(lineReq.getVendorCode());
+            line.setVendorName(lineReq.getVendorName());
+            line.setVendorItemName(lineReq.getVendorItemName());
+
+            line.setOldItemCode(lineReq.getOldItemCode());
+            line.setUnitPrice(lineReq.getUnitPrice());
+            line.setRemark(lineReq.getRemark());
             line.setArea(lineReq.getArea());
+
             line.setCategory(lineReq.getCategory());
             line.setDefaultQty(lineReq.getDefaultQty());
             line.setNote(lineReq.getNote());
 
             lineRepo.save(line);
         }
-
-        return get(id);
     }
 
-    /* DELETE */
-    public void delete(Long id) {
-        lineRepo.deleteByTemplateId(id);
-        templateRepo.deleteById(id);
+    private String nvl(String v, String fallback) {
+        return v != null && !v.isBlank() ? v : fallback;
     }
 }
 
