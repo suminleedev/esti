@@ -219,7 +219,16 @@
                 <strong>제품 카탈로그</strong>
                 <input v-model="search" class="form-control form-control-sm" placeholder="검색 (이름/모델/브랜드/규격)" />
               </div>
-              <ul class="list-group list-group-flush overflow-auto" style="max-height: 560px">
+              <ul class="list-group list-group-flush overflow-auto" style="max-height:670px">
+                <li v-if="items.length === 0" class="p-3 text-center text-muted small">
+                  <div>등록된 제품이 없습니다.</div>
+                  <button
+                    class="btn btn-outline-primary btn-sm mt-3"
+                    type="button"
+                    @click="goExcelUpload">
+                    엑셀 업로드
+                  </button>
+                </li>
                 <li
                   v-for="item in filteredItems"
                   :key="item.catalogId"
@@ -313,7 +322,7 @@
               </div>
               <div class="card-body p-0">
                 <div v-if="lines.length === 0" class="p-3 text-center text-muted small">아직 항목이 없습니다.</div>
-                <div v-else class="table-responsive" style="max-height:560px;overflow:auto">
+                <div v-else class="table-responsive" style="max-height:670px;overflow:auto">
                   <table class="table table-sm table-bordered mb-0 align-middle">
                     <thead class="table-light">
                     <tr>
@@ -881,6 +890,10 @@ async function loadProposal(id) {
 
 function goList() {
   router.push({ name: 'proposal-list' })
+}
+
+function goExcelUpload() {
+  router.push("/upload");
 }
 
 /* ====== 카탈로그 로드 ====== */
