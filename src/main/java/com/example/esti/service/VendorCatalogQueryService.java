@@ -1,9 +1,6 @@
 package com.example.esti.service;
 
 import com.example.esti.dto.VendorCatalogView;
-import com.example.esti.entity.ProductCatalog;
-import com.example.esti.entity.Vendor;
-import com.example.esti.entity.VendorItemPrice;
 import com.example.esti.repository.VendorItemPriceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
