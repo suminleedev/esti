@@ -34,3 +34,7 @@ build/
 
 node_modules/
 *.log
+
+# ===== Derby =====
+/data/
+/derby.log
