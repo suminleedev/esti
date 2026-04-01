@@ -5,7 +5,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
-import java.util.Optional;
 
 @Repository
 public interface ProductCatalogRepository extends JpaRepository<ProductCatalog, Long> {
@@ -22,8 +21,8 @@ public interface ProductCatalogRepository extends JpaRepository<ProductCatalog, 
     // 특정 가격 이하 제품 검색
     List<ProductCatalog> findByBasePriceLessThanEqual(java.math.BigDecimal price);
 
-    Optional<ProductCatalog> findByMasterCode(String masterCode);
+    List<ProductCatalog> findAllByMasterCode(String masterCode);
 
-    Optional<ProductCatalog> findByNameAndCategoryLargeAndCategorySmall(
+    List<ProductCatalog> findAllByNameAndCategoryLargeAndCategorySmall(
             String name, String categoryLarge, String categorySmall);
 }
