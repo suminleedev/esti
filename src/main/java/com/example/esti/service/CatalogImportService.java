@@ -79,35 +79,67 @@ public class CatalogImportService {
 
     // ==== 카탈로그 upsert ====
     private ProductCatalog upsertCatalog(VendorExcelRow row) {
-
-        // 1) masterCode 기준으로 우선 찾기
         ProductCatalog catalog = null;
-        if (row.masterCodeHint() != null && !row.masterCodeHint().isBlank()) {
-            catalog = catalogRepository.findByMasterCode(row.masterCodeHint())
-                    .orElse(null);
+
+        String masterCode = trimToNull(row.masterCodeHint());
+        String name = trimToNull(row.productName());
+        String categoryLarge = trimToNull(row.categoryLarge());
+        String categorySmall = trimToNull(row.categorySmall());
+
+        // 1) masterCode 우선 조회
+        if (masterCode != null) {
+            List<ProductCatalog> byMasterCode = catalogRepository.findAllByMasterCode(masterCode);
+
+            if (byMasterCode.size() == 1) {
+                catalog = byMasterCode.get(0);
+            } else if (byMasterCode.size() > 1) {
+                // 중복 데이터 존재
+                // 운영 중이면 로그 남기고 첫 번째 선택
+                // 더 엄격하게 하려면 예외 던져도 됨
+                System.err.printf(
+                        "[WARN] ProductCatalog masterCode 중복: masterCode=%s, count=%d%n",
+                        masterCode, byMasterCode.size()
+                );
+
+                catalog = pickBestCatalog(byMasterCode, name, categoryLarge, categorySmall);
+            }
         }
 
-        // 2) 없으면 이름 + 대/소분류 조합으로 검색
-        if (catalog == null) {
-            catalog = catalogRepository.findByNameAndCategoryLargeAndCategorySmall(
-                            row.productName(),
-                            row.categoryLarge(),
-                            row.categorySmall())
-                    .orElse(null);
+        // 2) masterCode로 못 찾았으면 이름 + 대/소분류 조회
+        if (catalog == null && name != null && categoryLarge != null && categorySmall != null) {
+            List<ProductCatalog> byNameCategory =
+                    catalogRepository.findAllByNameAndCategoryLargeAndCategorySmall(
+                            name, categoryLarge, categorySmall
+                    );
+
+            if (byNameCategory.size() == 1) {
+                catalog = byNameCategory.get(0);
+            } else if (byNameCategory.size() > 1) {
+                System.err.printf(
+                        "[WARN] ProductCatalog 이름/분류 중복: name=%s, large=%s, small=%s, count=%d%n",
+                        name, categoryLarge, categorySmall, byNameCategory.size()
+                );
+
+                catalog = pickBestCatalog(byNameCategory, name, categoryLarge, categorySmall);
+            }
         }
 
-        // 3) 그래도 없으면 새로 생성
+        // 3) 그래도 없으면 신규 생성
         if (catalog == null) {
             catalog = new ProductCatalog();
-            catalog.setMasterCode(row.masterCodeHint()); // 초기엔 공급사 품번 사용
+            catalog.setMasterCode(masterCode);
         }
 
-        catalog.setName(row.productName());
-        catalog.setCategoryLarge(row.categoryLarge());
-        catalog.setCategorySmall(row.categorySmall());
-        catalog.setItemType(row.priceType()); // 'SET' 등
+        // 4) 값 반영
+        catalog.setName(name);
+        catalog.setCategoryLarge(categoryLarge);
+        catalog.setCategorySmall(categorySmall);
+        catalog.setItemType(trimToNull(row.priceType()));
 
-        // TODO: 필요하면 spec/description/basePrice도 엑셀 기반으로 채움
+        // masterCode가 비어있던 기존 데이터에 새 코드가 들어온 경우 보완
+        if (isBlank(catalog.getMasterCode()) && masterCode != null) {
+            catalog.setMasterCode(masterCode);
+        }
 
         return catalogRepository.save(catalog);
     }
@@ -145,6 +177,53 @@ public class CatalogImportService {
         vip.setCurrency("KRW"); // 필요시 변경
 
         return vendorItemPriceRepository.save(vip);
+    }
+
+    private ProductCatalog pickBestCatalog(
+            List<ProductCatalog> candidates,
+            String name,
+            String categoryLarge,
+            String categorySmall
+    ) {
+        // 1순위: 이름/대분류/소분류 모두 일치 + masterCode 있는 것 우선
+        for (ProductCatalog c : candidates) {
+            if (equalsTrim(c.getName(), name)
+                    && equalsTrim(c.getCategoryLarge(), categoryLarge)
+                    && equalsTrim(c.getCategorySmall(), categorySmall)
+                    && !isBlank(c.getMasterCode())) {
+                return c;
+            }
+        }
+
+        // 2순위: 이름/대분류/소분류 모두 일치하는 첫 번째
+        for (ProductCatalog c : candidates) {
+            if (equalsTrim(c.getName(), name)
+                    && equalsTrim(c.getCategoryLarge(), categoryLarge)
+                    && equalsTrim(c.getCategorySmall(), categorySmall)) {
+                return c;
+            }
+        }
+
+        // 3순위: 그냥 첫 번째
+        return candidates.get(0);
+    }
+
+    private String trimToNull(String s) {
+        if (s == null) return null;
+        String t = s.trim();
+        return t.isEmpty() ? null : t;
+    }
+
+    private boolean isBlank(String s) {
+        return s == null || s.trim().isEmpty();
+    }
+
+    private boolean equalsTrim(String a, String b) {
+        String aa = trimToNull(a);
+        String bb = trimToNull(b);
+        if (aa == null && bb == null) return true;
+        if (aa == null || bb == null) return false;
+        return aa.equals(bb);
     }
 }
 
