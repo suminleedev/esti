@@ -314,10 +314,30 @@ async function onDelete (p) {
 }
 
 // 출력
-function printProposal(id) {
-  window.open(`/api/proposals/${id}/print`, "_blank")
-}
+async function printProposal(id) {
+  try {
+    const res = await axios.get(`/api/proposals/${id}/export-excel`, {
+      responseType: 'blob'
+    })
 
+    const blob = new Blob([res.data], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    })
+
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `proposal_${id}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    window.URL.revokeObjectURL(url)
+  } catch (e) {
+    console.error(e)
+    alert('엑셀 출력 중 오류가 발생했습니다.')
+  }
+
+}
 
 onMounted(() => {
   loadProposals()

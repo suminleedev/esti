@@ -2,9 +2,12 @@ package com.example.esti.controller;
 
 import com.example.esti.dto.ProposalRequest;
 import com.example.esti.dto.ProposalResponse;
+import com.example.esti.service.ProposalExcelService;
 import com.example.esti.service.ProposalService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,6 +19,7 @@ import java.util.List;
 public class ProposalController {
 
     private final ProposalService service;
+    private final ProposalExcelService excelService;
 
 //    @PostMapping
 //    public ResponseEntity<ProposalResponse> create(@RequestBody ProposalRequest req) throws Exception {
@@ -103,6 +107,22 @@ public class ProposalController {
             @RequestParam(required = false) String status
     ) {
         return service.getProposalPage(page, size, keyword, apartmentType, templateFilter, status);
+    }
+
+    /**
+     * 제안서 엑셀 출력
+     * */
+    @GetMapping("/{id}/export-excel")
+    public ResponseEntity<byte[]> exportProposalExcel(@PathVariable Long id) {
+        byte[] excel = excelService.exportProposal(id);
+
+        String fileName = "proposal_" + id + ".xlsx";
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
+                .contentType(MediaType.parseMediaType(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(excel);
     }
 
 }
