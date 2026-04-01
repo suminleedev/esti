@@ -45,7 +45,16 @@ public class ProposalLine extends BaseEntity {
     private String oldItemCode;
 
     @Column(precision = 15, scale = 2)
-    private BigDecimal unitPrice;
+    private BigDecimal catalogUnitPrice;   // 카탈로그 기준 단가
+
+    @Column(precision = 5, scale = 2)
+    private BigDecimal marginRate;  // 적용 마진율(%)
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal unitPrice;   // 최종 제안 단가
+
+    @Column(precision = 15, scale = 2)
+    private BigDecimal amount;      // 총금액
 
     @Column(length = 500)
     private String remark;

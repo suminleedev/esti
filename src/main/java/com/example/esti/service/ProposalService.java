@@ -19,6 +19,8 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
@@ -243,7 +245,13 @@ public class ProposalService {
             line.setVendorItemName(lineReq.getVendorItemName());
             line.setMainItemCode(lineReq.getMainItemCode());
             line.setOldItemCode(lineReq.getOldItemCode());
-            line.setUnitPrice(lineReq.getUnitPrice());
+//            line.setUnitPrice(lineReq.getUnitPrice());
+            // 가격 관련
+            line.setCatalogUnitPrice(lineReq.getCatalogUnitPrice()); // 카탈로그 기준 단가
+            line.setMarginRate(lineReq.getMarginRate());             // 마진율
+            line.setUnitPrice(lineReq.getUnitPrice());               // 최종 제안 단가
+            line.setAmount(calculateAmount(lineReq.getUnitPrice(), lineReq.getQty())); // 총금액
+
             line.setRemark(lineReq.getRemark());
             line.setImageUrl(lineReq.getImageUrl());
 
@@ -254,6 +262,17 @@ public class ProposalService {
 
             lineRepo.save(line);
         }
+    }
+    /** 금액 계산
+     *  두 자리수 반올림
+     */
+    private BigDecimal calculateAmount(BigDecimal unitPrice, Integer qty) {
+        BigDecimal price = unitPrice != null ? unitPrice : BigDecimal.ZERO;
+        int quantity = qty != null ? qty : 0;
+
+        // return price.multiply(BigDecimal.valueOf(quantity));
+        return price.multiply(BigDecimal.valueOf(quantity))
+                .setScale(2, RoundingMode.HALF_UP);
     }
 
     /* 제출 전 강검증 */
@@ -307,7 +326,12 @@ public class ProposalService {
             o.setVendorItemName(l.getVendorItemName());
             o.setMainItemCode(l.getMainItemCode());
             o.setOldItemCode(l.getOldItemCode());
+
+            o.setCatalogUnitPrice(l.getCatalogUnitPrice());
+            o.setMarginRate(l.getMarginRate());
             o.setUnitPrice(l.getUnitPrice());
+            o.setAmount(l.getAmount());
+
             o.setRemark(l.getRemark());
             o.setImageUrl(l.getImageUrl());
 
