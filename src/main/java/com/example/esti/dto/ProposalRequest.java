@@ -36,7 +36,12 @@ public class ProposalRequest {
         private String vendorItemName;
         private String mainItemCode;
         private String oldItemCode;
+
+        private BigDecimal catalogUnitPrice;
+        private BigDecimal marginRate;
         private BigDecimal unitPrice;
+//        private BigDecimal amount;
+
         private String remark;
         private String imageUrl;
 
