@@ -40,6 +40,7 @@ public class ProposalResponse {
         private String oldItemCode;
 
         private BigDecimal catalogUnitPrice;
+        private Boolean manualMargin;
         private BigDecimal marginRate;
         private BigDecimal unitPrice;
         private BigDecimal amount;
