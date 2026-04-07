@@ -248,6 +248,9 @@ public class ProposalService {
 //            line.setUnitPrice(lineReq.getUnitPrice());
             // 가격 관련
             line.setCatalogUnitPrice(lineReq.getCatalogUnitPrice()); // 카탈로그 기준 단가
+            line.setManualMargin(
+                    lineReq.getManualMargin() != null ? lineReq.getManualMargin() : false
+            );                                                       // 마진율 수동 설정 여부
             line.setMarginRate(lineReq.getMarginRate());             // 마진율
             line.setUnitPrice(lineReq.getUnitPrice());               // 최종 제안 단가
             line.setAmount(calculateAmount(lineReq.getUnitPrice(), lineReq.getQty())); // 총금액
@@ -328,6 +331,7 @@ public class ProposalService {
             o.setOldItemCode(l.getOldItemCode());
 
             o.setCatalogUnitPrice(l.getCatalogUnitPrice());
+            o.setManualMargin(l.getManualMargin());
             o.setMarginRate(l.getMarginRate());
             o.setUnitPrice(l.getUnitPrice());
             o.setAmount(l.getAmount());

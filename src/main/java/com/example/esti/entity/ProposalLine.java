@@ -47,6 +47,9 @@ public class ProposalLine extends BaseEntity {
     @Column(precision = 15, scale = 2)
     private BigDecimal catalogUnitPrice;   // 카탈로그 기준 단가
 
+    @Column(name = "manual_margin", nullable = false)
+    private Boolean manualMargin = false;  // 마진율 수동 설정 여부
+
     @Column(precision = 5, scale = 2)
     private BigDecimal marginRate;  // 적용 마진율(%)
 
