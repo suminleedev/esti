@@ -276,7 +276,8 @@
                   <dl class="row mb-0 small">
                     <dt class="col-4">브랜드</dt><dd class="col-8">{{ candidate.vendorName || '-' }}</dd>
                     <dt class="col-4">규격</dt><dd class="col-8">{{ candidate.specs || '-' }}</dd>
-                    <dt class="col-4">특징</dt><dd class="col-8">{{ candidate.description || '-' }}</dd>
+                    <dt class="col-4">원가</dt><dd class="col-8">{{ candidate.catalogId ? toNumber(candidate.unitPrice).toLocaleString() : '-' }}</dd>
+<!--                    <dt class="col-4">특징</dt><dd class="col-8">{{ candidate.description || '-' }}</dd>-->
                   </dl>
                 </div>
 
@@ -314,15 +315,47 @@
           </div>
 
           <!-- 우: 제안 항목 리스트 -->
-          <div class="col-md-4">
-            <div class="card h-100">
+          <div class="col-md-4 d-flex flex-column">
+            <!-- 상단: 일괄 마진율 설정 -->
+            <div class="card mb-2">
+              <div class="card-body py-2 px-3">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                  <div class="small fw-semibold text-secondary">일괄 마진율</div>
+                  <!-- marginOptions -->
+                  <div class="btn-group btn-group-sm" role="group" aria-label="global margin">
+                    <template v-for="rate in marginOptions" :key="rate">
+                      <input
+                        :id="`gm-${rate}`"
+                        v-model="form.globalMarginRate"
+                        class="btn-check"
+                        type="radio"
+                        name="globalMarginRate"
+                        :value="rate"
+                      />
+                      <label class="btn btn-outline-secondary" :for="`gm-${rate}`">
+                        {{ rate }}%
+                      </label>
+                    </template>
+                  </div>
+
+                  <span class="badge text-bg-primary">{{ form.globalMarginRate }}%</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 하단: 제안 항목 카드 -->
+            <div class="card flex-grow-1 d-flex flex-column">
               <div class="card-header d-flex justify-content-between align-items-center">
                 <strong>제안 항목</strong>
                 <small class="text-muted">총 {{ lines.length }}건</small>
               </div>
-              <div class="card-body p-0">
-                <div v-if="lines.length === 0" class="p-3 text-center text-muted small">아직 항목이 없습니다.</div>
-                <div v-else class="table-responsive" style="max-height:670px;overflow:auto">
+
+              <div class="card-body p-0 d-flex flex-column">
+                <div v-if="lines.length === 0" class="p-3 text-center text-muted small">
+                  아직 항목이 없습니다.
+                </div>
+
+                <div v-else class="flex-grow-1 overflow-auto" style="max-height:670px;">
                   <table class="table table-sm table-bordered mb-0 align-middle">
                     <thead class="table-light">
                     <tr>
@@ -330,23 +363,70 @@
                       <th>품목</th>
                       <th>부위</th>
                       <th style="width:70px">수량</th>
-                      <th style="width:60px"></th>
+                      <th style="width:120px">마진</th>
+                      <th style="width:55px"></th>
                     </tr>
                     </thead>
                     <tbody>
                     <tr v-for="(r, idx) in lines" :key="r.uid">
                       <td>{{ r.category }}</td>
+
                       <td>
                         {{ r.vendorItemName }}
                         <div class="small text-muted">{{ r.mainItemCode }} · {{ r.vendorName }}</div>
                         <div class="small text-muted">
-                          {{ Number(r.unitPrice || 0).toLocaleString() }}원
+                          원가 {{ toNumber(r.unitPrice).toLocaleString() }}원
+                        </div>
+                        <div class="small fw-semibold text-primary">
+                          최종 {{ toNumber(r.finalAmount).toLocaleString() }}원
                         </div>
                       </td>
+
                       <td>{{ r.area }}</td>
+
                       <td>
-                        <input v-model.number="r.qty" type="number" min="1" class="form-control form-control-sm" />
+                        <input
+                          v-model.number="r.qty"
+                          type="number"
+                          min="1"
+                          max="10000"
+                          class="form-control form-control-sm"
+                          @input="recalculateLine(r)"
+                        />
                       </td>
+
+                      <td>
+                        <div v-if="r.useManualMargin" class="input-group input-group-sm">
+                          <input
+                            v-model.number="r.marginRate"
+                            type="number"
+                            min="0"
+                            max="100"
+                            class="form-control text-end"
+                            @input="recalculateLine(r)"
+                          />
+                          <span class="input-group-text px-2">%</span>
+                          <button
+                            class="btn btn-outline-secondary px-2"
+                            type="button"
+                            @click="disableManualMargin(r)"
+                            title="일괄 마진으로 복귀"
+                          >
+                            ↺
+                          </button>
+                        </div>
+
+                        <button
+                          v-else
+                          type="button"
+                          class="btn btn-sm btn-light border w-100 text-nowrap"
+                          @click="enableManualMargin(r)"
+                          title="클릭하면 개별 마진 설정"
+                        >
+                          {{ form.globalMarginRate }}%
+                        </button>
+                      </td>
+
                       <td>
                         <button class="btn btn-sm btn-outline-danger" @click="removeLine(idx)">삭제</button>
                       </td>
@@ -360,12 +440,17 @@
                 <div class="small text-muted">
                   필수유형 충족:
                   <span :class="missingRequired.length ? 'text-danger' : 'text-success'">
-                    {{ missingRequired.length ? '미완료' : '완료' }}
-                  </span>
+          {{ missingRequired.length ? '미완료' : '완료' }}
+        </span>
                 </div>
                 <div>
                   <button class="btn btn-secondary btn-sm me-2" @click="prev">이전</button>
-                  <button class="btn btn-success btn-sm" v-if="isEditMode && (isNew || isDraft)" :disabled="!canSubmit" @click="submit">
+                  <button
+                    class="btn btn-success btn-sm"
+                    v-if="isEditMode && (isNew || isDraft)"
+                    :disabled="!canSubmit"
+                    @click="submit"
+                  >
                     제안서 저장
                   </button>
                 </div>
@@ -390,8 +475,8 @@ import noImg from '@/assets/no-image.png' // 없으면 임시로 주석 처리�
 const route = useRoute()
 const router = useRouter()
 
-// URL 파라미터
-const proposalId = computed(() => route.params.id)   // ✅ 반응형
+/* ====== 라우트 / 모드 (URL 파라미터) ====== */
+const proposalId = computed(() => route.params.id)
 const isNew = computed(() => !proposalId.value)
 const isEditMode = ref(false)
 
@@ -420,6 +505,8 @@ const categories = [
   '해바라기샤워수전', '씽크수전', '악세사리'
 ]
 
+const marginOptions = [10, 15, 20, 25, 30] // 마진율
+
 const form = reactive({
   projectName: '',
   manager: '',
@@ -428,7 +515,8 @@ const form = reactive({
   households: null,
   note: '',
   areas: [],
-  requiredCategories: []
+  requiredCategories: [],
+  globalMarginRate: 10
 })
 
 /* ====== 카탈로그 ====== */
@@ -445,10 +533,11 @@ const filteredItems = computed(() => {
       i.vendorItemName,
       i.mainItemCode,
       i.oldItemCode,
-      i.remark
+      i.remark,
+      i.specs
     ]
       .filter(Boolean)
-      .some((f) => f.toLowerCase().includes(q))
+      .some((f) => String(f).toLowerCase().includes(q))
   )
 })
 
@@ -462,6 +551,8 @@ const candidate = reactive({
   oldItemCode: '',
   unitPrice: 0,
   remark: '',
+  specs: '',
+  description: '',
   imageUrl: ''
 })
 
@@ -476,29 +567,47 @@ const lineValid = computed(() =>
 /* ====== 제안 항목 리스트 ====== */
 const lines = reactive([])
 
-function addLine () {
-  if (!candidate.catalogId || !lineValid.value) return
-  lines.push({
-    uid: Date.now() + Math.random(),
-    productId: candidate.catalogId,
-    productName: candidate.productName,
-    vendorName: candidate.vendorName,
-    vendorItemName: candidate.vendorItemName,
-    mainItemCode: candidate.mainItemCode,
-    oldItemCode: candidate.oldItemCode,
-    unitPrice: candidate.unitPrice,
-    remark: candidate.remark,
-    imageUrl: candidate.imageUrl,
-    area: lineInput.area,
-    category: lineInput.category,
-    qty: lineInput.qty,
-    note: lineInput.note
-  })
-  resetLine()
+/* ====== 공통 유틸 ====== */
+function toNumber(value) { return Number(value ?? 0) }
+
+function newUid() {
+  return typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random()}`
 }
 
-function removeLine (idx) {
-  lines.splice(idx, 1)
+function go (i) { step.value = i }
+function next () { step.value++ }
+function prev () { step.value-- }
+
+function onImgErr (e) {
+  e.target.src = noImg /* 만약 import 불가하면: e.target.src = 'data:image/svg+xml;utf8,<svg .../>' */
+}
+
+function goList() {
+  router.push({ name: 'proposal-list' })
+}
+
+function goExcelUpload() {
+  router.push("/upload");
+}
+
+/* ====== 후보 선택 / 초기화 ====== */
+function selectCandidate(item) {
+  Object.assign(candidate, {
+    catalogId: item.catalogId,
+    productName: item.productName ?? '',
+    vendorName: item.vendorName ?? '',
+    vendorItemName: item.vendorItemName ?? '',
+    mainItemCode: item.mainItemCode ?? '',
+    oldItemCode: item.oldItemCode ?? '',
+    unitPrice: toNumber(item.unitPrice),
+    remark: item.remark ?? '',
+    specs: item.specs ?? '',
+    description: item.description ?? '',
+    imageUrl: item.imageUrl ?? ''
+    // area/category는 사용자가 선택
+  })
 }
 
 function resetLine () {
@@ -511,30 +620,112 @@ function resetLine () {
     oldItemCode: '',
     unitPrice: 0,
     remark: '',
+    specs: '',
+    description: '',
     imageUrl: ''
   })
   Object.assign(lineInput, { area: '', category: '', qty: 1, note: '' })
 }
 
-/* ====== 유틸 ====== */
-function onImgErr (e) {
-  e.target.src = noImg /* 만약 import 불가하면: e.target.src = 'data:image/svg+xml;utf8,<svg .../>' */
+/* ====== 마진 계산 ====== */
+function getAppliedMarginRate(line) {
+  if (line.useManualMargin && line.marginRate != null && line.marginRate !== '') {
+    return toNumber(line.marginRate)
+  }
+  return toNumber(form.globalMarginRate)
 }
 
-function selectCandidate (item) {
-  Object.assign(candidate, {
-    catalogId: item.catalogId,
-    productName: item.productName,
-    vendorName: item.vendorName,
-    vendorItemName: item.vendorItemName,
-    mainItemCode: item.mainItemCode,
-    oldItemCode: item.oldItemCode,
-    unitPrice: item.unitPrice,
-    remark: item.remark,
-    imageUrl: item.imageUrl
-  })
-  // area/category는 사용자가 선택
+function recalculateLine(line) {
+  const unitPrice = toNumber(line.unitPrice)
+  const qty = toNumber(line.qty)
+  const rate = getAppliedMarginRate(line)
+
+  line.finalAmount = Math.round(unitPrice * (1 + rate / 100) * qty)
 }
+
+function recalculateLinesByGlobalMargin() {
+  lines.forEach((line) => {
+    if (!line.useManualMargin) {
+      recalculateLine(line)
+    }
+  })
+}
+
+/* ====== line 생성 ====== */
+function createLine(data = {}) {
+  const line = {
+    uid: data.uid ?? newUid(),
+
+    id: data.id ?? null,
+    productId: data.productId ?? null,
+    productName: data.productName ?? data.name ?? '',
+    vendorCode: data.vendorCode ?? '',
+    vendorName: data.vendorName ?? '',
+    vendorItemName: data.vendorItemName ?? '',
+    mainItemCode: data.mainItemCode ?? '',
+    oldItemCode: data.oldItemCode ?? '',
+    unitPrice: toNumber(data.unitPrice),
+    remark: data.remark ?? '',
+    specs: data.specs ?? '',
+    description: data.description ?? '',
+    imageUrl: data.imageUrl ?? '',
+
+    area: data.area ?? '',
+    category: data.category ?? '',
+    qty: toNumber(data.qty ?? data.defaultQty ?? 1),
+    note: data.note ?? '',
+
+    useManualMargin: data.useManualMargin ?? false,
+    marginRate: data.marginRate ?? null,
+    finalAmount: toNumber(data.finalAmount)
+  }
+
+  recalculateLine(line)
+  return line
+}
+
+/* ====== 행 조작 ====== */
+function addLine() {
+  if (!candidate.catalogId || !lineValid.value) return
+
+  const newLine = createLine({
+    productId: candidate.catalogId,
+    productName: candidate.productName,
+    vendorName: candidate.vendorName,
+    vendorItemName: candidate.vendorItemName,
+    mainItemCode: candidate.mainItemCode,
+    oldItemCode: candidate.oldItemCode,
+    unitPrice: candidate.unitPrice,
+    remark: candidate.remark,
+    specs: candidate.specs,
+    description: candidate.description,
+    imageUrl: candidate.imageUrl,
+    area: lineInput.area,
+    category: lineInput.category,
+    qty: lineInput.qty,
+    note: lineInput.note
+  })
+
+  lines.push(newLine)
+  resetLine()
+}
+
+function removeLine(idx) {
+  lines.splice(idx, 1)
+}
+
+function enableManualMargin(row) {
+  row.useManualMargin = true
+  row.marginRate = row.marginRate ?? form.globalMarginRate
+  recalculateLine(row)
+}
+
+function disableManualMargin(row) {
+  row.useManualMargin = false
+  row.marginRate = null
+  recalculateLine(row)
+}
+
 
 /* ====== Step 제어 & 검증 ====== */
 const validStep1 = computed(() =>
@@ -545,16 +736,13 @@ const validStep2 = computed(() =>
   !!form.apartmentType && form.areas.length > 0 && form.requiredCategories.length > 0
 )
 
-function go (i) { step.value = i }
-function next () { step.value++ }
-function prev () { step.value-- }
-
 /* 필수유형 충족 검사 */
 const missingRequired = computed(() => {
   const usedCats = new Set(lines.map(l => l.category))
   return form.requiredCategories.filter(c => !usedCats.has(c))
 })
 
+/* 저장 검증 */
 const canSubmit = computed(() =>
   validStep1.value && validStep2.value && missingRequired.value.length === 0 && lines.length > 0
 )
@@ -564,6 +752,7 @@ const canDraft = computed(() => {
   // 임시저장은 정말 최소만: 예) 현장명만 있으면 OK
   return !!form.projectName
 })
+
 /* 삭제 검증 */
 const canDelete = computed(() => {
   // 정책 예시:
@@ -600,33 +789,33 @@ async function onLoadTemplate () {
     form.apartmentType = t.apartmentType || ''
     form.areas = t.areas || []
     form.requiredCategories = t.requiredCategories || []
+    form.globalMarginRate = t.globalMarginRate ?? 10
 
     // 제안 항목(lines) 초기화 후 다시 채우기
     lines.splice(0, lines.length)
-
-    ;(t.lines || []).forEach(line => {
-      lines.push({
-        uid: Date.now() + Math.random(),
+    ;(t.lines || []).forEach((line) => {
+      lines.push(createLine({
         id: line.id,
         productId: line.productId,
-        name: line.name || '',
-        model: line.model || '',
-        brand: line.brand || '',
-        specs: line.specs || '',
-        description: line.description || '',
-        imageUrl: line.imageUrl || '',
-        vendorCode: line.vendorCode || '',
-        vendorName: line.vendorName || '',
-        vendorItemName: line.vendorItemName || '',
-        mainItemCode: line.mainItemCode || '',
-        oldItemCode: line.oldItemCode || '',
-        unitPrice: line.unitPrice || 0,
-        remark: line.remark || '',
-        area: line.area || '',
-        category: line.category || '',
-        qty: line.defaultQty || 1,
-        note: line.note || ''
-      })
+        productName: line.productName ?? line.name,
+        vendorCode: line.vendorCode,
+        vendorName: line.vendorName,
+        vendorItemName: line.vendorItemName,
+        mainItemCode: line.mainItemCode,
+        oldItemCode: line.oldItemCode,
+        unitPrice: line.unitPrice,
+        remark: line.remark,
+        specs: line.specs,
+        description: line.description,
+        imageUrl: line.imageUrl,
+        area: line.area,
+        category: line.category,
+        qty: line.defaultQty ?? line.qty,
+        note: line.note,
+        useManualMargin: false,
+        marginRate: null,
+        finalAmount: 0
+      }))
     })
 
     // UX: 바로 Step 2 또는 3으로 이동해도 좋음
@@ -635,6 +824,36 @@ async function onLoadTemplate () {
   } catch (e) {
     console.error('템플릿 불러오기 실패', e)
     alert('템플릿을 불러오지 못했습니다.')
+  }
+}
+
+/* Template payload */
+function buildTemplatePayload(templateName) {
+  return {
+    templateName,
+    apartmentType: form.apartmentType,
+    areas: form.areas || [],
+    requiredCategories: form.requiredCategories || [],
+    globalMarginRate: form.globalMarginRate,
+    lines: lines.map((l) => ({
+      id: l.id,
+      productId: l.productId,
+      productName: l.productName,
+      vendorCode: l.vendorCode,
+      vendorName: l.vendorName,
+      vendorItemName: l.vendorItemName,
+      mainItemCode: l.mainItemCode,
+      oldItemCode: l.oldItemCode,
+      unitPrice: l.unitPrice,
+      remark: l.remark,
+      specs: l.specs,
+      description: l.description,
+      imageUrl: l.imageUrl,
+      area: l.area,
+      category: l.category,
+      defaultQty: l.qty,
+      note: l.note || '',
+    }))
   }
 }
 
@@ -654,7 +873,7 @@ async function onSaveTemplate () {
   const templateName = window.prompt('템플릿 이름을 입력하세요.', nameDefault)
   if (!templateName) return
 
-  const payload = buildTemplatePayload(form, lines, templateName)
+  const payload = buildTemplatePayload(templateName)
 
   try {
     await axios.post('/api/proposal-templates', payload)
@@ -666,22 +885,22 @@ async function onSaveTemplate () {
   }
 }
 
-/* Template payload */
-function buildTemplatePayload(form, lines, templateName) {
+/* ====== Proposal payload ====== */
+function buildPayload() {
   return {
-    templateName,
+    templateId: selectedTemplateId.value || null,
+    projectName: form.projectName,
+    manager: form.manager,
+    date: form.date,
     apartmentType: form.apartmentType,
-    areas: form.areas || [],
-    requiredCategories: form.requiredCategories || [],
-    lines: lines.map(l => ({
-      id: l.id,
+    households: form.households,
+    note: form.note,
+    areas: form.areas,
+    requiredCategories: form.requiredCategories,
+    globalMarginRate: form.globalMarginRate,
+    lines: lines.map((l) => ({
       productId: l.productId,
-      name: l.name,
-      model: l.model,
-      brand: l.brand,
-      specs: l.specs,
-      description: l.description,
-      imageUrl: l.imageUrl,
+      productName: l.productName,
       vendorCode: l.vendorCode,
       vendorName: l.vendorName,
       vendorItemName: l.vendorItemName,
@@ -689,42 +908,19 @@ function buildTemplatePayload(form, lines, templateName) {
       oldItemCode: l.oldItemCode,
       unitPrice: l.unitPrice,
       remark: l.remark,
+      specs: l.specs,
+      description: l.description,
+      imageUrl: l.imageUrl,
       area: l.area,
       category: l.category,
-      defaultQty: l.qty,
-      note: l.note || ''
+      qty: l.qty,
+      note: l.note,
+      marginRate: getAppliedMarginRate(l),
+      manualMargin: l.useManualMargin,
+      finalAmount: l.finalAmount
     }))
   }
 }
-
-/* Proposal payload */
-const buildPayload = () => ({
-  templateId: selectedTemplateId.value || null,
-  projectName: form.projectName,
-  manager: form.manager,
-  date: form.date,
-  apartmentType: form.apartmentType,
-  households: form.households,
-  note: form.note,
-  areas: form.areas,
-  requiredCategories: form.requiredCategories,
-  lines: lines.map(l => ({
-    productId: l.productId,
-    productName: l.productName,
-    vendorCode: l.vendorCode,
-    vendorName: l.vendorName,
-    vendorItemName: l.vendorItemName,
-    mainItemCode: l.mainItemCode,
-    oldItemCode: l.oldItemCode,
-    unitPrice: l.unitPrice,
-    remark: l.remark,
-    imageUrl: l.imageUrl,
-    area: l.area,
-    category: l.category,
-    qty: l.qty,
-    note: l.note
-  }))
-})
 
 /* ====== 제안서 임시 저장 ====== */
 async function saveDraft () {
@@ -760,7 +956,7 @@ async function saveDraft () {
 }
 
 
-/* ====== 제안서 저장 (백엔드 연동 위치) ====== */
+/* ====== 제안서 저장 ====== */
 async function submit() {
   if (!canSubmit.value) {
     alert('필수 항목/필수 유형 충족 후 제출할 수 있어요.')
@@ -800,7 +996,7 @@ async function sendFinal() {
     alert('전송 확정되었습니다.')
     proposalStatus.value = 'SENT'
   } catch (e) {
-    console.error(e)
+    console.error('전송 확정 실패', e)
     alert('전송 확정 실패')
   }
 }
@@ -815,7 +1011,7 @@ async function copyToDraft() {
     proposalStatus.value = 'DRAFT'
     isEditMode.value = true
   } catch (e) {
-    console.error(e)
+    console.error('복사 실패', e)
     alert('복사 실패')
   }
 }
@@ -857,10 +1053,11 @@ async function loadProposal(id) {
     form.requiredCategories = p.requiredCategories || []
 
     // Step3 (제안 항목들)
+    form.globalMarginRate = p.globalMarginRate ?? 10
     lines.splice(0, lines.length)
-    ;(p.lines || []).forEach(l => {
-      lines.push({
-        uid: Date.now() + Math.random(),
+    ;(p.lines || []).forEach((l) => {
+      lines.push(createLine({
+        id: l.id,
         productId: l.productId,
         productName: l.productName,
         vendorCode: l.vendorCode,
@@ -870,12 +1067,17 @@ async function loadProposal(id) {
         oldItemCode: l.oldItemCode,
         unitPrice: l.unitPrice,
         remark: l.remark,
+        specs: l.specs,
+        description: l.description,
         imageUrl: l.imageUrl,
         area: l.area,
         category: l.category,
         qty: l.qty,
-        note: l.note
-      })
+        note: l.note,
+        marginRate: l.marginRate,
+        useManualMargin: l.manualMargin,
+        finalAmount: l.finalAmount
+      }))
     })
 
     // 상세 보기 모드로 시작
@@ -888,13 +1090,6 @@ async function loadProposal(id) {
   }
 }
 
-function goList() {
-  router.push({ name: 'proposal-list' })
-}
-
-function goExcelUpload() {
-  router.push("/upload");
-}
 
 /* ====== 카탈로그 로드 ====== */
 async function loadCatalog () {
@@ -907,6 +1102,15 @@ async function loadCatalog () {
   }
 }
 
+
+/* ====== watch ====== */
+watch(
+  () => form.globalMarginRate,
+  () => {
+    recalculateLinesByGlobalMargin()
+  }
+)
+
 watch(
   () => proposalId.value,
   (id) => {
@@ -914,12 +1118,13 @@ watch(
     else {
       proposalStatus.value = 'DRAFT'
       isEditMode.value = true
+      lines.splice(0, lines.length)
     }
   },
   { immediate: true }
 )
 
-// onMounted(loadCatalog)
+/* ====== mounted ====== */
 onMounted(() => {
   loadCatalog()
   fetchTemplates()
