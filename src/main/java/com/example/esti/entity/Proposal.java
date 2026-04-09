@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -55,6 +56,9 @@ public class Proposal extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private Status status;              // 상태
+
+    @Column(precision = 5, scale = 2)
+    private BigDecimal globalMarginRate;// 일괄 마진율(%)
 
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;    // 삭제일시

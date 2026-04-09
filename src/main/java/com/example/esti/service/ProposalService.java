@@ -176,7 +176,7 @@ public class ProposalService {
 
         // src 값 복사
         p.setTemplate(src.getTemplate());
-        p.setProjectName(src.getProjectName());
+        p.setProjectName(src.getProjectName() + " - 복사본");
         p.setManager(src.getManager());
         p.setDate(src.getDate());
         p.setApartmentType(src.getApartmentType());
@@ -184,6 +184,7 @@ public class ProposalService {
         p.setNote(src.getNote());
         p.setAreasJson(src.getAreasJson());
         p.setRequiredCategoriesJson(src.getRequiredCategoriesJson());
+        p.setGlobalMarginRate(src.getGlobalMarginRate());
 
         proposalRepo.save(p);
 
@@ -199,7 +200,14 @@ public class ProposalService {
             nl.setVendorItemName(l.getVendorItemName());
             nl.setMainItemCode(l.getMainItemCode());
             nl.setOldItemCode(l.getOldItemCode());
-            nl.setUnitPrice(l.getUnitPrice());
+
+            // 가격 관련
+            nl.setCatalogUnitPrice(l.getCatalogUnitPrice()); // 카탈로그 원가
+            nl.setManualMargin(l.getManualMargin() != null ? l.getManualMargin() : false); // 마진율 수동 설정 여부
+            nl.setMarginRate(l.getMarginRate()); // 마진율
+            nl.setUnitPrice(l.getUnitPrice()); // 최종 제안 단가
+            nl.setAmount(l.getAmount()); // 총금액
+
             nl.setRemark(l.getRemark());
             nl.setImageUrl(l.getImageUrl());
             nl.setArea(l.getArea());
@@ -225,6 +233,7 @@ public class ProposalService {
         p.setApartmentType(req.getApartmentType());
         p.setHouseholds(req.getHouseholds());
         p.setNote(req.getNote());
+        p.setGlobalMarginRate(req.getGlobalMarginRate());
 
         p.setAreasJson(mapper.writeValueAsString(req.getAreas()));
         p.setRequiredCategoriesJson(mapper.writeValueAsString(req.getRequiredCategories()));
@@ -245,7 +254,6 @@ public class ProposalService {
             line.setVendorItemName(lineReq.getVendorItemName());
             line.setMainItemCode(lineReq.getMainItemCode());
             line.setOldItemCode(lineReq.getOldItemCode());
-//            line.setUnitPrice(lineReq.getUnitPrice());
             // 가격 관련
             line.setCatalogUnitPrice(lineReq.getCatalogUnitPrice()); // 카탈로그 기준 단가
             line.setManualMargin(
@@ -253,7 +261,8 @@ public class ProposalService {
             );                                                       // 마진율 수동 설정 여부
             line.setMarginRate(lineReq.getMarginRate());             // 마진율
             line.setUnitPrice(lineReq.getUnitPrice());               // 최종 제안 단가
-            line.setAmount(calculateAmount(lineReq.getUnitPrice(), lineReq.getQty())); // 총금액
+//            line.setAmount(calculateAmount(lineReq.getUnitPrice(), lineReq.getQty())); // 총금액
+            line.setAmount(lineReq.getAmount()); // 총금액
 
             line.setRemark(lineReq.getRemark());
             line.setImageUrl(lineReq.getImageUrl());
@@ -417,6 +426,7 @@ public class ProposalService {
         res.setHouseholds(p.getHouseholds());
         res.setNote(p.getNote());
         res.setStatus(p.getStatus().name());
+        res.setGlobalMarginRate(p.getGlobalMarginRate());
         // 상세 areas/lines 는 생략 (필요하면 확장)
         return res;
     }

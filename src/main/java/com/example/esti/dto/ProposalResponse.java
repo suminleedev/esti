@@ -24,6 +24,7 @@ public class ProposalResponse {
     private List<String> areas;
     private List<String> requiredCategories;
 
+    private BigDecimal globalMarginRate;
     private List<Line> lines;
 
     @Getter

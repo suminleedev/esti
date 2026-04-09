@@ -23,6 +23,7 @@ public class ProposalRequest {
     private List<String> areas;
     private List<String> requiredCategories;
 
+    private BigDecimal globalMarginRate;
     private List<Line> lines;
 
     @Getter
@@ -37,11 +38,11 @@ public class ProposalRequest {
         private String mainItemCode;
         private String oldItemCode;
 
-        private BigDecimal catalogUnitPrice;
+        private BigDecimal catalogUnitPrice; // 카탈로그 단가(원가)
         private Boolean manualMargin;
-        private BigDecimal marginRate;
-        private BigDecimal unitPrice;
-//        private BigDecimal amount;
+        private BigDecimal marginRate;       // 마진율
+        private BigDecimal unitPrice;        // 마진 적용 단가
+        private BigDecimal amount;           // 총금액
 
         private String remark;
         private String imageUrl;
