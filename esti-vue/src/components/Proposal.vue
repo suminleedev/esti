@@ -375,7 +375,7 @@
                         {{ r.vendorItemName }}
                         <div class="small text-muted">{{ r.mainItemCode }} · {{ r.vendorName }}</div>
                         <div class="small text-muted">
-                          원가 {{ toNumber(r.unitPrice).toLocaleString() }}원
+                          원가 {{ toNumber(r.catalogUnitPrice).toLocaleString() }}원
                         </div>
                         <div class="small fw-semibold text-primary">
                           최종 {{ toNumber(r.finalAmount).toLocaleString() }}원
@@ -636,35 +636,36 @@ function getAppliedMarginRate(line) {
 }
 
 function recalculateLine(line) {
-  const unitPrice = toNumber(line.unitPrice)
-  const qty = toNumber(line.qty)
-  const rate = getAppliedMarginRate(line)
+  const base = toNumber(line.catalogUnitPrice)
 
-  line.finalAmount = Math.round(unitPrice * (1 + rate / 100) * qty)
+  const rate = line.useManualMargin
+    ? toNumber(line.marginRate)
+    : toNumber(form.globalMarginRate)
+
+  const calculatedUnitPrice = Math.round(base * (1 + rate / 100))
+
+  line.unitPrice = calculatedUnitPrice
+  line.finalAmount = calculatedUnitPrice * toNumber(line.qty)
 }
-
-function recalculateLinesByGlobalMargin() {
-  lines.forEach((line) => {
-    if (!line.useManualMargin) {
-      recalculateLine(line)
-    }
-  })
-}
-
 /* ====== line 생성 ====== */
 function createLine(data = {}) {
-  const line = {
+  return {
     uid: data.uid ?? newUid(),
 
     id: data.id ?? null,
     productId: data.productId ?? null,
-    productName: data.productName ?? data.name ?? '',
+    productName: data.productName ?? '',
     vendorCode: data.vendorCode ?? '',
     vendorName: data.vendorName ?? '',
     vendorItemName: data.vendorItemName ?? '',
     mainItemCode: data.mainItemCode ?? '',
     oldItemCode: data.oldItemCode ?? '',
-    unitPrice: toNumber(data.unitPrice),
+    catalogUnitPrice: toNumber(data.catalogUnitPrice ?? 0), // 원가
+    useManualMargin: data.manualMargin ?? data.useManualMargin ?? false,
+    marginRate: data.marginRate ?? null,
+    unitPrice: toNumber(data.unitPrice ?? 0),               // 제안 단가
+    finalAmount: toNumber(data.amount ?? data.finalAmount ?? 0), // 총금액
+
     remark: data.remark ?? '',
     specs: data.specs ?? '',
     description: data.description ?? '',
@@ -674,14 +675,7 @@ function createLine(data = {}) {
     category: data.category ?? '',
     qty: toNumber(data.qty ?? data.defaultQty ?? 1),
     note: data.note ?? '',
-
-    useManualMargin: data.useManualMargin ?? false,
-    marginRate: data.marginRate ?? null,
-    finalAmount: toNumber(data.finalAmount)
   }
-
-  recalculateLine(line)
-  return line
 }
 
 /* ====== 행 조작 ====== */
@@ -695,17 +689,28 @@ function addLine() {
     vendorItemName: candidate.vendorItemName,
     mainItemCode: candidate.mainItemCode,
     oldItemCode: candidate.oldItemCode,
+
+    // 카탈로그 unitPrice -> 제안서 원가
+    catalogUnitPrice: candidate.unitPrice,
+    // 초기 상태
+    useManualMargin: false,
+    marginRate: null,
+    // 초기값은 우선 원가로 넣고, 아래 recalculateLine에서 다시 계산
     unitPrice: candidate.unitPrice,
+    finalAmount: 0,
+
     remark: candidate.remark,
     specs: candidate.specs,
     description: candidate.description,
     imageUrl: candidate.imageUrl,
+
     area: lineInput.area,
     category: lineInput.category,
     qty: lineInput.qty,
     note: lineInput.note
   })
 
+  recalculateLine(newLine)
   lines.push(newLine)
   resetLine()
 }
@@ -795,7 +800,6 @@ async function onLoadTemplate () {
     lines.splice(0, lines.length)
     ;(t.lines || []).forEach((line) => {
       lines.push(createLine({
-        id: line.id,
         productId: line.productId,
         productName: line.productName ?? line.name,
         vendorCode: line.vendorCode,
@@ -803,19 +807,24 @@ async function onLoadTemplate () {
         vendorItemName: line.vendorItemName,
         mainItemCode: line.mainItemCode,
         oldItemCode: line.oldItemCode,
+
+        catalogUnitPrice: line.unitPrice, // 템플릿의 상품 단가 = 원가로 사용
+        useManualMargin: false,
+        marginRate: null,
         unitPrice: line.unitPrice,
+        finalAmount: 0,
+
         remark: line.remark,
         specs: line.specs,
         description: line.description,
         imageUrl: line.imageUrl,
+
         area: line.area,
         category: line.category,
         qty: line.defaultQty ?? line.qty,
         note: line.note,
-        useManualMargin: false,
-        marginRate: null,
-        finalAmount: 0
       }))
+      recalculateLine(lines[lines.length - 1])
     })
 
     // UX: 바로 Step 2 또는 3으로 이동해도 좋음
@@ -898,6 +907,7 @@ function buildPayload() {
     areas: form.areas,
     requiredCategories: form.requiredCategories,
     globalMarginRate: form.globalMarginRate,
+
     lines: lines.map((l) => ({
       productId: l.productId,
       productName: l.productName,
@@ -906,18 +916,22 @@ function buildPayload() {
       vendorItemName: l.vendorItemName,
       mainItemCode: l.mainItemCode,
       oldItemCode: l.oldItemCode,
-      unitPrice: l.unitPrice,
+
+      catalogUnitPrice: l.catalogUnitPrice,     // 원가
+      manualMargin: l.useManualMargin,          // 수동 여부
+      marginRate: getAppliedMarginRate(l),      // 적용 마진율
+      unitPrice: l.unitPrice,                   // 제안 단가
+      amount: l.finalAmount,                    // 총금액
+
       remark: l.remark,
       specs: l.specs,
       description: l.description,
       imageUrl: l.imageUrl,
+
       area: l.area,
       category: l.category,
       qty: l.qty,
       note: l.note,
-      marginRate: getAppliedMarginRate(l),
-      manualMargin: l.useManualMargin,
-      finalAmount: l.finalAmount
     }))
   }
 }
@@ -1054,6 +1068,7 @@ async function loadProposal(id) {
 
     // Step3 (제안 항목들)
     form.globalMarginRate = p.globalMarginRate ?? 10
+
     lines.splice(0, lines.length)
     ;(p.lines || []).forEach((l) => {
       lines.push(createLine({
@@ -1065,7 +1080,11 @@ async function loadProposal(id) {
         vendorItemName: l.vendorItemName,
         mainItemCode: l.mainItemCode,
         oldItemCode: l.oldItemCode,
+        catalogUnitPrice: l.catalogUnitPrice,
+        manualMargin: l.manualMargin,
+        marginRate: l.marginRate,
         unitPrice: l.unitPrice,
+        amount: l.amount,
         remark: l.remark,
         specs: l.specs,
         description: l.description,
@@ -1074,9 +1093,6 @@ async function loadProposal(id) {
         category: l.category,
         qty: l.qty,
         note: l.note,
-        marginRate: l.marginRate,
-        useManualMargin: l.manualMargin,
-        finalAmount: l.finalAmount
       }))
     })
 
@@ -1107,7 +1123,11 @@ async function loadCatalog () {
 watch(
   () => form.globalMarginRate,
   () => {
-    recalculateLinesByGlobalMargin()
+    lines.forEach((line) => {
+      if (!line.useManualMargin) {
+        recalculateLine(line)
+      }
+    })
   }
 )
 
