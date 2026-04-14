@@ -1,6 +1,5 @@
 package com.example.esti.repository;
 
-import com.example.esti.dto.VendorCatalogView;
 import com.example.esti.entity.ProductCatalog;
 import com.example.esti.entity.Vendor;
 import com.example.esti.entity.VendorItemPrice;
@@ -26,5 +25,8 @@ public interface VendorItemPriceRepository extends JpaRepository<VendorItemPrice
     // (선택) 검색까지 하고 싶으면
     // Page<VendorItemPrice> findByVendor_VendorCodeAndProposalItemCodeContaining(
     //        String vendorCode, String keyword, Pageable pageable);
+
+    // 크롤링
+    Optional<VendorItemPrice> findByVendor_VendorCodeAndProposalItemCode(String vendorCode, String proposalItemCode);
 }
 
