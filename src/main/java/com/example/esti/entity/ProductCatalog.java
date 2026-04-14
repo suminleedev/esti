@@ -35,7 +35,7 @@ public class ProductCatalog extends BaseEntity {
     @Column(length = 500)
     private String description; // 설명
 
-    @Column(length = 500)
+    @Column(length = 1000)
     private String imageUrl;    // 제품 이미지 경로
 
     // ===== 카테고리/타입 =====
