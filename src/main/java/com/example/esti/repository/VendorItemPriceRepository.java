@@ -28,5 +28,8 @@ public interface VendorItemPriceRepository extends JpaRepository<VendorItemPrice
 
     // 크롤링
     Optional<VendorItemPrice> findByVendor_VendorCodeAndProposalItemCode(String vendorCode, String proposalItemCode);
+
+    // 크롤링 : ASTD
+    List<VendorItemPrice> findAllByVendor_VendorCode(String vendorCode);
 }
 

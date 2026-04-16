@@ -5,6 +5,10 @@ import lombok.*;
 
 import java.math.BigDecimal;
 
+/**
+ *  상품 가격 엔티티
+ *  엑셀 업로드 메인
+ */
 @Entity
 @Table(name = "vendor_item_price", schema = "APP")
 @Getter
@@ -22,6 +26,12 @@ public class VendorItemPrice {
     @JoinColumn(name = "vendor_id", nullable = false)
     private Vendor vendor;
 
+    // 상품 정보
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "vendor_product_id")
+    private VendorProduct vendorProduct;
+
+    /** VendorProduct로 대체 -- 미사용 예정 */
     // 내 기준 카탈로그와 연결
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "catalog_id", nullable = false)
