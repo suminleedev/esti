@@ -9,18 +9,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Component
 public class AstdCrawler implements ProductImageCrawler {
-
-    private static final Pattern PRODUCT_LINK_PATTERN =
-            Pattern.compile(".*/main/product\\.do\\?proc_type=view&.*v_product=(\\d+).*");
 
     @Value("${app.crawler.astd.maker}")
     private String maker;
@@ -50,36 +44,29 @@ public class AstdCrawler implements ProductImageCrawler {
     }
 
     @Override
-    public List<String> collectProductUrls() throws Exception {
+    public List<String> collectProductUrls() {
+        return Collections.emptyList();
+    }
+
+    @Override
+    public Optional<CrawledProduct> crawlProduct(String productUrl) {
+        return Optional.empty();
+    }
+
+    @Override
+    public List<CrawledProduct> crawlAllProducts() throws Exception {
         Document doc = Jsoup.connect(categoryUrl)
                 .userAgent(userAgent)
                 .timeout(timeoutMs)
                 .get();
 
-        Set<String> urls = new LinkedHashSet<>();
+        List<CrawledProduct> results = new ArrayList<>();
 
-        for (Element a : doc.select("a[href]")) {
-            String absHref = a.absUrl("href");
-            if (absHref == null || absHref.isBlank()) {
-                continue;
-            }
-
-            Matcher m = PRODUCT_LINK_PATTERN.matcher(absHref);
-            if (m.matches()) {
-                urls.add(absHref);
-            }
+        for (Element item : doc.select("ul.list_wrap > li")) {
+            parser.parseFromListItem(item, maker, vendorCode, categoryUrl)
+                    .ifPresent(results::add);
         }
 
-        return new ArrayList<>(urls);
-    }
-
-    @Override
-    public Optional<CrawledProduct> crawlProduct(String productUrl) throws Exception {
-        Document doc = Jsoup.connect(productUrl)
-                .userAgent(userAgent)
-                .timeout(timeoutMs)
-                .get();
-
-        return parser.parse(productUrl, doc, maker, vendorCode);
+        return results;
     }
 }
