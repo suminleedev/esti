@@ -16,8 +16,7 @@ public class AstdParser {
     public Optional<CrawledProduct> parseFromListItem(
             Element item,
             String maker,
-            String vendorCode,
-            String pageUrl
+            String vendorCode
     ) {
         Element linkEl = item.selectFirst("a[href*='proc_type=view']");
         if (linkEl == null) {
