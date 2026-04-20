@@ -28,10 +28,12 @@ public class ImageDownloadService {
         }
 
         Path target = rootDir.resolve(fileName);
-        if (Files.exists(target)) {
-            fileName = UUID.randomUUID() + "_" + fileName;
-            target = rootDir.resolve(fileName);
-        }
+
+        /* 이미지 재크롤링 시 기존 파일 덮어쓰기 방식으로 변경 */
+//        if (Files.exists(target)) {
+//            fileName = UUID.randomUUID() + "_" + fileName;
+//            target = rootDir.resolve(fileName);
+//        }
 
         try (InputStream in = new URL(sourceUrl).openStream()) {
             Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
