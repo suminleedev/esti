@@ -34,11 +34,13 @@
 </div>
 </template>
 <script setup lang="ts">
+import {PropType} from "vue";
+
 defineProps({
   size: Number,
   page: Number,
   totalPages: Number,
-  pageNumbers: Array,
+  pageNumbers: Array as PropType<number[]>,
   blockSize: Number,
   totalElements: Number,
 })
