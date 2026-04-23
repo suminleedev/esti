@@ -70,7 +70,7 @@ public class DefaultProductSyncHandler implements ManufacturerProductSyncHandler
                     .orElseGet(() -> VendorProduct.builder()
                             .vendor(vip.getVendor())
                             .productCode(vip.getProposalItemCode())
-                            .representativeCode(vip.getProposalItemCode())
+                            .masterCode(vip.getProposalItemCode())
                             .detailCode(null)
                             .build());
 

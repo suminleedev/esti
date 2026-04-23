@@ -1,14 +1,14 @@
 package com.example.esti.service;
 
-import com.example.esti.entity.ProductCatalog;
 import com.example.esti.entity.Vendor;
 import com.example.esti.entity.VendorItemPrice;
+import com.example.esti.entity.VendorProduct;
 import com.example.esti.excel.VendorExcelParser;
 import com.example.esti.excel.VendorExcelParserFactory;
 import com.example.esti.excel.VendorExcelRow;
 import com.example.esti.progress.ImportProgressStore;
-import com.example.esti.repository.ProductCatalogRepository;
 import com.example.esti.repository.VendorItemPriceRepository;
+import com.example.esti.repository.VendorProductRepository;
 import com.example.esti.repository.VendorRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Async;
@@ -26,7 +26,7 @@ public class CatalogImportAsyncService {
 
     private final VendorExcelParserFactory parserFactory;
     private final VendorRepository vendorRepository;
-    private final ProductCatalogRepository catalogRepository;
+    private final VendorProductRepository vendorProductRepository;
     private final VendorItemPriceRepository vendorItemPriceRepository;
     private final ImportProgressStore progressStore;
 
@@ -64,10 +64,10 @@ public class CatalogImportAsyncService {
 
             int done = 0;
             for (VendorExcelRow row : rows) {
-                // 3) upsert 순서: catalog -> vendorItemPrice
+                // 3) upsert 순서: vendorProduct -> vendorItemPrice
                 // 기존 upsert 로직 실행
-                ProductCatalog catalog = upsertCatalog(row);
-                upsertVendorItemPrice(vendor, catalog, row);
+                VendorProduct product = upsertVendorProduct(vendor, row);
+                upsertVendorItemPrice(vendor, product, row);
 
                 done++;
 
@@ -91,81 +91,89 @@ public class CatalogImportAsyncService {
     }
 
 
-    private ProductCatalog upsertCatalog(VendorExcelRow row) {
-        ProductCatalog catalog = null;
+    private VendorProduct upsertVendorProduct(Vendor vendor, VendorExcelRow row) {
+        VendorProduct product = null;
 
-        String masterCode = trimToNull(row.masterCodeHint());
+        String productCode = trimToNull(row.productCodeHint());
         String name = trimToNull(row.productName());
         String categoryLarge = trimToNull(row.categoryLarge());
         String categorySmall = trimToNull(row.categorySmall());
 
-        // 1) masterCode 우선 조회
-        if (masterCode != null) {
-            List<ProductCatalog> byMasterCode = catalogRepository.findAllByMasterCode(masterCode);
+        // 1) productCode 우선 조회
+        if (productCode != null) {
+            List<VendorProduct> byProductCode = vendorProductRepository.findAllByProductCode(productCode);
 
-            if (byMasterCode.size() == 1) {
-                catalog = byMasterCode.get(0);
-            } else if (byMasterCode.size() > 1) {
+            if (byProductCode.size() == 1) {
+                product = byProductCode.get(0);
+            } else if (byProductCode.size() > 1) {
                 // 중복 데이터 존재
                 // 운영 중이면 로그 남기고 첫 번째 선택
                 // 더 엄격하게 하려면 예외 던져도 됨
                 System.err.printf(
-                        "[WARN] ProductCatalog masterCode 중복: masterCode=%s, count=%d%n",
-                        masterCode, byMasterCode.size()
+                        "[WARN] VendorProduct productCode 중복: productCode=%s, count=%d%n",
+                        productCode, byProductCode.size()
                 );
 
-                catalog = pickBestCatalog(byMasterCode, name, categoryLarge, categorySmall);
+                product = pickBestVendorProduct(byProductCode, name, categoryLarge, categorySmall);
             }
         }
 
-        // 2) masterCode로 못 찾았으면 이름 + 대/소분류 조회
-        if (catalog == null && name != null && categoryLarge != null && categorySmall != null) {
-            List<ProductCatalog> byNameCategory =
-                    catalogRepository.findAllByNameAndCategoryLargeAndCategorySmall(
+        // 2) productCode로 못 찾았으면 이름 + 대/소분류 조회
+        if (product == null && name != null && categoryLarge != null && categorySmall != null) {
+            List<VendorProduct> byNameCategory =
+                    vendorProductRepository.findAllByProductNameAndCategoryLargeAndCategorySmall(
                             name, categoryLarge, categorySmall
                     );
 
             if (byNameCategory.size() == 1) {
-                catalog = byNameCategory.get(0);
+                product = byNameCategory.get(0);
             } else if (byNameCategory.size() > 1) {
                 System.err.printf(
-                        "[WARN] ProductCatalog 이름/분류 중복: name=%s, large=%s, small=%s, count=%d%n",
+                        "[WARN] VendorProduct 이름/분류 중복: name=%s, large=%s, small=%s, count=%d%n",
                         name, categoryLarge, categorySmall, byNameCategory.size()
                 );
 
-                catalog = pickBestCatalog(byNameCategory, name, categoryLarge, categorySmall);
+                product = pickBestVendorProduct(byNameCategory, name, categoryLarge, categorySmall);
             }
         }
 
         // 3) 그래도 없으면 신규 생성
-        if (catalog == null) {
-            catalog = new ProductCatalog();
-            catalog.setMasterCode(masterCode);
+        if (product == null) {
+            product = new VendorProduct();
+            product.setProductCode(productCode);
         }
 
         // 4) 값 반영
-        catalog.setName(row.productName());
-        catalog.setCategoryLarge(row.categoryLarge());
-        catalog.setCategorySmall(row.categorySmall());
-        catalog.setItemType(row.priceType());
+        product.setVendor(vendor);
+        product.setProductName(row.productName());
+        product.setCategoryLarge(row.categoryLarge());
+        product.setCategorySmall(row.categorySmall());
+        product.setItemType(row.priceType());
 
-        // masterCode가 비어있던 기존 데이터에 새 코드가 들어온 경우 보완
-        if (isBlank(catalog.getMasterCode()) && masterCode != null) {
-            catalog.setMasterCode(masterCode);
+        // ASTD masterCode, detailCode 반영
+        if ("A".equals(vendor.getVendorCode()) && productCode != null) {
+            String[] codes = productCode.split("-", 2);
+            product.setMasterCode(codes[0].trim());
+            product.setDetailCode(codes.length > 1 && !codes[1].isBlank() ? codes[1].trim() : null);
         }
 
-        return catalogRepository.save(catalog);
+        // productCode가 비어있던 기존 데이터에 새 코드가 들어온 경우 보완
+        if (isBlank(product.getProductCode()) && productCode != null) {
+            product.setProductCode(productCode);
+        }
+
+        return vendorProductRepository.save(product);
     }
 
-    private VendorItemPrice upsertVendorItemPrice(Vendor vendor, ProductCatalog catalog, VendorExcelRow row) {
+    private void upsertVendorItemPrice(Vendor vendor, VendorProduct product, VendorExcelRow row) {
         VendorItemPrice vip = vendorItemPriceRepository
-                .findByVendorAndCatalogAndProposalItemCode(vendor, catalog, row.proposalItemCode())
+                .findByVendorAndVendorProductAndProposalItemCode(vendor, product, row.proposalItemCode())
                 .orElse(null);
 
         if (vip == null) {
             vip = new VendorItemPrice();
             vip.setVendor(vendor);
-            vip.setCatalog(catalog);
+            vip.setVendorProduct(product);
             vip.setProposalItemCode(row.proposalItemCode());
         }
 
@@ -173,7 +181,6 @@ public class CatalogImportAsyncService {
         vip.setSubItemCode(row.subItemCode());
         vip.setOldItemCode(row.oldItemCode());
         vip.setVendorItemName(row.vendorItemName());
-        vip.setVendorSpec(row.vendorSpec());
         vip.setRemark(row.remark());
 
         // 단가 null이면 0원 정책
@@ -182,31 +189,31 @@ public class CatalogImportAsyncService {
         vip.setPriceType(row.priceType());
         vip.setCurrency("KRW");
 
-        return vendorItemPriceRepository.save(vip);
+        vendorItemPriceRepository.save(vip);
     }
 
-    private ProductCatalog pickBestCatalog(
-            List<ProductCatalog> candidates,
+    private VendorProduct pickBestVendorProduct (
+            List<VendorProduct> candidates,
             String name,
             String categoryLarge,
             String categorySmall
     ) {
-        // 1순위: 이름/대분류/소분류 모두 일치 + masterCode 있는 것 우선
-        for (ProductCatalog c : candidates) {
-            if (equalsTrim(c.getName(), name)
-                    && equalsTrim(c.getCategoryLarge(), categoryLarge)
-                    && equalsTrim(c.getCategorySmall(), categorySmall)
-                    && !isBlank(c.getMasterCode())) {
-                return c;
+        // 1순위: 이름/대분류/소분류 모두 일치 + productCode 있는 것 우선
+        for (VendorProduct p : candidates) {
+            if (equalsTrim(p.getProductName(), name)
+                    && equalsTrim(p.getCategoryLarge(), categoryLarge)
+                    && equalsTrim(p.getCategorySmall(), categorySmall)
+                    && !isBlank(p.getProductCode())) {
+                return p;
             }
         }
 
         // 2순위: 이름/대분류/소분류 모두 일치하는 첫 번째
-        for (ProductCatalog c : candidates) {
-            if (equalsTrim(c.getName(), name)
-                    && equalsTrim(c.getCategoryLarge(), categoryLarge)
-                    && equalsTrim(c.getCategorySmall(), categorySmall)) {
-                return c;
+        for (VendorProduct p : candidates) {
+            if (equalsTrim(p.getProductName(), name)
+                    && equalsTrim(p.getCategoryLarge(), categoryLarge)
+                    && equalsTrim(p.getCategorySmall(), categorySmall)) {
+                return p;
             }
         }
 
