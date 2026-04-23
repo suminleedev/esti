@@ -28,14 +28,14 @@ public class VendorItemPrice {
 
     // 상품 정보
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "vendor_product_id")
+    @JoinColumn(name = "vendor_product_id", nullable = false)
     private VendorProduct vendorProduct;
 
     /** VendorProduct로 대체 -- 미사용 예정 */
     // 내 기준 카탈로그와 연결
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "catalog_id", nullable = false)
-    private ProductCatalog catalog;
+//    @ManyToOne(fetch = FetchType.LAZY)
+//    @JoinColumn(name = "catalog_id", nullable = false)
+//    private ProductCatalog catalog;
 
     // ===== 품번/코드 관련 =====
     @Column(length = 50)
@@ -53,9 +53,6 @@ public class VendorItemPrice {
     // ===== 표시용 이름/규격/비고 =====
     @Column(length = 200)
     private String vendorItemName;    // 공급사 기준 제품명
-
-    @Column(length = 200)
-    private String vendorSpec;        // 공급사 기준 규격/특징
 
     @Column(length = 500)
     private String remark;            // 비고 전체
