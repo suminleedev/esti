@@ -33,8 +33,8 @@ public class VendorProduct extends BaseEntity {
     private Vendor vendor;
 
     // 대표품번 (DB 비교 기준)
-    @Column(name = "representative_code", length = 100)
-    private String representativeCode;
+    @Column(name = "masterCode", length = 100)
+    private String masterCode;
 
     // 상세품번 (있으면 저장, 없으면 null 가능)
     @Column(name = "detail_code", length = 100)
@@ -44,14 +44,33 @@ public class VendorProduct extends BaseEntity {
     @Column(name = "product_code", length = 200)
     private String productCode;
 
-    // 상품명
+    // 상품명(세트명)
     @Column(name = "product_name", length = 500)
     private String productName;
 
-    // 컬렉션명
+    // 컬렉션명(시리즈명)
     @Column(name = "collection_name", length = 200)
     private String collectionName;
 
+    // 표준 규격 (공통 스펙)
+    @Column(length = 200)
+    private String specs;
+
+    // 설명
+    @Column(length = 500)
+    private String description;
+
+    // ===== 카테고리/타입 =====
+    @Column(length = 100)
+    private String categoryLarge;  // 대분류 (양변기, 세면기 등)
+
+    @Column(length = 100)
+    private String categorySmall;  // 소분류 (원피스양변기 등)
+
+    @Column(length = 20)
+    private String itemType;       // 'SET', 'PART' 등
+
+    // ===== 이미지 =====
     // 대표 이미지
     @Column(name = "image_url", length = 1000)
     private String imageUrl;
