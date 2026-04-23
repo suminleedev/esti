@@ -11,11 +11,8 @@ public interface VendorProductRepository extends JpaRepository<VendorProduct, Lo
 
     Optional<VendorProduct> findByVendorAndProductCode(Vendor vendor, String productCode);
 
-    List<VendorProduct> findByVendorAndRepresentativeCode(Vendor vendor, String representativeCode);
+    List<VendorProduct> findAllByProductCode(String productCode);
 
-    Optional<VendorProduct> findByVendorAndRepresentativeCodeAndDetailCode(
-            Vendor vendor,
-            String representativeCode,
-            String detailCode
-    );
+    List<VendorProduct> findAllByProductNameAndCategoryLargeAndCategorySmall(
+            String name, String categoryLarge, String categorySmall);
 }
