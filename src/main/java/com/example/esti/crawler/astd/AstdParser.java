@@ -39,7 +39,7 @@ public class AstdParser {
         Element tagEl = item.selectFirst("p.tag");
         String rawTagText = tagEl != null ? normalizeTagText(tagEl.html()) : null;
 
-        String productCode = extractRepresentativeProductCode(rawTagText).orElse(null);
+        String productCode = extractMasterProductCode(rawTagText).orElse(null);
 
         if (siteProductId == null && productCode == null && productName == null) {
             return Optional.empty();
@@ -59,7 +59,7 @@ public class AstdParser {
                 .build());
     }
 
-    private Optional<String> extractRepresentativeProductCode(String text) {
+    private Optional<String> extractMasterProductCode(String text) {
         if (text == null || text.isBlank()) {
             return Optional.empty();
         }
