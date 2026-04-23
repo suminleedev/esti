@@ -146,7 +146,7 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
         String matchedRawCode = getMatchedRawCode(vip, normalizeCode(crawled.getProductCode()));
         String normalizedMatchedCode = normalizeCode(matchedRawCode);
 
-        String repCode = extractAstdBaseCodeFromDb(normalizedMatchedCode);
+        String mstCode = extractAstdBaseCodeFromDb(normalizedMatchedCode);
         String detailCode = extractDetailCodeFromDb(normalizedMatchedCode);
 
         VendorProduct vendorProduct = vendorProductRepository
@@ -154,7 +154,7 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
                 .orElseGet(() -> VendorProduct.builder()
                         .vendor(vendor)
                         .productCode(normalizedMatchedCode)
-                        .representativeCode(repCode)
+                        .masterCode(mstCode)
                         .detailCode(detailCode)
                         .build());
 
