@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, watch, computed, onBeforeUnmount } from 'vue'
+import { BASE_URL } from '@/config/api'
 import axios from 'axios'
 
 import { usePagination } from "@/composables/usePagination"
@@ -408,7 +409,7 @@ onMounted(() => {
                   <td>
                     <img
                       v-if="p.imageUrl"
-                      :src="p.imageUrl"
+                      :src="`${BASE_URL}${p.imageUrl}`"
                       alt="상품 이미지"
                       style="max-width: 80px; max-height: 60px"
                     />
