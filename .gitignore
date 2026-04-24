@@ -38,3 +38,6 @@ node_modules/
 # ===== Derby =====
 /data/
 /derby.log
+
+.DS_Store
+uploads/
