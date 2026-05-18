@@ -340,14 +340,39 @@ cd esti
 
 ### 2. 백엔드 실행
 
+#### 방법 1. 개발 모드 실행
+
+##### Windows
+
+```bash
+mvnw.cmd spring-boot:run
+```
+
+##### Mac / Linux
+
 ```bash
 ./mvnw spring-boot:run
 ```
 
-또는
+#### 방법 2. Jar 빌드 후 실행
+
+##### 빌드
+
+###### Windows
+
+```bash
+mvnw.cmd clean package
+```
+
+###### Mac / Linux
 
 ```bash
 ./mvnw clean package
+```
+
+##### 실행
+
+```bash
 java -jar target/esti-0.0.1-SNAPSHOT.jar
 ```
 
