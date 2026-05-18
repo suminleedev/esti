@@ -12,7 +12,7 @@ import lombok.*;
         name = "vendor_product",
         schema = "APP",
         indexes = {
-                @Index(name = "idx_vendor_product_vendor_rep", columnList = "vendor_id, representative_code"),
+                @Index(name = "idx_vendor_product_vendor_master", columnList = "vendor_id, master_code"),
                 @Index(name = "idx_vendor_product_vendor_detail", columnList = "vendor_id, detail_code")
         }
 )
@@ -33,7 +33,7 @@ public class VendorProduct extends BaseEntity {
     private Vendor vendor;
 
     // 대표품번 (DB 비교 기준)
-    @Column(name = "masterCode", length = 100)
+    @Column(name = "master_code", length = 100)
     private String masterCode;
 
     // 상세품번 (있으면 저장, 없으면 null 가능)
