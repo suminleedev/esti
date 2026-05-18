@@ -65,6 +65,6 @@ public class Proposal extends BaseEntity {
 
     // 선택
     @Column(name = "deleted_by")        // 삭제자
-    private Long deletedBy;
+    private String deletedBy;
 }
 
