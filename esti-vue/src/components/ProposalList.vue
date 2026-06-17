@@ -256,7 +256,8 @@ function resetFilters () {
   filters.value = {
     keyword: '',
     apartmentType: '',
-    templateFilter: ''
+    templateFilter: '',
+    status: ''
   }
   resetToFirst()
   loadProposals()
