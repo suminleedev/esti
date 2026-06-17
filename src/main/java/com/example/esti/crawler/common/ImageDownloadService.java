@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
+import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,7 +36,10 @@ public class ImageDownloadService {
 //            target = rootDir.resolve(fileName);
 //        }
 
-        try (InputStream in = new URL(sourceUrl).openStream()) {
+        HttpURLConnection conn = (HttpURLConnection) new URL(sourceUrl).openConnection();
+        conn.setConnectTimeout(5_000);
+        conn.setReadTimeout(30_000);
+        try (InputStream in = conn.getInputStream()) {
             Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
         }
 

@@ -225,6 +225,8 @@ public class ProposalService {
             ProposalTemplate template = templateRepo.findById(req.getTemplateId())
                     .orElseThrow(() -> new RuntimeException("Template not found"));
             p.setTemplate(template);
+        } else {
+            p.setTemplate(null);
         }
 
         p.setProjectName(req.getProjectName());
@@ -407,7 +409,8 @@ public class ProposalService {
                 Sort.by(Sort.Direction.DESC, "id")
         );
 
-        Specification<Proposal> spec = ProposalSpecs.search(keyword, apartmentType, templateFilter, status);
+        Specification<Proposal> spec = ProposalSpecs.search(keyword, apartmentType, templateFilter, status)
+                .and(ProposalSpecs.notDeleted());
 
         return proposalRepo.findAll(spec, pageable).map(this::toResponse);
     }
