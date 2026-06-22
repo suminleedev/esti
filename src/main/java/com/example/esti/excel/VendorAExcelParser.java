@@ -5,13 +5,22 @@ import org.apache.poi.ss.usermodel.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * A사(아메리칸스탠다드) 단가표 파서 — 단일 시트.
+ *
+ * <p>A·B열 제외(D11): C(2)=소분류/세트명, D(3)=구성품명, E(4)=구품번, F(5)=신품번, G(6)=단가.
+ * 합계행(G만 있는 행)이 세트 경계이자 대표품목 가격이다.
+ * 그룹핑(D16): 직전 연속 부속 합이 합계와 "일치"하면 부속으로 연결, "불일치"면 대표품목(첫 행)만
+ * 합계가로 저장하고 {@code needsReview=true}, 나머지 행은 개별 제품으로 저장한다.
+ * 신품번(F) 없는 행(D8): 저장하되 제품명 뒤 "(신품번 없음)" 표기, 단가 0.
+ */
 @Component
 @RequiredArgsConstructor
 public class VendorAExcelParser implements VendorExcelParser {
@@ -21,29 +30,18 @@ public class VendorAExcelParser implements VendorExcelParser {
     @Override
     public String getVendorCode() { return "A"; }
 
-    /** 기존 parse 함수 -> InputStream 오버로드함수로 위임 */
     @Override
-    public List<VendorExcelRow> parse(MultipartFile file) {
-        try (InputStream is = file.getInputStream()) {
-            return parse(is); // InputStream 버전으로 위임
-        } catch (Exception e) {
-            throw wrap("A사 엑셀 파싱 중 오류", e);
-        }
-    }
-
-    /** 비동기/임시파일/테스트에서 재사용 가능한 InputStream 버전 */
-    public List<VendorExcelRow> parse(InputStream is) {
-        try (Workbook workbook = WorkbookFactory.create(is)) {
-            return parseWorkbook(workbook); // 실제 파싱 로직
-        } catch (Exception e) {
-            throw wrap("A사 엑셀 파싱 중 오류", e);
-        }
-    }
-
-    /** (선택) Path로도 바로 받을 수 있게 */
-    public List<VendorExcelRow> parse(java.nio.file.Path path) {
+    public List<VendorProductSet> parseSets(Path path) {
         try (InputStream is = java.nio.file.Files.newInputStream(path)) {
-            return parse(is);
+            return parseSets(is);
+        } catch (Exception e) {
+            throw wrap("A사 엑셀 파싱 중 오류", e);
+        }
+    }
+
+    public List<VendorProductSet> parseSets(InputStream is) {
+        try (Workbook workbook = WorkbookFactory.create(is)) {
+            return parseSetsWorkbook(workbook);
         } catch (Exception e) {
             throw wrap("A사 엑셀 파싱 중 오류", e);
         }
@@ -56,208 +54,160 @@ public class VendorAExcelParser implements VendorExcelParser {
         return new RuntimeException(msg + ": " + root.getClass().getName() + " - " + root.getMessage(), e);
     }
 
-//    public List<VendorExcelRow> parse(MultipartFile file) {
-    private List<VendorExcelRow> parseWorkbook(Workbook workbook) {
-        List<VendorExcelRow> result = new ArrayList<>();
+    private List<VendorProductSet> parseSetsWorkbook(Workbook workbook) {
+        List<VendorProductSet> result = new ArrayList<>();
+        Sheet sheet = workbook.getSheetAt(0);
 
-        Sheet sheet = workbook.getSheetAt(0); // A사 시트 0번이라고 가정
+        String currentLargeCategory = null;
+        String currentSmallCategory = null;
 
-        // ===== 현재 상태값 =====
-        String currentLargeCategory = null; // B열: 대분류(섹션 타이틀, 없을 때도 있음)
-        String currentSmallCategory = null; // C열: 소분류(예: 비데일체형양변기, 탱크리스양변기)
-        String currentSetName = null;       // C열: 세트명(예: 유로젠(단종))
+        List<VendorParsedItem> buffer = new ArrayList<>(); // 합계행 전까지 누적된 품목
 
-        // 세트(현재 소분류+세트명) 안에서 대표 코드(SET 합계 행 생성 시 코드 힌트로 사용)
-        String primaryOldCode = null;  // 첫 ITEM의 구품번(E열)
-        String primaryNewCode = null;  // 첫 ITEM의 모델명/신품번(F열)
-
-        // 상단 타이틀/공백/헤더가 섞여있을 수 있으므로 0행부터 돌되, 헤더는 감지하여 스킵
-        int firstDataRow = 0;
-
-        for (int rowIdx = firstDataRow; rowIdx <= sheet.getLastRowNum(); rowIdx++) {
+        for (int rowIdx = 0; rowIdx <= sheet.getLastRowNum(); rowIdx++) {
             Row row = sheet.getRow(rowIdx);
             if (row == null) continue;
 
-            // ===== 컬럼 매핑 (샘플 기준) =====
-            // B: 대분류 타이틀(섹션명)
-            // C: 소분류/세트명 (행 단위로 나뉘어 존재)
-            // D: 제품명(ITEM)
-            // E: 구품번
-            // F: 모델명(신품번)
-            // G: 단가/합계금액
-            String colB = getStringCell(row, 1);
+            // A(0)·B(1)열은 제외(D11)
             String colC = getStringCell(row, 2);
             String colD = getStringCell(row, 3);
             String colE = getStringCell(row, 4);
             String colF = getStringCell(row, 5);
             BigDecimal colG = getNumericCell(row, 6);
 
-            // 0) 완전 빈 줄이면 스킵
-            if (isBlank(colB) && isBlank(colC) && isBlank(colD)
-                    && isBlank(colE) && isBlank(colF) && colG == null) {
+            boolean cP = !isBlank(colC);
+            boolean dP = !isBlank(colD);
+            boolean eP = !isBlank(colE);
+            boolean fP = !isBlank(colF);
+            boolean gP = colG != null;
+            boolean dataP = dP || eP || fP || gP;
+
+            // 0) 완전 빈 줄
+            if (!cP && !dataP) continue;
+
+            // 1) 헤더 줄
+            if (isHeaderRowNoAB(colD, colE, colF)) continue;
+
+            // 2) 합계행: C/D/E/F 비고 G만 있음 → 세트 종료 + 가격 확정
+            if (!cP && !dP && !eP && !fP && gP) {
+                closeSetWithTotal(buffer, colG, currentLargeCategory, currentSmallCategory, result);
                 continue;
             }
 
-            // 1) 헤더 줄 스킵
-            if (isHeaderRow(colB, colC, colD, colE, colF)) {
-                continue;
-            }
-
-            // 2) "대분류 타이틀 행" 판별 (B에만 값 있고 나머지 비어있음)
-            boolean isLargeCategoryRow =
-                    !isBlank(colB) &&
-                            isBlank(colC) &&
-                            isBlank(colD) &&
-                            isBlank(colE) &&
-                            isBlank(colF) &&
-                            colG == null;
-
-            if (isLargeCategoryRow) {
-                currentLargeCategory = colB.trim();
-
-                // 새 대분류 시작 시 소분류/세트/대표코드 초기화
-                currentSmallCategory = null;
-                currentSetName = null;
-                primaryOldCode = null;
-                primaryNewCode = null;
-                continue;
-            }
-
-            // 3) C열 처리: "소분류 행" vs "세트명 행" 구분
-            //    - 소분류: 대분류 추론이 가능해야 함 (예: 비데일체형양변기 -> 비데)
-            //    - 세트명: 추론 불가한 단순 이름 (예: 유로젠(단종))
-            if (!isBlank(colC)) {
-                String cRaw = colC.trim();
-                String cNorm = normalizeNoSpace(cRaw);
-
-                String inferredLarge = inferLargeCategoryFromSmallCategory(cNorm);
-
-                if (!isBlank(inferredLarge)) {
-                    // ✅ 소분류 행
-                    currentSmallCategory = cNorm;       // 소분류는 공백 제거 형태로 저장(원하면 유지)
-                    currentLargeCategory = inferredLarge; // 대분류 누락 구간 보정
-                    currentSetName = null;                // 소분류가 바뀌면 보통 세트명이 새로 등장
-                    primaryOldCode = null;
-                    primaryNewCode = null;
-                } else {
-                    // ✅ 세트명 행
-                    currentSetName = cRaw;  // 세트명은 원문 유지(괄호/띄어쓰기 포함)
-                    primaryOldCode = null;
-                    primaryNewCode = null;
+            // 3) C 라벨 전용 행(C만 있고 데이터 없음): 소분류 또는 세트명
+            if (cP && !dataP) {
+                flushOrphans(buffer, currentLargeCategory, currentSmallCategory, result);
+                String cNorm = normalizeNoSpace(colC.trim());
+                String inferred = inferLargeCategoryFromSmallCategory(cNorm);
+                if (!isBlank(inferred)) {           // 소분류 행
+                    currentSmallCategory = cNorm;
+                    currentLargeCategory = inferred;
                 }
-
-                // C열 행은 라벨/제목 성격이므로 다음 행으로
+                // 세트명 전용 행(추론 불가)은 분류를 바꾸지 않음(현재는 별도 보관 안 함)
                 continue;
             }
 
-            // 4) ITEM 행 판별: 제품명(D) + 모델명(F)이 있으면 구성품(ITEM)으로 저장
-            boolean isItemRow = !isBlank(colD) && !isBlank(colF);
-            if (isItemRow) {
-                // 분류/세트명이 잡혀있어야 정확히 매핑 가능
-                if (isBlank(currentSmallCategory) || isBlank(currentSetName)) {
-                    logger.warn("[VendorA] ITEM row but smallCategory/setName is null. row={}, D={}, F={}, small={}, set={}",
-                            rowIdx, colD, colF, currentSmallCategory, currentSetName);
-                    continue;
-                }
-
-                String safeLargeCategory = !isBlank(currentLargeCategory)
-                        ? currentLargeCategory
-                        : inferLargeCategoryFromSmallCategory(currentSmallCategory);
-
-                if (isBlank(safeLargeCategory)) {
-                    logger.warn("[VendorA] ITEM row but largeCategory is null. row={}, small={}", rowIdx, currentSmallCategory);
-                    continue;
-                }
-
-                // ✅ ITEM DTO 생성
-                // - 대분류: safeLargeCategory
-                // - 소분류: currentSmallCategory
-                // - 제품명: D열
-                // - 모델명: F열
-                VendorExcelRow itemDto = new VendorExcelRow(
-                        "A",                   // vendorCode
-                        safeLargeCategory,      // categoryLarge (대분류)
-                        currentSmallCategory,   // categorySmall (소분류)
-                        colD.trim(),            // ✅ productName (제품명)
-                        colF.trim(),            // masterCodeHint (모델명)
-                        colF.trim(),            // proposalItemCode
-                        colF.trim(),            // mainItemCode
-                        null,                   // subItemCode
-                        isBlank(colE) ? null : colE.trim(), // oldItemCode
-                        colD.trim(),            // vendorItemName
-                        null,                   // vendorSpec
-                        null,                   // remark
-                        colG,                   // unitPrice (단가, 있을 수도/없을 수도)
-                        "ITEM"                  // priceType
-                );
-                result.add(itemDto);
-
-                // SET 대표코드(첫 ITEM 코드) 잡아두기
-                if (isBlank(primaryOldCode) && !isBlank(colE)) primaryOldCode = colE.trim();
-                if (isBlank(primaryNewCode)) primaryNewCode = colF.trim();
-
+            // 4) 세트 시작 행(C=세트명 + 데이터): 이전 잔여 정리 후 첫 품목으로 버퍼에 추가
+            if (cP && dataP) {
+                flushOrphans(buffer, currentLargeCategory, currentSmallCategory, result);
+                buffer.add(buildItem(colD, colE, colF, colG));
                 continue;
             }
 
-            // 5) 세트 합계 행 판별 (D/E/F 비어 있고 G에만 값이 있는 행)
-            boolean isSetTotalRow =
-                    isBlank(colD) &&
-                            isBlank(colE) &&
-                            isBlank(colF) &&
-                            colG != null;
-
-            if (isSetTotalRow) {
-                // SET 생성에 필요한 값 체크
-                if (isBlank(currentSmallCategory) || isBlank(currentSetName)) {
-                    logger.warn("[VendorA] SET total row but smallCategory/setName is null. row={}, small={}, set={}",
-                            rowIdx, currentSmallCategory, currentSetName);
-                    continue;
-                }
-
-                String safeLargeCategory = !isBlank(currentLargeCategory)
-                        ? currentLargeCategory
-                        : inferLargeCategoryFromSmallCategory(currentSmallCategory);
-
-                if (isBlank(safeLargeCategory)) {
-                    logger.warn("[VendorA] skip SET row because largeCategory is null. row={}, smallCategory={}",
-                            rowIdx, currentSmallCategory);
-                    continue;
-                }
-
-                String newCode = isBlank(primaryNewCode) ? null : primaryNewCode;
-                String oldCode = isBlank(primaryOldCode) ? null : primaryOldCode;
-
-                // ✅ SET DTO 생성
-                // - productName에는 "세트명" 저장 (요구사항)
-                VendorExcelRow setDto = new VendorExcelRow(
-                        "A",                   // vendorCode
-                        safeLargeCategory,      // categoryLarge (대분류)
-                        currentSmallCategory,   // categorySmall (소분류)
-                        currentSetName,         // ✅ productName (세트명)
-                        newCode,                // masterCodeHint (세트 대표 코드 힌트)
-                        newCode,                // proposalItemCode
-                        newCode,                // mainItemCode
-                        null,                   // subItemCode
-                        oldCode,                // oldItemCode
-                        currentSetName,         // vendorItemName (세트명)
-                        null,                   // vendorSpec
-                        null,                   // remark
-                        colG,                   // unitPrice (세트 합계금액)
-                        "SET"                   // priceType
-                );
-                result.add(setDto);
-
-                // 세트 종료 → 다음 세트를 위해 대표코드 초기화
-                primaryOldCode = null;
-                primaryNewCode = null;
-
-                continue;
+            // 5) 일반 품목 행(C 없음 + 데이터): 버퍼에 추가
+            if (!cP && dataP) {
+                buffer.add(buildItem(colD, colE, colF, colG));
             }
-
-            // 그 외 행은 현재 포맷에서 의미 없는 행일 가능성이 높아 스킵
         }
 
+        // EOF: 남은 잔여는 개별 제품으로
+        flushOrphans(buffer, currentLargeCategory, currentSmallCategory, result);
         return result;
+    }
+
+    /** 합계행 도달 시 세트 확정 (D16). */
+    private void closeSetWithTotal(List<VendorParsedItem> buffer, BigDecimal total,
+                                   String large, String small, List<VendorProductSet> out) {
+        if (buffer.isEmpty()) {
+            logger.warn("[VendorA] 합계행이지만 직전 품목 버퍼가 비어있음. total={}", total);
+            return;
+        }
+
+        int k = findTrailingRunStart(buffer, total);
+        if (k >= 0) {
+            // 일치: buffer[k..]가 세트, 그 앞(orphan)은 개별 제품
+            for (int i = 0; i < k; i++) emitStandalone(buffer.get(i), large, small, out);
+
+            VendorParsedItem main = withRelation(buffer.get(k), VendorParsedItem.RELATION_MAIN);
+            List<VendorParsedItem> parts = new ArrayList<>();
+            for (int i = k + 1; i < buffer.size(); i++) {
+                parts.add(withRelation(buffer.get(i), VendorParsedItem.RELATION_ACCESSORY));
+            }
+            out.add(new VendorProductSet("A", large, small, main, parts, total, false, null, false));
+        } else {
+            // 불일치: 대표품목(첫 행)만 합계가로 저장 + 검수 플래그, 나머지는 개별
+            VendorParsedItem main = withRelation(buffer.get(0), VendorParsedItem.RELATION_MAIN);
+            out.add(new VendorProductSet("A", large, small, main, new ArrayList<>(), total, false, null, true));
+            for (int i = 1; i < buffer.size(); i++) emitStandalone(buffer.get(i), large, small, out);
+            logger.warn("[VendorA] 합계≠부속합산 → 검수필요. total={}, bufferSize={}, main={}",
+                    total, buffer.size(), main.productName());
+        }
+        buffer.clear();
+    }
+
+    /** 끝에서부터 누적해 합계와 정확히 일치하는 "가장 짧은" 연속 구간의 시작 인덱스. 없으면 -1. */
+    private int findTrailingRunStart(List<VendorParsedItem> buffer, BigDecimal total) {
+        BigDecimal sum = BigDecimal.ZERO;
+        for (int j = buffer.size() - 1; j >= 0; j--) {
+            BigDecimal p = buffer.get(j).unitPrice();
+            sum = sum.add(p != null ? p : BigDecimal.ZERO);
+            int cmp = sum.compareTo(total);
+            if (cmp == 0) return j;
+            if (cmp > 0) return -1; // 초과하면 더 늘려도 일치 불가(가격 음수 없음)
+        }
+        return -1;
+    }
+
+    /** 버퍼의 모든 품목을 개별(독립) 제품으로 방출하고 버퍼 비움. */
+    private void flushOrphans(List<VendorParsedItem> buffer, String large, String small,
+                              List<VendorProductSet> out) {
+        for (VendorParsedItem it : buffer) emitStandalone(it, large, small, out);
+        buffer.clear();
+    }
+
+    private void emitStandalone(VendorParsedItem it, String large, String small,
+                                List<VendorProductSet> out) {
+        VendorParsedItem main = withRelation(it, VendorParsedItem.RELATION_MAIN);
+        out.add(new VendorProductSet("A", large, small, main, new ArrayList<>(),
+                it.unitPrice(), false, null, false));
+    }
+
+    private VendorParsedItem buildItem(String colD, String colE, String colF, BigDecimal colG) {
+        String code = isBlank(colF) ? null : colF.trim();
+        String oldCode = isBlank(colE) ? null : colE.trim();
+        BigDecimal price = (colG != null) ? colG : BigDecimal.ZERO;
+
+        String name;
+        if (!isBlank(colD)) name = colD.trim();
+        else if (code != null) name = code;
+        else if (oldCode != null) name = oldCode;
+        else name = "미상";
+
+        if (code == null) name = name + " (신품번 없음)"; // D8
+
+        return new VendorParsedItem(code, name, oldCode, null,
+                VendorParsedItem.RELATION_MAIN, price, null);
+    }
+
+    private VendorParsedItem withRelation(VendorParsedItem it, String relationType) {
+        return new VendorParsedItem(it.productCode(), it.productName(), it.oldItemCode(),
+                it.subItemCode(), relationType, it.unitPrice(), it.remark());
+    }
+
+    private boolean isHeaderRowNoAB(String colD, String colE, String colF) {
+        if ("제품명".equals(colD)) return true;
+        if (colE != null && colE.contains("구품번")) return true;
+        if (colF != null && colF.contains("신품번")) return true;
+        return false;
     }
 
     /**
@@ -292,13 +242,6 @@ public class VendorAExcelParser implements VendorExcelParser {
     private String normalizeNoSpace(String s) {
         if (isBlank(s)) return null;
         return s.replaceAll("\\s+", "").trim();
-    }
-
-    private boolean isHeaderRow(String colB, String colC, String colD, String colE, String colF) {
-        if ("제품명".equals(colB) || "제품명".equals(colD)) return true;
-        if ("구품번".equals(colE) || (colE != null && colE.contains("구품번"))) return true;
-        if ("신품번".equals(colF) || (colF != null && colF.contains("신품번"))) return true;
-        return false;
     }
 
     // ====== 공통 유틸 메서드들 ======

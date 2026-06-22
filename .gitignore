@@ -44,6 +44,9 @@ uploads/
 
 CLAUDE.md
 .env
+.mcp.json
 
 work-logs/
 scripts/
+
+docs/

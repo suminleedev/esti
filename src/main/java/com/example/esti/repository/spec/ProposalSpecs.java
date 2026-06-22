@@ -64,18 +64,23 @@ public class ProposalSpecs {
         return (root, query, cb) -> {
             if (status == null || status.isBlank()) return cb.conjunction();
 
-            // status가 String 컬럼이면 그대로
-            // ✅ 필드명 맞추기: status
-            return cb.equal(root.get("status"), status);
-
-            // 만약 enum이면:
-            // return cb.equal(root.get("status"), ProposalStatus.valueOf(status));
+            try {
+                Proposal.Status enumStatus = Proposal.Status.valueOf(status.trim().toUpperCase());
+                return cb.equal(root.get("status"), enumStatus);
+            } catch (IllegalArgumentException e) {
+                return cb.conjunction();
+            }
         };
+    }
+
+    /** deletedAt IS NULL (소프트 삭제 제외) */
+    public static Specification<Proposal> notDeleted() {
+        return (root, query, cb) -> cb.isNull(root.get("deletedAt"));
     }
 
     // =========================
     // ✅ 앞으로 조건 늘어날 때 여기부터 계속 추가
-    // 예: statusEq, dateBetween, managerLike, householdsGte ...
+    // 예: dateBetween, managerLike, householdsGte ...
     // =========================
 
 

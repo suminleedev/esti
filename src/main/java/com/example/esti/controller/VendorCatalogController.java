@@ -4,7 +4,6 @@ import com.example.esti.dto.VendorCatalogView;
 import com.example.esti.progress.ImportProgress;
 import com.example.esti.progress.ImportProgressStore;
 import com.example.esti.service.CatalogImportAsyncService;
-import com.example.esti.service.CatalogImportService;
 import com.example.esti.service.VendorCatalogQueryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -28,7 +27,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class VendorCatalogController {
 
-    private final CatalogImportService catalogImportService;
     private final VendorCatalogQueryService vendorCatalogQueryService;
     private final CatalogImportAsyncService catalogImportAsyncService;
     private final ImportProgressStore progressStore;
