@@ -43,3 +43,10 @@ node_modules/
 uploads/
 
 CLAUDE.md
+.env
+.mcp.json
+
+work-logs/
+scripts/
+
+docs/
