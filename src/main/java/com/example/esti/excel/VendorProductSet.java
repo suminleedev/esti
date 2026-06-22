@@ -24,5 +24,6 @@ public record VendorProductSet(
         List<VendorParsedItem> parts, // 부속품 목록 (없으면 빈 리스트)
         BigDecimal setPrice,          // 세트 합계가. 선택형이면 null
         boolean selectable,           // 선택형 세트(합계 미산정) 여부
-        String imageKey               // 임베디드 이미지 식별키/임시경로 (없으면 null) — P5에서 채움
+        String imageKey,              // 임베디드 이미지 식별키/임시경로 (없으면 null) — P5에서 채움
+        boolean needsReview           // 자동 그룹핑 실패(합계≠부속합산 등) → 검수 필요(D16)
 ) {}
