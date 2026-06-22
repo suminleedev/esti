@@ -10,6 +10,7 @@ import java.time.LocalDateTime;
 @Getter
 public abstract class BaseEntity {
 
+    @Setter
     @Column(updatable = false)
     private String createdBy;
 

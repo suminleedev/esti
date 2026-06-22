@@ -17,6 +17,9 @@ public interface VendorItemPriceRepository extends JpaRepository<VendorItemPrice
     Optional<VendorItemPrice> findByVendorAndVendorProductAndProposalItemCode(
             Vendor vendor, VendorProduct product, String proposalItemCode);
 
+    // 제안서 품번이 없는(신품번 없음) 항목의 멱등 upsert용
+    Optional<VendorItemPrice> findFirstByVendorAndVendorProduct(Vendor vendor, VendorProduct product);
+
     // VendorItemPrice.vendor.vendorCode 로 찾아오는 메서드
     List<VendorItemPrice> findByVendor_VendorCode(String vendorCode);
 
