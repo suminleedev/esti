@@ -46,8 +46,28 @@ public class VendorBExcelParser implements VendorExcelParser {
         return "B";
     }
 
-    /** 기존 parse 함수 -> InputStream 오버로드함수로 위임 */
+    /** P2: 저장 통일을 위해 VendorProductSet로 변환(어댑터). B사 본격 그룹핑은 P3/P4. */
     @Override
+    public List<VendorProductSet> parseSets(java.nio.file.Path path) {
+        List<VendorProductSet> sets = new ArrayList<>();
+        for (VendorExcelRow row : parse(path)) {
+            VendorParsedItem main = new VendorParsedItem(
+                    row.proposalItemCode(),
+                    row.productName(),
+                    row.oldItemCode(),
+                    row.subItemCode(),
+                    VendorParsedItem.RELATION_MAIN,
+                    row.unitPrice() != null ? row.unitPrice() : BigDecimal.ZERO,
+                    row.remark()
+            );
+            sets.add(new VendorProductSet(
+                    row.vendorCode(), row.categoryLarge(), row.categorySmall(),
+                    main, new ArrayList<>(), row.unitPrice(), false, null, false));
+        }
+        return sets;
+    }
+
+    /** 내부용: MultipartFile -> InputStream 위임 */
     public List<VendorExcelRow> parse(MultipartFile file) {
         try (InputStream is = file.getInputStream()) {
             return parse(is); // InputStream 버전으로 위임

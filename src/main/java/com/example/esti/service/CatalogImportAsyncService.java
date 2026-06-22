@@ -3,11 +3,14 @@ package com.example.esti.service;
 import com.example.esti.entity.Vendor;
 import com.example.esti.entity.VendorItemPrice;
 import com.example.esti.entity.VendorProduct;
+import com.example.esti.entity.VendorProductRelation;
 import com.example.esti.excel.VendorExcelParser;
 import com.example.esti.excel.VendorExcelParserFactory;
-import com.example.esti.excel.VendorExcelRow;
+import com.example.esti.excel.VendorParsedItem;
+import com.example.esti.excel.VendorProductSet;
 import com.example.esti.progress.ImportProgressStore;
 import com.example.esti.repository.VendorItemPriceRepository;
+import com.example.esti.repository.VendorProductRelationRepository;
 import com.example.esti.repository.VendorProductRepository;
 import com.example.esti.repository.VendorRepository;
 import lombok.RequiredArgsConstructor;
@@ -24,10 +27,14 @@ import java.util.List;
 @RequiredArgsConstructor
 public class CatalogImportAsyncService {
 
+    private static final String ITEM_TYPE_SET = "SET";
+    private static final String ITEM_TYPE_PART = "PART";
+
     private final VendorExcelParserFactory parserFactory;
     private final VendorRepository vendorRepository;
     private final VendorProductRepository vendorProductRepository;
     private final VendorItemPriceRepository vendorItemPriceRepository;
+    private final VendorProductRelationRepository vendorProductRelationRepository;
     private final ImportProgressStore progressStore;
 
     private static String resolveVendorName(String vendorCode) {
@@ -44,7 +51,7 @@ public class CatalogImportAsyncService {
         try {
             progressStore.update(jobId, 30, "엑셀 파싱 중...");
 
-            // 1) vendor 조회/생성 (동기 서비스와 동일)
+            // 1) vendor 조회/생성
             Vendor vendor = vendorRepository.findByVendorCode(vendorCode)
                     .orElseGet(() -> {
                         Vendor v = new Vendor();
@@ -53,29 +60,20 @@ public class CatalogImportAsyncService {
                         return vendorRepository.save(v);
                     });
 
-            // 2) Path로 파싱
+            // 2) 파싱 (대표품목 + 부속 묶음)
             VendorExcelParser parser = parserFactory.getParser(vendorCode);
+            List<VendorProductSet> sets = parser.parseSets(savedPath);
 
-            // 핵심: MultipartFile이 아니라 Path로 파싱
-            List<VendorExcelRow> rows = parser.parse(savedPath);
-
-            int total = Math.max(rows.size(), 1);
+            int total = Math.max(sets.size(), 1);
             progressStore.update(jobId, 35, "DB 저장 시작");
 
             int done = 0;
-            for (VendorExcelRow row : rows) {
-                // 3) upsert 순서: vendorProduct -> vendorItemPrice
-                // 기존 upsert 로직 실행
-                VendorProduct product = upsertVendorProduct(vendor, row);
-                upsertVendorItemPrice(vendor, product, row);
-
+            for (VendorProductSet set : sets) {
+                saveSet(vendor, set);
                 done++;
 
-                // 35~99 구간 진행률
                 int percent = 35 + (int) Math.floor(done * 64.0 / total);
                 if (percent > 99) percent = 99;
-
-                // 너무 잦은 업데이트 방지(10건마다/마지막)
                 if (done % 10 == 0 || done == total) {
                     progressStore.update(jobId, percent, "DB 저장 중...");
                 }
@@ -90,74 +88,74 @@ public class CatalogImportAsyncService {
         }
     }
 
+    /** VendorProductSet 한 건을 대표품목 + 부속 + 관계 + 가격으로 적재. */
+    private void saveSet(Vendor vendor, VendorProductSet set) {
+        VendorParsedItem mainItem = set.main();
+        if (mainItem == null) return;
 
-    private VendorProduct upsertVendorProduct(Vendor vendor, VendorExcelRow row) {
+        // 대표품목
+        VendorProduct mainProduct = upsertVendorProduct(
+                vendor, mainItem.productCode(), mainItem.productName(),
+                set.categoryLarge(), set.categorySmall(), ITEM_TYPE_SET);
+
+        // 대표품목 가격: 세트가 우선, 없으면 본품 단가
+        BigDecimal mainPrice = set.setPrice() != null ? set.setPrice() : mainItem.unitPrice();
+        String mainRemark = mainItem.remark();
+        if (set.needsReview()) {
+            mainRemark = appendRemark(mainRemark, "검수필요");
+        }
+        upsertPrice(vendor, mainProduct, mainItem, mainPrice, mainRemark, ITEM_TYPE_SET);
+
+        // 부속품 + 관계
+        for (VendorParsedItem part : set.parts()) {
+            VendorProduct partProduct = upsertVendorProduct(
+                    vendor, part.productCode(), part.productName(),
+                    set.categoryLarge(), set.categorySmall(), ITEM_TYPE_PART);
+
+            upsertPrice(vendor, partProduct, part, part.unitPrice(), part.remark(), ITEM_TYPE_PART);
+            upsertRelation(mainProduct, partProduct, part.relationType());
+        }
+    }
+
+    private VendorProduct upsertVendorProduct(Vendor vendor, String productCode, String productName,
+                                              String categoryLarge, String categorySmall, String itemType) {
         VendorProduct product = null;
 
-        String productCode = trimToNull(row.productCodeHint());
-        String name = trimToNull(row.productName());
-        String categoryLarge = trimToNull(row.categoryLarge());
-        String categorySmall = trimToNull(row.categorySmall());
-
-        // 1) productCode 우선 조회
+        // 1) 코드(품번) 우선 — 공급사 범위 내
         if (productCode != null) {
-            List<VendorProduct> byProductCode = vendorProductRepository.findAllByProductCode(productCode);
-
-            if (byProductCode.size() == 1) {
-                product = byProductCode.get(0);
-            } else if (byProductCode.size() > 1) {
-                // 중복 데이터 존재
-                // 운영 중이면 로그 남기고 첫 번째 선택
-                // 더 엄격하게 하려면 예외 던져도 됨
-                System.err.printf(
-                        "[WARN] VendorProduct productCode 중복: productCode=%s, count=%d%n",
-                        productCode, byProductCode.size()
-                );
-
-                product = pickBestVendorProduct(byProductCode, name, categoryLarge, categorySmall);
-            }
+            product = vendorProductRepository.findByVendorAndProductCode(vendor, productCode).orElse(null);
         }
 
-        // 2) productCode로 못 찾았으면 이름 + 대/소분류 조회
-        if (product == null && name != null && categoryLarge != null && categorySmall != null) {
-            List<VendorProduct> byNameCategory =
-                    vendorProductRepository.findAllByProductNameAndCategoryLargeAndCategorySmall(
-                            name, categoryLarge, categorySmall
-                    );
-
-            if (byNameCategory.size() == 1) {
-                product = byNameCategory.get(0);
-            } else if (byNameCategory.size() > 1) {
-                System.err.printf(
-                        "[WARN] VendorProduct 이름/분류 중복: name=%s, large=%s, small=%s, count=%d%n",
-                        name, categoryLarge, categorySmall, byNameCategory.size()
-                );
-
-                product = pickBestVendorProduct(byNameCategory, name, categoryLarge, categorySmall);
-            }
+        // 2) 코드가 없으면 이름 + 대/소분류 (같은 공급사 한정)
+        if (product == null && productName != null && categoryLarge != null && categorySmall != null) {
+            product = vendorProductRepository
+                    .findAllByProductNameAndCategoryLargeAndCategorySmall(productName, categoryLarge, categorySmall)
+                    .stream()
+                    .filter(p -> p.getVendor() != null
+                            && vendor.getVendorCode().equals(p.getVendor().getVendorCode()))
+                    .findFirst()
+                    .orElse(null);
         }
 
-        // 3) 그래도 없으면 신규 생성
+        // 3) 신규
         if (product == null) {
             product = new VendorProduct();
             product.setProductCode(productCode);
         }
 
-        // 4) 값 반영
         product.setVendor(vendor);
-        product.setProductName(row.productName());
-        product.setCategoryLarge(row.categoryLarge());
-        product.setCategorySmall(row.categorySmall());
-        product.setItemType(row.priceType());
+        product.setProductName(productName);
+        product.setCategoryLarge(categoryLarge);
+        product.setCategorySmall(categorySmall);
+        product.setItemType(itemType);
 
-        // ASTD masterCode, detailCode 반영
+        // A사 masterCode/detailCode 분리
         if ("A".equals(vendor.getVendorCode()) && productCode != null) {
             String[] codes = productCode.split("-", 2);
             product.setMasterCode(codes[0].trim());
             product.setDetailCode(codes.length > 1 && !codes[1].isBlank() ? codes[1].trim() : null);
         }
 
-        // productCode가 비어있던 기존 데이터에 새 코드가 들어온 경우 보완
         if (isBlank(product.getProductCode()) && productCode != null) {
             product.setProductCode(productCode);
         }
@@ -165,77 +163,66 @@ public class CatalogImportAsyncService {
         return vendorProductRepository.save(product);
     }
 
-    private void upsertVendorItemPrice(Vendor vendor, VendorProduct product, VendorExcelRow row) {
-        VendorItemPrice vip = vendorItemPriceRepository
-                .findByVendorAndVendorProductAndProposalItemCode(vendor, product, row.proposalItemCode())
-                .orElse(null);
+    private void upsertPrice(Vendor vendor, VendorProduct product, VendorParsedItem item,
+                            BigDecimal price, String remark, String priceType) {
+        String proposalCode = item.productCode();
+
+        VendorItemPrice vip;
+        if (proposalCode != null) {
+            vip = vendorItemPriceRepository
+                    .findByVendorAndVendorProductAndProposalItemCode(vendor, product, proposalCode)
+                    .orElse(null);
+        } else {
+            // 신품번 없는 항목: product 기준으로 기존 가격 재사용(멱등)
+            vip = vendorItemPriceRepository.findFirstByVendorAndVendorProduct(vendor, product).orElse(null);
+        }
 
         if (vip == null) {
             vip = new VendorItemPrice();
             vip.setVendor(vendor);
             vip.setVendorProduct(product);
-            vip.setProposalItemCode(row.proposalItemCode());
+            vip.setProposalItemCode(proposalCode);
         }
 
-        vip.setMainItemCode(row.mainItemCode());
-        vip.setSubItemCode(row.subItemCode());
-        vip.setOldItemCode(row.oldItemCode());
-        vip.setVendorItemName(row.vendorItemName());
-        vip.setRemark(row.remark());
-
-        // 단가 null이면 0원 정책
-        vip.setUnitPrice(row.unitPrice() != null ? row.unitPrice() : BigDecimal.ZERO);
-
-        vip.setPriceType(row.priceType());
+        vip.setMainItemCode(item.productCode());
+        vip.setSubItemCode(item.subItemCode());
+        vip.setOldItemCode(item.oldItemCode());
+        vip.setVendorItemName(item.productName());
+        vip.setRemark(remark);
+        vip.setUnitPrice(price != null ? price : BigDecimal.ZERO);
+        vip.setPriceType(priceType);
         vip.setCurrency("KRW");
 
         vendorItemPriceRepository.save(vip);
     }
 
-    private VendorProduct pickBestVendorProduct (
-            List<VendorProduct> candidates,
-            String name,
-            String categoryLarge,
-            String categorySmall
-    ) {
-        // 1순위: 이름/대분류/소분류 모두 일치 + productCode 있는 것 우선
-        for (VendorProduct p : candidates) {
-            if (equalsTrim(p.getProductName(), name)
-                    && equalsTrim(p.getCategoryLarge(), categoryLarge)
-                    && equalsTrim(p.getCategorySmall(), categorySmall)
-                    && !isBlank(p.getProductCode())) {
-                return p;
-            }
-        }
+    private void upsertRelation(VendorProduct source, VendorProduct target, String relationType) {
+        if (source.getId() != null && source.getId().equals(target.getId())) return; // 자기 참조 방지
 
-        // 2순위: 이름/대분류/소분류 모두 일치하는 첫 번째
-        for (VendorProduct p : candidates) {
-            if (equalsTrim(p.getProductName(), name)
-                    && equalsTrim(p.getCategoryLarge(), categoryLarge)
-                    && equalsTrim(p.getCategorySmall(), categorySmall)) {
-                return p;
-            }
-        }
+        String rel = (relationType != null && !relationType.isBlank())
+                ? relationType
+                : VendorParsedItem.RELATION_ACCESSORY;
 
-        // 3순위: 그냥 첫 번째
-        return candidates.get(0);
+        boolean exists = vendorProductRelationRepository
+                .findBySourceProductAndTargetProductAndRelationType(source, target, rel)
+                .isPresent();
+        if (exists) return;
+
+        vendorProductRelationRepository.save(
+                VendorProductRelation.builder()
+                        .sourceProduct(source)
+                        .targetProduct(target)
+                        .relationType(rel)
+                        .build()
+        );
     }
 
-    private String trimToNull(String s) {
-        if (s == null) return null;
-        String t = s.trim();
-        return t.isEmpty() ? null : t;
+    private String appendRemark(String remark, String tag) {
+        if (remark == null || remark.isBlank()) return tag;
+        return remark + " | " + tag;
     }
 
     private boolean isBlank(String s) {
         return s == null || s.trim().isEmpty();
-    }
-
-    private boolean equalsTrim(String a, String b) {
-        String aa = trimToNull(a);
-        String bb = trimToNull(b);
-        if (aa == null && bb == null) return true;
-        if (aa == null || bb == null) return false;
-        return aa.equals(bb);
     }
 }
