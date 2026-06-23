@@ -49,6 +49,29 @@ public class ImageDownloadService {
         );
     }
 
+    /**
+     * 메모리상의 이미지 바이트를 저장한다(엑셀 임베디드 이미지용). 동일 파일명은 덮어쓰기 → 재업로드 멱등.
+     *
+     * @param preferredFileName 확장자 없는 파일명 힌트(예: 품번)
+     * @param ext               확장자(jpeg/png 등, null이면 jpg)
+     */
+    public DownloadResult saveBytes(byte[] data, String preferredFileName, String ext) throws Exception {
+        Files.createDirectories(rootDir);
+
+        String fileName = sanitize(preferredFileName);
+        if (!hasImageExtension(fileName)) {
+            fileName += "." + (ext == null || ext.isBlank() ? "jpg" : ext);
+        }
+
+        Path target = rootDir.resolve(fileName);
+        Files.write(target, data);
+
+        return new DownloadResult(
+                target.toAbsolutePath().toString(),
+                "/uploads/product-images/" + fileName
+        );
+    }
+
     private boolean hasImageExtension(String fileName) {
         String lower = fileName.toLowerCase();
         return lower.endsWith(".jpg")
