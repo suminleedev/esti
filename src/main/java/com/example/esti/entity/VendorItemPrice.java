@@ -64,6 +64,11 @@ public class VendorItemPrice {
     @Column(length = 20)
     private String priceType;         // 'SET', 'PART' 등
 
+    // 가격 기준(출처 시트). 같은 품번이 시트별로 다른 가격일 때 분리 보존용.
+    // 대표품목(SET)에만 설정, 공유 부속(PART)은 null(코드당 1건 유지, D13).
+    @Column(name = "price_basis", length = 100)
+    private String priceBasis;
+
     @Column(length = 10)
     private String currency;          // KRW 등
 }
