@@ -17,6 +17,14 @@ public interface VendorItemPriceRepository extends JpaRepository<VendorItemPrice
     Optional<VendorItemPrice> findByVendorAndVendorProductAndProposalItemCode(
             Vendor vendor, VendorProduct product, String proposalItemCode);
 
+    // 가격 기준(시트)까지 포함 — 같은 품번이 시트별로 다른 가격(대표품목)일 때 분리 upsert
+    Optional<VendorItemPrice> findByVendorAndVendorProductAndProposalItemCodeAndPriceBasis(
+            Vendor vendor, VendorProduct product, String proposalItemCode, String priceBasis);
+
+    // 가격 기준이 없는(공유 부속 등, D13) 경우의 upsert
+    Optional<VendorItemPrice> findByVendorAndVendorProductAndProposalItemCodeAndPriceBasisIsNull(
+            Vendor vendor, VendorProduct product, String proposalItemCode);
+
     // 제안서 품번이 없는(신품번 없음) 항목의 멱등 upsert용
     Optional<VendorItemPrice> findFirstByVendorAndVendorProduct(Vendor vendor, VendorProduct product);
 

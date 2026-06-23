@@ -132,7 +132,8 @@ public class CatalogImportAsyncService {
         if (set.needsReview()) {
             mainRemark = appendRemark(mainRemark, "검수필요");
         }
-        upsertPrice(vendor, mainProduct, mainItem, mainPrice, mainRemark, ITEM_TYPE_SET);
+        // 대표품목 가격은 시트(categoryLarge)별로 분리 보존 — 같은 품번이 시트마다 다른 가격일 때 충돌 방지
+        upsertPrice(vendor, mainProduct, mainItem, mainPrice, mainRemark, ITEM_TYPE_SET, set.categoryLarge());
 
         // 부속품 + 관계
         for (VendorParsedItem part : set.parts()) {
@@ -140,7 +141,8 @@ public class CatalogImportAsyncService {
                     vendor, part.productCode(), part.productName(),
                     set.categoryLarge(), set.categorySmall(), ITEM_TYPE_PART);
 
-            upsertPrice(vendor, partProduct, part, part.unitPrice(), part.remark(), ITEM_TYPE_PART);
+            // 공유 부속 단가는 코드당 1건 유지(D13) → priceBasis=null
+            upsertPrice(vendor, partProduct, part, part.unitPrice(), part.remark(), ITEM_TYPE_PART, null);
             upsertRelation(mainProduct, partProduct, part.relationType());
         }
     }
@@ -219,14 +221,22 @@ public class CatalogImportAsyncService {
         return vendorProductRepository.save(product);
     }
 
+    /**
+     * 가격 upsert. {@code priceBasis}(출처 시트)가 있으면 (vendor,product,proposalCode,basis) 기준으로
+     * 분리 저장 — 같은 품번이 시트별로 다른 가격(대표품목)일 때 충돌 방지. basis=null이면 코드당 1건(D13).
+     */
     private void upsertPrice(Vendor vendor, VendorProduct product, VendorParsedItem item,
-                            BigDecimal price, String remark, String priceType) {
+                            BigDecimal price, String remark, String priceType, String priceBasis) {
         String proposalCode = item.productCode();
 
         VendorItemPrice vip;
-        if (proposalCode != null) {
+        if (proposalCode != null && priceBasis != null) {
             vip = vendorItemPriceRepository
-                    .findByVendorAndVendorProductAndProposalItemCode(vendor, product, proposalCode)
+                    .findByVendorAndVendorProductAndProposalItemCodeAndPriceBasis(vendor, product, proposalCode, priceBasis)
+                    .orElse(null);
+        } else if (proposalCode != null) {
+            vip = vendorItemPriceRepository
+                    .findByVendorAndVendorProductAndProposalItemCodeAndPriceBasisIsNull(vendor, product, proposalCode)
                     .orElse(null);
         } else {
             // 신품번 없는 항목: product 기준으로 기존 가격 재사용(멱등)
@@ -247,6 +257,7 @@ public class CatalogImportAsyncService {
         vip.setRemark(remark);
         vip.setUnitPrice(price != null ? price : BigDecimal.ZERO);
         vip.setPriceType(priceType);
+        vip.setPriceBasis(priceBasis);
         vip.setCurrency("KRW");
 
         vendorItemPriceRepository.save(vip);
