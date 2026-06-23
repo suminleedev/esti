@@ -158,7 +158,7 @@ public class VendorBExcelParser implements VendorExcelParser {
                     VendorParsedItem.RELATION_MAIN, setPrice != null ? setPrice : BigDecimal.ZERO, null);
 
             out.add(new VendorProductSet("B", c.sheetName, kind, main, parts,
-                    setPrice, selectable, null, false));
+                    setPrice, selectable, imageKeyOf(r), false));
         }
     }
 
@@ -203,7 +203,7 @@ public class VendorBExcelParser implements VendorExcelParser {
             VendorParsedItem main = new VendorParsedItem(repCode, repCode,
                     null, null, VendorParsedItem.RELATION_MAIN, setPrice, null);
             out.add(new VendorProductSet("B", c.sheetName, null, main, parts,
-                    setPrice, false, null, false));
+                    setPrice, false, imageKeyOf(r), false));
         }
     }
 
@@ -224,6 +224,7 @@ public class VendorBExcelParser implements VendorExcelParser {
         List<VendorParsedItem> parts = null;
         String catSmall = null;
         BigDecimal setPrice = null;
+        int mainRow = -1;
 
         for (int r = headerRow + 1; r <= last; r++) {
             String a = stripSpace(str(c, r, 0)); // 품목(세트 경계)
@@ -232,20 +233,21 @@ public class VendorBExcelParser implements VendorExcelParser {
 
             boolean isSetStart = a != null; // A=품목 있으면 새 세트
             if (isSetStart) {
-                flushSet(out, mainItem, parts, catSmall, setPrice, c.sheetName);
+                flushSet(out, mainItem, parts, catSmall, setPrice, c.sheetName, mainRow);
                 catSmall = stripSpace(str(c, r, 1)); // B=세부분류
                 setPrice = nz(dec(c, r, 7));          // H=대리점가(세트 합계)
                 String name = orDefault(stripSpace(str(c, r, 5)), code); // F=품명
                 mainItem = new VendorParsedItem(code, join(catSmall, name), null, null,
                         VendorParsedItem.RELATION_MAIN, setPrice, null);
                 parts = new ArrayList<>();
+                mainRow = r;
             } else if (parts != null) {
                 String name = orDefault(stripSpace(str(c, r, 5)), code);
                 BigDecimal price = nz(dec(c, r, 7));
                 parts.add(new VendorParsedItem(code, name, null, null, name, price, null));
             }
         }
-        flushSet(out, mainItem, parts, catSmall, setPrice, c.sheetName);
+        flushSet(out, mainItem, parts, catSmall, setPrice, c.sheetName, mainRow);
     }
 
     // ============================================================
@@ -275,13 +277,14 @@ public class VendorBExcelParser implements VendorExcelParser {
         List<VendorParsedItem> parts = null;
         String catSmall = null;
         BigDecimal setPrice = null;
+        int mainRow = -1;
 
         for (int r = headerRow + 1; r <= last; r++) {
             String subtotalCell = stripSpace(str(c, r, subtotalLabelCol));
             if (subtotalCell != null && subtotalCell.replace(" ", "").contains("소계")) {
                 setPrice = nz(dec(c, r, priceCol));
-                flushSet(out, mainItem, parts, catSmall, setPrice, c.sheetName);
-                mainItem = null; parts = null; catSmall = null; setPrice = null;
+                flushSet(out, mainItem, parts, catSmall, setPrice, c.sheetName, mainRow);
+                mainItem = null; parts = null; catSmall = null; setPrice = null; mainRow = -1;
                 continue;
             }
 
@@ -292,31 +295,32 @@ public class VendorBExcelParser implements VendorExcelParser {
             String a = stripSpace(str(c, r, 0)); // 세트 경계
 
             if (a != null) { // 대표행
-                flushSet(out, mainItem, parts, catSmall, setPrice, c.sheetName);
+                flushSet(out, mainItem, parts, catSmall, setPrice, c.sheetName, mainRow);
                 catSmall = name;
                 mainItem = new VendorParsedItem(code, name, null, null,
                         VendorParsedItem.RELATION_MAIN, price, null);
                 parts = new ArrayList<>();
                 setPrice = null;
+                mainRow = r;
             } else if (parts != null) { // 부속행
                 parts.add(new VendorParsedItem(code, name, null, null,
                         VendorParsedItem.RELATION_ACCESSORY, price, null));
             }
         }
-        flushSet(out, mainItem, parts, catSmall, setPrice, c.sheetName);
+        flushSet(out, mainItem, parts, catSmall, setPrice, c.sheetName, mainRow);
     }
 
     /** 누적된 세트 1건을 결과에 추가. setPrice 없으면 본품 단가 사용. */
     private void flushSet(List<VendorProductSet> out, VendorParsedItem mainItem,
                           List<VendorParsedItem> parts, String catSmall,
-                          BigDecimal setPrice, String sheetName) {
+                          BigDecimal setPrice, String sheetName, int mainRow) {
         if (mainItem == null) return;
         BigDecimal price = setPrice != null ? setPrice : mainItem.unitPrice();
         VendorParsedItem main = new VendorParsedItem(mainItem.productCode(), mainItem.productName(),
                 mainItem.oldItemCode(), mainItem.subItemCode(), VendorParsedItem.RELATION_MAIN,
                 price, mainItem.remark());
         out.add(new VendorProductSet("B", sheetName, catSmall, main,
-                parts != null ? parts : new ArrayList<>(), price, false, null, false));
+                parts != null ? parts : new ArrayList<>(), price, false, imageKeyOf(mainRow), false));
     }
 
     // ============================================================
@@ -346,8 +350,13 @@ public class VendorBExcelParser implements VendorExcelParser {
             VendorParsedItem main = new VendorParsedItem(code, displayName, null, null,
                     VendorParsedItem.RELATION_MAIN, nz(price), remark);
             out.add(new VendorProductSet("B", c.sheetName, name, main,
-                    new ArrayList<>(), nz(price), false, null, false));
+                    new ArrayList<>(), nz(price), false, imageKeyOf(r), false));
         }
+    }
+
+    /** 임베디드 이미지 매칭 키 = 대표품목의 0-based 행 인덱스(없으면 null). 시트는 categoryLarge로 식별. */
+    private String imageKeyOf(int row) {
+        return row >= 0 ? String.valueOf(row) : null;
     }
 
     /**

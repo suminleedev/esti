@@ -4,6 +4,9 @@ import com.example.esti.entity.Vendor;
 import com.example.esti.entity.VendorItemPrice;
 import com.example.esti.entity.VendorProduct;
 import com.example.esti.entity.VendorProductRelation;
+import com.example.esti.crawler.common.ImageDownloadService;
+import com.example.esti.excel.ExcelImageExtractor;
+import com.example.esti.excel.ExcelImageExtractor.ExtractedImage;
 import com.example.esti.excel.VendorExcelParser;
 import com.example.esti.excel.VendorExcelParserFactory;
 import com.example.esti.excel.VendorParsedItem;
@@ -22,6 +25,7 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -36,6 +40,8 @@ public class CatalogImportAsyncService {
     private final VendorItemPriceRepository vendorItemPriceRepository;
     private final VendorProductRelationRepository vendorProductRelationRepository;
     private final ImportProgressStore progressStore;
+    private final ExcelImageExtractor imageExtractor;
+    private final ImageDownloadService imageDownloadService;
 
     private static String resolveVendorName(String vendorCode) {
         return switch (vendorCode) {
@@ -84,12 +90,15 @@ public class CatalogImportAsyncService {
         VendorExcelParser parser = parserFactory.getParser(vendorCode);
         List<VendorProductSet> sets = parser.parseSets(savedPath);
 
+        // 2-1) 임베디드 이미지 추출 (시트 → 행 → 이미지). 없으면 빈 맵 (D15)
+        Map<String, Map<Integer, ExtractedImage>> images = imageExtractor.extract(savedPath);
+
         int total = Math.max(sets.size(), 1);
         if (jobId != null) progressStore.update(jobId, 35, "DB 저장 시작");
 
         int done = 0;
         for (VendorProductSet set : sets) {
-            saveSet(vendor, set);
+            saveSet(vendor, set, images);
             done++;
 
             if (jobId != null) {
@@ -104,7 +113,8 @@ public class CatalogImportAsyncService {
     }
 
     /** VendorProductSet 한 건을 대표품목 + 부속 + 관계 + 가격으로 적재. */
-    private void saveSet(Vendor vendor, VendorProductSet set) {
+    private void saveSet(Vendor vendor, VendorProductSet set,
+                         Map<String, Map<Integer, ExtractedImage>> images) {
         VendorParsedItem mainItem = set.main();
         if (mainItem == null) return;
 
@@ -112,6 +122,9 @@ public class CatalogImportAsyncService {
         VendorProduct mainProduct = upsertVendorProduct(
                 vendor, mainItem.productCode(), mainItem.productName(),
                 set.categoryLarge(), set.categorySmall(), ITEM_TYPE_SET);
+
+        // 임베디드 이미지 연결 (D15) — 대표품목 행에 앵커된 그림
+        applyImage(mainProduct, set, images);
 
         // 대표품목 가격: 세트가 우선, 없으면 본품 단가
         BigDecimal mainPrice = set.setPrice() != null ? set.setPrice() : mainItem.unitPrice();
@@ -129,6 +142,33 @@ public class CatalogImportAsyncService {
 
             upsertPrice(vendor, partProduct, part, part.unitPrice(), part.remark(), ITEM_TYPE_PART);
             upsertRelation(mainProduct, partProduct, part.relationType());
+        }
+    }
+
+    /** 대표품목 행에 앵커된 임베디드 이미지를 저장하고 imageUrl을 연결(D15). 없으면 무시. */
+    private void applyImage(VendorProduct mainProduct, VendorProductSet set,
+                            Map<String, Map<Integer, ExtractedImage>> images) {
+        if (set.imageKey() == null || images == null || images.isEmpty()) return;
+
+        Map<Integer, ExtractedImage> byRow = images.get(set.categoryLarge());
+        if (byRow == null) return;
+
+        int row;
+        try { row = Integer.parseInt(set.imageKey()); }
+        catch (NumberFormatException e) { return; }
+
+        ExtractedImage img = byRow.get(row);
+        if (img == null || img.data() == null || img.data().length == 0) return;
+
+        try {
+            String hint = (mainProduct.getVendor().getVendorCode() + "_"
+                    + (mainProduct.getProductCode() != null ? mainProduct.getProductCode() : "row" + row));
+            ImageDownloadService.DownloadResult res = imageDownloadService.saveBytes(img.data(), hint, img.ext());
+            mainProduct.setImageUrl(res.relativePath());
+            vendorProductRepository.save(mainProduct);
+        } catch (Exception e) {
+            // 이미지 실패는 적재 전체를 막지 않는다(경고만)
+            // (로깅은 상위 경고 로그 정책에 따름)
         }
     }
 
