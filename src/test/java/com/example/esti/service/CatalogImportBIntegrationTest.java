@@ -70,6 +70,18 @@ class CatalogImportBIntegrationTest {
         assertThat(mc921.getImageUrl()).as("MC921 이미지 연결")
                 .isNotNull().startsWith("/uploads/product-images/");
 
+        // 코드 충돌 분리(P6): G-0110이 수전금구(수입,31000)·국산부속(소계,54400) 두 가격으로 분리 보존
+        VendorProduct g0110 = productRepository.findByVendorAndProductCode(b, "G-0110")
+                .orElseThrow(() -> new AssertionError("G-0110 미적재"));
+        assertThat(priceRepository
+                .findByVendorAndVendorProductAndProposalItemCodeAndPriceBasis(b, g0110, "G-0110", "수전금구"))
+                .as("수입 부속 기준 대리점가").get()
+                .satisfies(p -> assertThat(p.getUnitPrice()).isEqualByComparingTo(new BigDecimal("31000")));
+        assertThat(priceRepository
+                .findByVendorAndVendorProductAndProposalItemCodeAndPriceBasis(b, g0110, "G-0110", "수전금구(국산 부속 기준)"))
+                .as("국산 부속 기준 소계").get()
+                .satisfies(p -> assertThat(p.getUnitPrice()).isEqualByComparingTo(new BigDecimal("54400")));
+
         // 3) 재업로드 → 멱등(행 수 불변)
         int sets2 = service.importVendorCatalog("B", SAMPLE);
         assertThat(sets2).isEqualTo(sets1);
