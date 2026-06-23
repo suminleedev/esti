@@ -27,7 +27,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 @TestPropertySource(properties = {
         "spring.datasource.url=jdbc:derby:memory:p4test;create=true",
         "spring.jpa.hibernate.ddl-auto=create-drop",
-        "spring.jpa.show-sql=false"
+        "spring.jpa.show-sql=false",
+        // 테스트는 임시 디렉터리에 이미지 저장(실제 ./uploads 오염 방지)
+        "app.crawler.image-dir=target/test-product-images"
 })
 class CatalogImportBIntegrationTest {
 
@@ -64,6 +66,9 @@ class CatalogImportBIntegrationTest {
         assertThat(priceRepository.findByVendorAndVendorProductAndProposalItemCode(b, mc921, "MC921"))
                 .get()
                 .satisfies(p -> assertThat(p.getUnitPrice()).isEqualByComparingTo(new BigDecimal("77200")));
+        // 임베디드 이미지 연결(D15)
+        assertThat(mc921.getImageUrl()).as("MC921 이미지 연결")
+                .isNotNull().startsWith("/uploads/product-images/");
 
         // 3) 재업로드 → 멱등(행 수 불변)
         int sets2 = service.importVendorCatalog("B", SAMPLE);
