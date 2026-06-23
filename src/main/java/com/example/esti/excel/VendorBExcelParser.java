@@ -1,677 +1,477 @@
 package com.example.esti.excel;
 
-import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
 import java.math.BigDecimal;
-import java.util.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
- * B사 단가표 엑셀 파서 (시트별 헤더 흔들림 + 중간 헤더 스킵 + 코드 50자 방어 + 단가 파싱 강화)
+ * B사(이누스) 단가표 파서 — 멀티 시트. 시트명으로 4개 양식 패밀리를 판별해 전용 파서로 분기한다(P3).
  *
- * ** 반영된 개선사항(로그 결과 기준)
- * 1) 시트마다 '단가/계/합계/금액/가격' 헤더명이 달라도 TOTAL_PRICE로 최대한 인식하도록 alias 확장
- * 2) '計/계' 단독 헤더도 TOTAL_PRICE로 인정 (기존 조건이 너무 빡세서 전부 0원 되는 문제 방지)
- * 3) 단가 셀 값이 "1,000원", "1234(VAT별도)", " - " 처럼 문자열이 섞여도 숫자만 추출해 파싱
- * 4) 중간에 반복 헤더/구분 행이 데이터로 들어오는 문제 스킵
- * 5) 품번(코드) 컬럼은 괄호 설명 제거 + 50자 컷으로 VARCHAR(50) truncation 방지
- * 6) 단가 없으면 0원 정책 유지
+ * <ul>
+ *   <li><b>슬롯 2행형</b>(양변기 / 소변기,수채 / 세면기): 제품코드행 + 대리점가행 한 쌍.
+ *       헤더의 슬롯 라벨(G~M)을 동적 인식해 도기=MAIN, 나머지=슬롯 라벨 relation(D9).
+ *       計 컬럼이 있으면 세트가, 세면기는 計 없음 → 선택형 세트(D10).</li>
+ *   <li><b>갈라시아 4행형</b>: 제품코드행 + 대리점가행 + 합계행 + 소비자단가행. 슬롯 E=도기, F=부속.</li>
+ *   <li><b>소계 세트형</b>(악세사리 / 수전금구(국산 부속 기준) / 수전 부속(세트)):
+ *       대표행 + 부속행들 + (소계행). 대표품목 + 부속 + 합계.</li>
+ *   <li><b>단일행형</b>(비데,기타 / 수전금구): 1행 = 독립 제품. 부속 없음. 대리점가(G)만 채택(D7).
+ *       시트 내 서브테이블이 여러 개면 헤더를 반복 탐지.</li>
+ * </ul>
+ *
+ * 가격 없는 행은 스킵하지 않고 단가 0 + 제품명 뒤 "(가격없음)" 표기(D8).
  */
 @Component
-@RequiredArgsConstructor
 public class VendorBExcelParser implements VendorExcelParser {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(VendorBExcelParser.class);
+    private static final Logger logger = LoggerFactory.getLogger(VendorBExcelParser.class);
 
-    // 내부 표준 컬럼 키
-    private static final String COL_CATEGORY_SMALL = "CATEGORY_SMALL"; // 품종/품목/소분류
-    private static final String COL_PRODUCT_CODE   = "PRODUCT_CODE";   // 품번(코드)
-    private static final String COL_SUB_CODE       = "SUB_CODE";       // KS 품번 등
-    private static final String COL_TOTAL_PRICE    = "TOTAL_PRICE";    // 計/계/합계/총계/금액/단가/가격 등
-    private static final String COL_REMARK         = "REMARK";         // 비고/규격/특징
-
-    // 헤더 탐색 범위(상단 몇 행까지 헤더 후보로 볼지)
-    private static final int HEADER_SCAN_MAX_ROWS = 40;
-
-    // 코드(품번) 컬럼 DB 길이(@Column length=50)
     private static final int CODE_MAX_LEN = 50;
+    private static final int SLOT_FIRST_COL = 6; // G열부터 슬롯 후보
 
     @Override
-    public String getVendorCode() {
-        return "B";
-    }
+    public String getVendorCode() { return "B"; }
 
-    /** P2: 저장 통일을 위해 VendorProductSet로 변환(어댑터). B사 본격 그룹핑은 P3/P4. */
     @Override
-    public List<VendorProductSet> parseSets(java.nio.file.Path path) {
-        List<VendorProductSet> sets = new ArrayList<>();
-        for (VendorExcelRow row : parse(path)) {
-            VendorParsedItem main = new VendorParsedItem(
-                    row.proposalItemCode(),
-                    row.productName(),
-                    row.oldItemCode(),
-                    row.subItemCode(),
-                    VendorParsedItem.RELATION_MAIN,
-                    row.unitPrice() != null ? row.unitPrice() : BigDecimal.ZERO,
-                    row.remark()
-            );
-            sets.add(new VendorProductSet(
-                    row.vendorCode(), row.categoryLarge(), row.categorySmall(),
-                    main, new ArrayList<>(), row.unitPrice(), false, null, false));
-        }
-        return sets;
-    }
+    public List<VendorProductSet> parseSets(Path path) {
+        try (InputStream is = Files.newInputStream(path);
+             Workbook wb = WorkbookFactory.create(is)) {
+            FormulaEvaluator ev = wb.getCreationHelper().createFormulaEvaluator();
+            DataFormatter fmt = new DataFormatter();
 
-    /** 내부용: MultipartFile -> InputStream 위임 */
-    public List<VendorExcelRow> parse(MultipartFile file) {
-        try (InputStream is = file.getInputStream()) {
-            return parse(is); // InputStream 버전으로 위임
+            List<VendorProductSet> result = new ArrayList<>();
+            for (int i = 0; i < wb.getNumberOfSheets(); i++) {
+                Sheet sheet = wb.getSheetAt(i);
+                if (sheet == null) continue;
+                String name = sheet.getSheetName();
+                Ctx ctx = new Ctx(sheet, fmt, ev, name);
+
+                switch (family(name)) {
+                    case SLOT       -> parseSlotSheet(ctx, result);
+                    case GALAXIA    -> parseGalaxiaSheet(ctx, result);
+                    case SET_TOTAL  -> parseHeaderTotalSetSheet(ctx, result);
+                    case SET_SUBTOTAL -> parseSubtotalSetSheet(ctx, result);
+                    case SINGLE     -> parseSingleRowSheet(ctx, result);
+                }
+            }
+            return result;
         } catch (Exception e) {
             throw wrap("B사 엑셀 파싱 중 오류", e);
         }
     }
 
-    /** 비동기/임시파일/테스트에서 재사용 가능한 InputStream 버전 */
-    public List<VendorExcelRow> parse(InputStream is) {
-        try (Workbook workbook = WorkbookFactory.create(is)) {
-            return parseWorkbook(workbook); // 실제 파싱 로직
-        } catch (Exception e) {
-            throw wrap("B사 엑셀 파싱 중 오류", e);
+    // ============================================================
+    // 패밀리 판별
+    // ============================================================
+
+    private enum Family { SLOT, GALAXIA, SET_TOTAL, SET_SUBTOTAL, SINGLE }
+
+    private Family family(String sheetName) {
+        String n = sheetName.replaceAll("\\s", "");
+        if (n.equals("양변기") || n.contains("소변기") || n.equals("세면기")) return Family.SLOT;
+        if (n.contains("갈라시아")) return Family.GALAXIA;
+        if (n.contains("악세사리") || n.contains("악세서리")) return Family.SET_TOTAL;
+        if (n.contains("국산부속") || n.contains("수전부속")) return Family.SET_SUBTOTAL;
+        return Family.SINGLE; // 비데,기타 / 수전금구 등
+    }
+
+    // ============================================================
+    // (A) 슬롯 2행형 — 양변기 / 소변기,수채 / 세면기
+    // ============================================================
+
+    private void parseSlotSheet(Ctx c, List<VendorProductSet> out) {
+        int headerRow = findRow(c, r -> "구분".equals(str(c, r, 0))
+                && "품종".equals(str(c, r, 1)) && "품번".equals(str(c, r, 2)));
+        if (headerRow < 0) {
+            logger.warn("[B][{}] 슬롯 헤더(구분/품종/품번) 미발견 → 스킵", c.sheetName);
+            return;
+        }
+
+        // 헤더에서 슬롯/計 컬럼 동적 인식
+        Map<Integer, String> slots = new LinkedHashMap<>();
+        int totalCol = -1;
+        short lastCell = c.sheet.getRow(headerRow).getLastCellNum();
+        for (int col = SLOT_FIRST_COL; col < lastCell; col++) {
+            String label = stripSpace(str(c, headerRow, col));
+            if (label == null) continue;
+            if (isTotalLabel(label)) { totalCol = col; continue; }
+            if (isSkipSlotLabel(label)) continue;
+            slots.put(col, label);
+        }
+        boolean selectable = (totalCol < 0); // 計 없음 → 세면기 선택형(D10)
+
+        int last = c.sheet.getLastRowNum();
+        for (int r = headerRow + 1; r <= last; r++) {
+            if (!"제품코드".equals(str(c, r, 5))) continue; // 제품코드행만 세트 시작
+
+            int priceRow = -1;
+            for (int k = r + 1; k <= Math.min(r + 3, last); k++) {
+                if ("대리점가".equals(str(c, k, 5))) { priceRow = k; break; }
+                if ("제품코드".equals(str(c, k, 5))) break; // 다음 제품행 만나면 중단
+            }
+
+            String repCode = normalizeCode(str(c, r, 2)); // C=품번(대표)
+            if (repCode == null) continue;
+            String kind = stripSpace(str(c, r, 1));        // B=품종
+            String ksCode = normalizeCode(str(c, r, 4));   // E=KS품번
+
+            List<VendorParsedItem> parts = new ArrayList<>();
+            BigDecimal partSum = BigDecimal.ZERO;
+            for (Map.Entry<Integer, String> slot : slots.entrySet()) {
+                int col = slot.getKey();
+                String slotLabel = slot.getValue();
+                String partCode = normalizeCode(str(c, r, col));
+                if (partCode == null) continue;
+                BigDecimal partPrice = priceRow < 0 ? null : dec(c, priceRow, col);
+                if (partPrice == null) partPrice = BigDecimal.ZERO;
+                partSum = partSum.add(partPrice);
+
+                String relation = slotLabel.startsWith("도기")
+                        ? VendorParsedItem.RELATION_MAIN : slotLabel;
+                parts.add(new VendorParsedItem(partCode, slotLabel, null, null,
+                        relation, partPrice, null));
+            }
+
+            BigDecimal setPrice = null;
+            if (!selectable && priceRow >= 0 && totalCol >= 0) {
+                setPrice = dec(c, priceRow, totalCol);
+                if (setPrice != null && partSum.compareTo(setPrice) != 0) {
+                    logger.warn("[B][{}] 計≠부속합 (rep={}, 計={}, 합={})",
+                            c.sheetName, repCode, setPrice, partSum);
+                }
+            }
+
+            String repName = join(kind, repCode);
+            if (selectable) repName = repName + " (부속 선택형)";        // D10
+            else if (setPrice == null) repName = repName + " (가격없음)"; // D8
+
+            VendorParsedItem main = new VendorParsedItem(repCode, repName, null, ksCode,
+                    VendorParsedItem.RELATION_MAIN, setPrice != null ? setPrice : BigDecimal.ZERO, null);
+
+            out.add(new VendorProductSet("B", c.sheetName, kind, main, parts,
+                    setPrice, selectable, null, false));
         }
     }
 
-    /** (선택) Path로도 바로 받을 수 있게 */
-    public List<VendorExcelRow> parse(java.nio.file.Path path) {
-        try (InputStream is = java.nio.file.Files.newInputStream(path)) {
-            return parse(is);
-        } catch (Exception e) {
-            throw wrap("B사 엑셀 파싱 중 오류", e);
+    // ============================================================
+    // (B) 갈라시아 4행형
+    // ============================================================
+
+    private void parseGalaxiaSheet(Ctx c, List<VendorProductSet> out) {
+        int headerRow = findRow(c, r -> "구분".equals(str(c, r, 0)) && "품번".equals(str(c, r, 1)));
+        if (headerRow < 0) {
+            logger.warn("[B][{}] 갈라시아 헤더(구분/품번) 미발견 → 스킵", c.sheetName);
+            return;
+        }
+        // 슬롯: E(4)=도기, F(5)=부속 (헤더 라벨 사용)
+        String slotEName = orDefault(stripSpace(str(c, headerRow, 4)), "도기");
+        String slotFName = orDefault(stripSpace(str(c, headerRow, 5)), "부속");
+
+        int last = c.sheet.getLastRowNum();
+        for (int r = headerRow + 1; r <= last; r++) {
+            if (!"제품코드".equals(str(c, r, 3))) continue; // D=제품코드행
+
+            String repCode = normalizeCode(str(c, r, 1)); // B=품번(대표)
+            if (repCode == null) continue;
+            String dogiCode = normalizeCode(str(c, r, 4));
+            String partCode = normalizeCode(str(c, r, 5));
+
+            // 다음 행 = 대리점가(D=대리점가), E/F=단가
+            int priceRow = -1;
+            for (int k = r + 1; k <= Math.min(r + 2, last); k++) {
+                if ("대리점가".equals(str(c, k, 3))) { priceRow = k; break; }
+            }
+            BigDecimal dogiPrice = priceRow < 0 ? BigDecimal.ZERO : nz(dec(c, priceRow, 4));
+            BigDecimal partPrice = priceRow < 0 ? BigDecimal.ZERO : nz(dec(c, priceRow, 5));
+
+            List<VendorParsedItem> parts = new ArrayList<>();
+            if (dogiCode != null) parts.add(new VendorParsedItem(dogiCode, slotEName, null, null,
+                    VendorParsedItem.RELATION_MAIN, dogiPrice, null));
+            if (partCode != null) parts.add(new VendorParsedItem(partCode, slotFName, null, null,
+                    slotFName, partPrice, null));
+
+            BigDecimal setPrice = dogiPrice.add(partPrice);
+            VendorParsedItem main = new VendorParsedItem(repCode, repCode,
+                    null, null, VendorParsedItem.RELATION_MAIN, setPrice, null);
+            out.add(new VendorProductSet("B", c.sheetName, null, main, parts,
+                    setPrice, false, null, false));
         }
     }
 
-    /** 예외처리 함수 */
+    // ============================================================
+    // (C-1) 소계 세트형 — 헤더행이 곧 세트 합계 (악세사리)
+    //   대표행(A=품목 있음, D=품번, H=대리점가) + 부속행들(A 없음, F=품명, H=가)
+    // ============================================================
+
+    private void parseHeaderTotalSetSheet(Ctx c, List<VendorProductSet> out) {
+        int headerRow = findRow(c, r -> "품번".equals(noSpace(str(c, r, 3)))
+                && containsPrice(str(c, r, 7)));
+        if (headerRow < 0) {
+            logger.warn("[B][{}] 악세사리 헤더 미발견 → 스킵", c.sheetName);
+            return;
+        }
+        int last = c.sheet.getLastRowNum();
+        VendorParsedItem mainItem = null;
+        List<VendorParsedItem> parts = null;
+        String catSmall = null;
+        BigDecimal setPrice = null;
+
+        for (int r = headerRow + 1; r <= last; r++) {
+            String a = stripSpace(str(c, r, 0)); // 품목(세트 경계)
+            String code = normalizeCode(str(c, r, 3)); // D=품번
+            if (code == null) continue;
+
+            boolean isSetStart = a != null; // A=품목 있으면 새 세트
+            if (isSetStart) {
+                flushSet(out, mainItem, parts, catSmall, setPrice, c.sheetName);
+                catSmall = stripSpace(str(c, r, 1)); // B=세부분류
+                setPrice = nz(dec(c, r, 7));          // H=대리점가(세트 합계)
+                String name = orDefault(stripSpace(str(c, r, 5)), code); // F=품명
+                mainItem = new VendorParsedItem(code, join(catSmall, name), null, null,
+                        VendorParsedItem.RELATION_MAIN, setPrice, null);
+                parts = new ArrayList<>();
+            } else if (parts != null) {
+                String name = orDefault(stripSpace(str(c, r, 5)), code);
+                BigDecimal price = nz(dec(c, r, 7));
+                parts.add(new VendorParsedItem(code, name, null, null, name, price, null));
+            }
+        }
+        flushSet(out, mainItem, parts, catSmall, setPrice, c.sheetName);
+    }
+
+    // ============================================================
+    // (C-2) 소계 세트형 — 소계행으로 세트 종료 (국산 부속 기준 / 수전 부속(세트))
+    //   대표행(A 있음) + 부속행(A 없음) + 소계행(C/B="소계")
+    //   국산부속: code=C(2), name=B(1), price=G(6) | 수전부속: code=B(1), name=A/B, price=F(5)
+    // ============================================================
+
+    private void parseSubtotalSetSheet(Ctx c, List<VendorProductSet> out) {
+        boolean korParts = c.sheetName.replaceAll("\\s", "").contains("국산부속");
+        int codeCol  = korParts ? 2 : 1; // 국산:C품번 / 수전부속:B품번
+        int nameCol  = korParts ? 1 : 0; // 국산:B품명 / 수전부속:A품명
+        int priceCol = korParts ? 6 : 5; // 국산:G단가 / 수전부속:F단가
+        int subtotalLabelCol = korParts ? 2 : 2; // "소계"는 C열
+
+        int headerRow = findRow(c, r -> {
+            String a = noSpace(str(c, r, 0));
+            return a != null && (a.contains("품목") || a.contains("품명"));
+        });
+        if (headerRow < 0) {
+            logger.warn("[B][{}] 소계세트 헤더 미발견 → 스킵", c.sheetName);
+            return;
+        }
+
+        int last = c.sheet.getLastRowNum();
+        VendorParsedItem mainItem = null;
+        List<VendorParsedItem> parts = null;
+        String catSmall = null;
+        BigDecimal setPrice = null;
+
+        for (int r = headerRow + 1; r <= last; r++) {
+            String subtotalCell = stripSpace(str(c, r, subtotalLabelCol));
+            if (subtotalCell != null && subtotalCell.replace(" ", "").contains("소계")) {
+                setPrice = nz(dec(c, r, priceCol));
+                flushSet(out, mainItem, parts, catSmall, setPrice, c.sheetName);
+                mainItem = null; parts = null; catSmall = null; setPrice = null;
+                continue;
+            }
+
+            String code = normalizeCode(str(c, r, codeCol));
+            if (code == null) continue;
+            String name = orDefault(stripSpace(str(c, r, nameCol)), code);
+            BigDecimal price = nz(dec(c, r, priceCol));
+            String a = stripSpace(str(c, r, 0)); // 세트 경계
+
+            if (a != null) { // 대표행
+                flushSet(out, mainItem, parts, catSmall, setPrice, c.sheetName);
+                catSmall = name;
+                mainItem = new VendorParsedItem(code, name, null, null,
+                        VendorParsedItem.RELATION_MAIN, price, null);
+                parts = new ArrayList<>();
+                setPrice = null;
+            } else if (parts != null) { // 부속행
+                parts.add(new VendorParsedItem(code, name, null, null,
+                        VendorParsedItem.RELATION_ACCESSORY, price, null));
+            }
+        }
+        flushSet(out, mainItem, parts, catSmall, setPrice, c.sheetName);
+    }
+
+    /** 누적된 세트 1건을 결과에 추가. setPrice 없으면 본품 단가 사용. */
+    private void flushSet(List<VendorProductSet> out, VendorParsedItem mainItem,
+                          List<VendorParsedItem> parts, String catSmall,
+                          BigDecimal setPrice, String sheetName) {
+        if (mainItem == null) return;
+        BigDecimal price = setPrice != null ? setPrice : mainItem.unitPrice();
+        VendorParsedItem main = new VendorParsedItem(mainItem.productCode(), mainItem.productName(),
+                mainItem.oldItemCode(), mainItem.subItemCode(), VendorParsedItem.RELATION_MAIN,
+                price, mainItem.remark());
+        out.add(new VendorProductSet("B", sheetName, catSmall, main,
+                parts != null ? parts : new ArrayList<>(), price, false, null, false));
+    }
+
+    // ============================================================
+    // (D) 단일행형 — 비데,기타 / 수전금구 (서브테이블 다수 가능)
+    // ============================================================
+
+    private void parseSingleRowSheet(Ctx c, List<VendorProductSet> out) {
+        int last = c.sheet.getLastRowNum();
+        ColMap cm = null;
+
+        for (int r = 0; r <= last; r++) {
+            ColMap detected = detectSingleHeader(c, r);
+            if (detected != null) { cm = detected; continue; } // 헤더행이면 갱신
+            if (cm == null) continue;
+
+            String code = normalizeCode(str(c, r, cm.codeCol));
+            if (code == null) continue;
+            if (isHeaderLikeCode(code)) continue;
+
+            String name = cm.nameCol >= 0 ? stripSpace(str(c, r, cm.nameCol)) : null;
+            BigDecimal price = cm.priceCol >= 0 ? dec(c, r, cm.priceCol) : null;
+            String remark = cm.remarkCol >= 0 ? stripSpace(str(c, r, cm.remarkCol)) : null;
+
+            String displayName = join(name, code);
+            if (price == null) displayName = displayName + " (가격없음)"; // D8
+
+            VendorParsedItem main = new VendorParsedItem(code, displayName, null, null,
+                    VendorParsedItem.RELATION_MAIN, nz(price), remark);
+            out.add(new VendorProductSet("B", c.sheetName, name, main,
+                    new ArrayList<>(), nz(price), false, null, false));
+        }
+    }
+
+    /**
+     * 단일행 시트의 헤더행 탐지(품번 + 대리점가 동시 존재). 헤더면 ColMap, 아니면 null.
+     * 수전금구처럼 헤더가 두 줄로 쪼개진 경우를 위해 현재 행 + 윗행을 컬럼별로 병합해서 읽는다.
+     */
+    private ColMap detectSingleHeader(Ctx c, int r) {
+        short lastCell = c.sheet.getRow(r) == null ? 0 : c.sheet.getRow(r).getLastCellNum();
+        int codeCol = -1, nameCol = -1, priceCol = -1, remarkCol = -1;
+        boolean hasCode = false, hasPrice = false;
+
+        for (int col = 0; col < lastCell; col++) {
+            String h = noSpace(str(c, r, col));
+            if (h == null && r > 0) h = noSpace(str(c, r - 1, col)); // 윗행 병합
+            if (h == null) continue;
+            if (h.equals("품번") && codeCol < 0) { codeCol = col; hasCode = true; }
+            else if ((h.equals("품종") || h.equals("품목")) && nameCol < 0) nameCol = col;
+            else if (h.contains("대리점가") && priceCol < 0) { priceCol = col; hasPrice = true; }
+            else if (h.contains("비고") && remarkCol < 0) remarkCol = col;
+        }
+        if (!(hasCode && hasPrice)) return null;
+        return new ColMap(codeCol, nameCol, priceCol, remarkCol);
+    }
+
+    private record ColMap(int codeCol, int nameCol, int priceCol, int remarkCol) {}
+
+    // ============================================================
+    // 라벨/셀 유틸
+    // ============================================================
+
+    private boolean isTotalLabel(String label) {
+        String s = label.replace(" ", "");
+        return s.equals("計") || s.equals("계") || s.equals("합계") || s.equals("총계");
+    }
+
+    private boolean isSkipSlotLabel(String label) {
+        String s = label.replace(" ", "");
+        return s.contains("수량") || s.contains("비고") || s.equals("하부") || s.equals("상부")
+                || s.contains("PLT");
+    }
+
+    private boolean containsPrice(String s) {
+        String n = noSpace(s);
+        return n != null && n.contains("대리점가");
+    }
+
+    private boolean isHeaderLikeCode(String code) {
+        String s = code.replace(" ", "");
+        return s.equals("품번") || s.equals("품종") || s.equals("품목")
+                || s.equals("제품코드") || s.equals("구분") || s.equals("코드");
+    }
+
+    private interface RowMatcher { boolean matches(int rowIdx); }
+
+    private int findRow(Ctx c, RowMatcher m) {
+        int max = Math.min(c.sheet.getLastRowNum(), 80);
+        for (int r = 0; r <= max; r++) {
+            if (c.sheet.getRow(r) == null) continue;
+            if (m.matches(r)) return r;
+        }
+        return -1;
+    }
+
+    private String str(Ctx c, int row, int col) {
+        Row r = c.sheet.getRow(row);
+        if (r == null) return null;
+        Cell cell = r.getCell(col, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
+        if (cell == null) return null;
+        String v = c.fmt.formatCellValue(cell, c.ev);
+        if (v == null) return null;
+        v = v.replace(' ', ' ').trim();
+        return v.isEmpty() ? null : v;
+    }
+
+    private BigDecimal dec(Ctx c, int row, int col) {
+        String txt = str(c, row, col);
+        if (txt == null) return null;
+        String cleaned = txt.replace(",", "").replace("₩", "").replace("원", "").trim()
+                .replaceAll("[^0-9.\\-]", "");
+        if (cleaned.isEmpty() || cleaned.equals("-")) return null;
+        try { return new BigDecimal(cleaned); }
+        catch (NumberFormatException e) { return null; }
+    }
+
+    private BigDecimal nz(BigDecimal v) { return v != null ? v : BigDecimal.ZERO; }
+
+    private String stripSpace(String s) {
+        if (s == null) return null;
+        String x = s.replace(' ', ' ').replaceAll("\\s+", " ").trim();
+        return x.isEmpty() ? null : x;
+    }
+
+    /** 헤더 비교용: 모든 공백 제거("품 번"→"품번"). */
+    private String noSpace(String s) {
+        if (s == null) return null;
+        String x = s.replaceAll("[\\s ]+", "");
+        return x.isEmpty() ? null : x;
+    }
+
+    private String normalizeCode(String s) {
+        String x = stripSpace(s);
+        if (x == null) return null;
+        int p = x.indexOf('(');
+        if (p > 0) x = x.substring(0, p).trim();
+        if (x.length() > CODE_MAX_LEN) x = x.substring(0, CODE_MAX_LEN);
+        return x.isEmpty() ? null : x;
+    }
+
+    private String join(String a, String b) {
+        if (isBlank(a)) return b;
+        if (isBlank(b)) return a;
+        return a + " " + b;
+    }
+
+    private String orDefault(String v, String def) { return isBlank(v) ? def : v; }
+
+    private boolean isBlank(String s) { return s == null || s.trim().isEmpty(); }
+
     private RuntimeException wrap(String msg, Exception e) {
         Throwable root = e;
         while (root.getCause() != null) root = root.getCause();
         return new RuntimeException(msg + ": " + root.getClass().getName() + " - " + root.getMessage(), e);
     }
 
-    private List<VendorExcelRow> parseWorkbook(Workbook workbook) {
-        List<VendorExcelRow> result = new ArrayList<>();
-
-        DataFormatter formatter = new DataFormatter();
-        FormulaEvaluator evaluator = workbook.getCreationHelper().createFormulaEvaluator();
-
-        for (int sheetIdx = 0; sheetIdx < workbook.getNumberOfSheets(); sheetIdx++) {
-            Sheet sheet = workbook.getSheetAt(sheetIdx);
-            if (sheet == null) continue;
-
-            String sheetName = sheet.getSheetName();
-
-            // ⭐️ 양변기 시트만 전용 파서로
-            if ("양변기".equals(sheetName)) {
-                result.addAll(parseToiletSheet(sheet, formatter, evaluator));
-                continue;
-            }
-
-            // 기존 로직 그대로
-            result.addAll(parseDefaultSheet(sheet, formatter, evaluator));
-        }
-
-        return result;
-    }
-
-
-    private List<VendorExcelRow> parseToiletSheet(
-            Sheet sheet,
-            DataFormatter f,
-            FormulaEvaluator e
-    ) {
-        List<VendorExcelRow> out = new ArrayList<>();
-
-        int headerRow = findHeaderRow(sheet, f, e);
-        if (headerRow < 0) return out;
-
-        int rowIdx = headerRow + 2;
-        int lastRow = sheet.getLastRowNum();
-
-        String lastCategorySmall = null;
-
-        while (rowIdx <= lastRow) {
-            Row row = sheet.getRow(rowIdx);
-            if (row == null) { rowIdx++; continue; }
-
-            // 🔹 중간 헤더 스킵
-            if (isHeaderRowLike(row, f, e)) {
-                rowIdx++;
-                continue;
-            }
-
-            String categoryLarge = sheet.getSheetName();
-            String categorySmall = normalizeSpace(getCellString(row, 1, f, e));
-            if (!isBlank(categorySmall)) lastCategorySmall = categorySmall;
-            else categorySmall = lastCategorySmall;
-
-            String productCodeRaw = getCellString(row, 2, f, e);
-            String productCode = normalizeCode(productCodeRaw, 50);
-            if (isBlank(productCode)) { rowIdx++; continue; }
-
-            String ksCode = normalizeCode(getCellString(row, 4, f, e), 50);
-            String remark = normalizeSpace(getCellString(row, 16, f, e));
-
-            // 🔥 단가 찾기 (다음 1~3행)
-            BigDecimal unitPrice = findDealerPrice(sheet, rowIdx, lastRow, f, e);
-            if (unitPrice == null) unitPrice = BigDecimal.ZERO;
-
-            String productName = safeProductName(categoryLarge, categorySmall, productCode);
-
-            out.add(new VendorExcelRow(
-                    "B",
-                    categoryLarge,
-                    categorySmall,
-                    productName,
-                    productCode,
-                    productCode,
-                    productCode,
-                    ksCode,
-                    null,
-                    productName,
-                    remark,
-                    remark,
-                    unitPrice,
-                    "SET"
-            ));
-
-            rowIdx += 2; // 제품행 + 가격행 소비
-        }
-
-        return out;
-    }
-
-
-    private BigDecimal findDealerPrice(
-            Sheet sheet,
-            int productRowIdx,
-            int lastRow,
-            DataFormatter f,
-            FormulaEvaluator e
-    ) {
-        for (int i = 1; i <= 3; i++) {
-            int idx = productRowIdx + i;
-            if (idx > lastRow) break;
-
-            Row r = sheet.getRow(idx);
-            if (r == null) continue;
-
-            if (isHeaderRowLike(r, f, e)) continue;
-
-            String label = normalizeSpace(getCellString(r, 5, f, e));
-            if (label != null && label.replace(" ", "").contains("대리점가")) {
-                return getDecimalCell(r, 13, f, e); // N열 計
-            }
-
-            // 다음 제품행 나오면 중단
-            String nextCode = normalizeCode(getCellString(r, 2, f, e), 50);
-            if (!isBlank(nextCode)) break;
-        }
-        return null;
-    }
-
-
-    private List<VendorExcelRow> parseDefaultSheet(
-            Sheet sheet,
-            DataFormatter formatter,
-            FormulaEvaluator evaluator
-    ) {
-        List<VendorExcelRow> result = new ArrayList<>();
-
-        String categoryLarge = sheet.getSheetName();
-
-        HeaderInfo headerInfo = detectHeader(sheet, formatter, evaluator);
-        if (headerInfo == null) return result;
-
-        Map<String, Integer> colMap = headerInfo.colMap;
-        int headerRowIdx = headerInfo.headerRowIdx;
-
-        LOGGER.debug("[B][COLMAP] sheet=" + categoryLarge +
-                " headerRow=" + headerRowIdx +
-                " keys=" + colMap.keySet());
-
-        int dataStartRowIdx = headerRowIdx + 1;
-        if (looksLikeSubHeaderRow(sheet.getRow(dataStartRowIdx), formatter, evaluator)) {
-            dataStartRowIdx += 1;
-        }
-
-        int lastRowNum = sheet.getLastRowNum();
-        for (int rowIdx = dataStartRowIdx; rowIdx <= lastRowNum; rowIdx++) {
-            Row row = sheet.getRow(rowIdx);
-            if (row == null) continue;
-
-            String categorySmall = normalizeSpace(getByKey(row, colMap, COL_CATEGORY_SMALL, formatter, evaluator));
-            String productCodeRaw = getByKey(row, colMap, COL_PRODUCT_CODE, formatter, evaluator);
-            String subCodeRaw     = getByKey(row, colMap, COL_SUB_CODE, formatter, evaluator);
-
-            String productCode = normalizeCode(productCodeRaw, CODE_MAX_LEN);
-            String subCode     = normalizeCode(subCodeRaw, CODE_MAX_LEN);
-
-            if (isHeaderLikeCode(productCodeRaw) || isHeaderLikeCode(productCode)) continue;
-            if (isBlank(productCode)) continue;
-
-            String remark = normalizeSpace(getByKey(row, colMap, COL_REMARK, formatter, evaluator));
-            BigDecimal totalPrice = getDecimalByKey(row, colMap, COL_TOTAL_PRICE, formatter, evaluator);
-            if (totalPrice == null) totalPrice = BigDecimal.ZERO;
-
-            String productName = safeProductName(categoryLarge, categorySmall, productCode);
-
-            result.add(new VendorExcelRow(
-                    "B",
-                    categoryLarge,
-                    categorySmall,
-                    productName,
-                    productCode,
-                    productCode,
-                    productCode,
-                    subCode,
-                    null,
-                    productName,
-                    remark,
-                    remark,
-                    totalPrice,
-                    "SET"
-            ));
-        }
-
-        return result;
-    }
-
-
-    private int findHeaderRow(Sheet sheet, DataFormatter formatter, FormulaEvaluator evaluator) {
-        int max = Math.min(sheet.getLastRowNum(), 80);
-
-        for (int r = 0; r <= max; r++) {
-            Row row = sheet.getRow(r);
-            if (row == null) continue;
-
-            String a = normalizeSpace(cellText(row, 0, formatter, evaluator)); // A:구분
-            String b = normalizeSpace(cellText(row, 1, formatter, evaluator)); // B:품종
-            String c = normalizeSpace(cellText(row, 2, formatter, evaluator)); // C:품번
-
-            if ("구분".equals(a) && "품종".equals(b) && "품번".equals(c)) {
-                return r;
-            }
-        }
-        return -1;
-    }
-
-    private boolean isHeaderRowLike(Row row, DataFormatter formatter, FormulaEvaluator evaluator) {
-        String a = normalizeSpace(cellText(row, 0, formatter, evaluator));
-        String b = normalizeSpace(cellText(row, 1, formatter, evaluator));
-        String c = normalizeSpace(cellText(row, 2, formatter, evaluator));
-        return "구분".equals(a) && "품종".equals(b) && "품번".equals(c);
-    }
-
-    private String getCellString(
-            Row row,
-            int colIdx,
-            DataFormatter formatter,
-            FormulaEvaluator evaluator
-    ) {
-        if (row == null) return null;
-
-        Cell cell = row.getCell(colIdx, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
-        if (cell == null) return null;
-
-        // DataFormatter + FormulaEvaluator 조합이 핵심
-        // → 수식 셀도 계산된 결과를 문자열로 반환
-        String value = formatter.formatCellValue(cell, evaluator);
-
-        if (value == null) return null;
-
-        value = value.replace('\u00A0', ' ').trim(); // NBSP 제거
-        return value.isEmpty() ? null : value;
-    }
-
-    private BigDecimal getDecimalCell(
-            Row row,
-            int colIdx,
-            DataFormatter formatter,
-            FormulaEvaluator evaluator
-    ) {
-        String txt = getCellString(row, colIdx, formatter, evaluator);
-        if (txt == null) return null;
-
-        // 통화/문자 제거
-        String cleaned = txt
-                .replace(",", "")
-                .replace("₩", "")
-                .replace("원", "")
-                .trim();
-
-        // 숫자 / 소수점 / 음수만 남김
-        cleaned = cleaned.replaceAll("[^0-9.\\-]", "");
-        if (cleaned.isEmpty() || "-".equals(cleaned)) return null;
-
-        try {
-            return new BigDecimal(cleaned);
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
-
-
-    // ============================================================
-    // 헤더 탐지 & 표준 컬럼맵 생성
-    // ============================================================
-
-    private static class HeaderInfo {
-        final int headerRowIdx;
-        final Map<String, Integer> colMap;
-
-        HeaderInfo(int headerRowIdx, Map<String, Integer> colMap) {
-            this.headerRowIdx = headerRowIdx;
-            this.colMap = colMap;
-        }
-    }
-
-    /**
-     * 시트 상단을 훑어 "헤더 행"을 찾는다.
-     * - r행(상위헤더) + r+1행(하위헤더)을 같은 컬럼 index 기준으로 합쳐서 헤더 텍스트 구성
-     * - 품번 컬럼은 반드시 있어야 하고, 단가/비고 중 하나 이상 있으면 헤더로 인정
-     */
-    private HeaderInfo detectHeader(Sheet sheet, DataFormatter formatter, FormulaEvaluator evaluator) {
-        int max = Math.min(sheet.getLastRowNum(), HEADER_SCAN_MAX_ROWS);
-
-        for (int r = 0; r <= max; r++) {
-            Row h1 = sheet.getRow(r);
-            if (h1 == null) continue;
-
-            Row h2 = (r + 1 <= sheet.getLastRowNum()) ? sheet.getRow(r + 1) : null;
-
-            Map<String, Integer> colMap = buildStandardColMap(h1, h2, formatter, evaluator);
-
-            boolean hasProductCode = colMap.containsKey(COL_PRODUCT_CODE);
-            boolean hasTotalOrRemark = colMap.containsKey(COL_TOTAL_PRICE) || colMap.containsKey(COL_REMARK);
-
-            if (hasProductCode && hasTotalOrRemark) {
-                return new HeaderInfo(r, colMap);
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * 상위/하위 헤더 2줄을 합쳐 표준 컬럼키 -> 컬럼 인덱스로 매핑한다.
-     */
-    private Map<String, Integer> buildStandardColMap(Row headerRow, Row subHeaderRow,
-                                                     DataFormatter formatter, FormulaEvaluator evaluator) {
-        Map<String, Integer> map = new HashMap<>();
-        short lastCellNum = headerRow.getLastCellNum();
-
-        for (int c = 0; c < lastCellNum; c++) {
-            String t1 = cellText(headerRow, c, formatter, evaluator);
-            String t2 = (subHeaderRow == null) ? null : cellText(subHeaderRow, c, formatter, evaluator);
-
-            // 상/하위 헤더 합치기
-            String combined = normalizeHeader((t1 == null ? "" : t1) + " " + (t2 == null ? "" : t2));
-            if (isBlank(combined)) continue;
-
-            String key = toStandardKey(combined);
-            if (key != null) {
-                map.putIfAbsent(key, c);
-            }
-        }
-
-        return map;
-    }
-
-    private String cellText(Row row, int col, DataFormatter formatter, FormulaEvaluator evaluator) {
-        if (row == null) return null;
-        Cell cell = row.getCell(col);
-        if (cell == null) return null;
-        String v = formatter.formatCellValue(cell, evaluator);
-        v = (v == null) ? null : v.trim();
-        return (v == null || v.isEmpty()) ? null : v;
-    }
-
-    /**
-     * 헤더 문자열 정규화:
-     * - NBSP 제거 + 다중공백 제거
-     * - 괄호 안 단위 제거: "계(원)" -> "계"
-     */
-    private String normalizeHeader(String s) {
-        if (s == null) return null;
-
-        String x = s.replace('\u00A0', ' ')
-                .replaceAll("\\s+", " ")
-                .trim();
-        if (x.isEmpty()) return null;
-
-        x = x.replaceAll("\\(.*?\\)", "").trim();
-        x = x.replaceAll("\\s+", " ").trim();
-
-        return x.isEmpty() ? null : x;
-    }
-
-    /**
-     * 헤더(정규화된 문자열)를 표준 컬럼키로 매핑한다.
-     *
-     * ** 단가 컬럼(TOTAL_PRICE) 매핑을 넓게 잡는 것이 핵심:
-     * - "計" 단독/ "계" 단독도 TOTAL_PRICE로 인정
-     * - 합계/총계/금액/단가/가격/원/₩/공급가/판매가 등 다양한 표현을 TOTAL_PRICE로 흡수
-     */
-    private String toStandardKey(String header) {
-        if (header == null) return null;
-
-        String h = header;
-        String hs = header.replace(" ", "");
-        String lower = header.toLowerCase(Locale.ROOT);
-
-        // ===== 품번/제품코드 =====
-        if (equalsAny(h, "품번", "제품품번", "제품 품번", "제안서 품번", "품번(제안서)", "품번(제안)", "품번(제품)") ||
-                equalsAny(hs, "품번", "제품품번", "제안서품번")) {
-            return COL_PRODUCT_CODE;
-        }
-
-        // ===== 품종/소분류 =====
-        if (equalsAny(h, "품종", "품목", "소분류", "품목소분류", "품목 소분류") ||
-                equalsAny(hs, "품종", "품목", "소분류", "품목소분류")) {
-            return COL_CATEGORY_SMALL;
-        }
-
-        // ===== KS 품번 =====
-        if (containsAny(h, "KS") && containsAny(h, "품번", "코드")) {
-            return COL_SUB_CODE;
-        }
-        if (equalsAny(h, "KS 품번", "KS품번", "KS 코드", "KS코드")) {
-            return COL_SUB_CODE;
-        }
-
-        // ===== 단가(합계) =====
-        // 1) "計" / "계" 단독은 무조건 TOTAL_PRICE
-        if (hs.equalsIgnoreCase("計") || hs.equalsIgnoreCase("계")) {
-            return COL_TOTAL_PRICE;
-        }
-
-        // 2) 합계/총계/총액/금액/단가/가격/원/₩ 등 폭넓게 흡수
-        boolean hasTotalLike = containsAny(h, "計", "계", "합계", "총계", "총액", "합산");
-        boolean hasMoneyLike = containsAny(h, "단가", "금액", "가격", "원", "₩", "KRW", "PRICE", "공급가", "판매가");
-
-        if ((hasTotalLike || hasMoneyLike) && !containsAny(h, "비고", "규격", "특징", "설명")) {
-            return COL_TOTAL_PRICE;
-        }
-
-        // ===== 비고/규격 =====
-        if (containsAny(lower, "비고", "규격", "특징", "설명", "remark")) {
-            return COL_REMARK;
-        }
-
-        return null;
-    }
-
-    private boolean equalsAny(String target, String... candidates) {
-        if (target == null) return false;
-        for (String c : candidates) {
-            if (c == null) continue;
-            if (target.equalsIgnoreCase(c)) return true;
-        }
-        return false;
-    }
-
-    private boolean containsAny(String target, String... tokens) {
-        if (target == null) return false;
-        String t = target.replace(" ", "").toLowerCase(Locale.ROOT);
-        for (String k : tokens) {
-            if (k == null) continue;
-            String kk = k.replace(" ", "").toLowerCase(Locale.ROOT);
-            if (!kk.isEmpty() && t.contains(kk)) return true;
-        }
-        return false;
-    }
-
-    /**
-     * 헤더 바로 아래가 하위 헤더인지 감지(옵션)
-     */
-    private boolean looksLikeSubHeaderRow(Row row, DataFormatter formatter, FormulaEvaluator evaluator) {
-        if (row == null) return false;
-
-        Set<String> tokens = Set.of("하부", "상부", "상", "하", "세부", "구분");
-        int hit = 0;
-
-        short last = row.getLastCellNum();
-        for (int c = 0; c < last; c++) {
-            Cell cell = row.getCell(c);
-            if (cell == null) continue;
-
-            String v = formatter.formatCellValue(cell, evaluator);
-            v = (v == null) ? null : v.trim();
-            if (isBlank(v)) continue;
-
-            String vn = v.replace(" ", "");
-            if (tokens.contains(v) || tokens.contains(vn)) hit++;
-        }
-
-        return hit >= 2;
-    }
-
-    // ============================================================
-    // 데이터 추출
-    // ============================================================
-
-    private String getByKey(Row row, Map<String, Integer> colMap, String key,
-                            DataFormatter formatter, FormulaEvaluator evaluator) {
-        Integer idx = colMap.get(key);
-        if (idx == null) return null;
-
-        Cell cell = row.getCell(idx);
-        if (cell == null) return null;
-
-        String v = formatter.formatCellValue(cell, evaluator);
-        v = (v == null) ? null : v.trim();
-        return isBlank(v) ? null : v;
-    }
-
-    /**
-     * ** 단가 파싱 강화 버전
-     * - "1,234원", "1234(VAT별도)", "₩12,345" 등에서도 숫자만 추출해서 파싱
-     * - '-', 빈값, "별도문의" 같은 케이스는 null 반환
-     */
-    private BigDecimal getDecimalByKey(Row row, Map<String, Integer> colMap, String key,
-                                       DataFormatter formatter, FormulaEvaluator evaluator) {
-        String txt = getByKey(row, colMap, key, formatter, evaluator);
-        if (isBlank(txt)) return null;
-
-        String cleaned = txt.replace("\u00A0", " ")
-                .replace(",", "")
-                .replace("₩", "")
-                .replace("원", "")
-                .trim();
-
-        // 숫자/부호/소수점만 남기기
-        cleaned = cleaned.replaceAll("[^0-9.\\-]", "");
-
-        if (cleaned.isEmpty() || cleaned.equals("-")) return null;
-
-        try {
-            return new BigDecimal(cleaned);
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
-    // ============================================================
-    // 문자열 정리/검증
-    // ============================================================
-
-    private String normalizeSpace(String s) {
-        if (s == null) return null;
-        String x = s.replace('\u00A0', ' ')
-                .replaceAll("\\s+", " ")
-                .trim();
-        return x.isEmpty() ? null : x;
-    }
-
-    /**
-     * 코드(품번) 정리:
-     * - 공백 정리
-     * - 괄호 설명 제거: "U9420B (1구...)" -> "U9420B"
-     * - 50자 컷
-     */
-    private String normalizeCode(String s, int maxLen) {
-        String x = normalizeSpace(s);
-        if (x == null) return null;
-
-        int p = x.indexOf('(');
-        if (p > 0) x = x.substring(0, p).trim();
-
-        if (x.length() > maxLen) x = x.substring(0, maxLen);
-
-        return x.isEmpty() ? null : x;
-    }
-
-    /**
-     * 중간 반복 헤더/구분행 판별:
-     * - 품번 칸이 "품번/구분/코드/제품코드/품목/품종" 같은 단어면 헤더로 간주
-     * - 지나치게 길면(설명/문장) 헤더/소제목으로 간주
-     */
-    private boolean isHeaderLikeCode(String raw) {
-        if (raw == null) return false;
-
-        String x = normalizeSpace(raw);
-        if (x == null) return true;
-
-        String xs = x.replace(" ", "");
-        if (xs.equalsIgnoreCase("품번") ||
-                xs.equalsIgnoreCase("구분") ||
-                xs.equalsIgnoreCase("코드") ||
-                xs.equalsIgnoreCase("제품코드") ||
-                xs.equalsIgnoreCase("품목") ||
-                xs.equalsIgnoreCase("품종")) {
-            return true;
-        }
-
-        if (x.length() > CODE_MAX_LEN) return true;
-
-        return false;
-    }
-
-    private String safeProductName(String categoryLarge, String categorySmall, String productCode) {
-        StringBuilder sb = new StringBuilder();
-        if (!isBlank(categoryLarge)) sb.append(categoryLarge);
-        if (!isBlank(categorySmall)) sb.append(" ").append(categorySmall);
-        if (!isBlank(productCode)) sb.append(" ").append(productCode);
-
-        String s = sb.toString().trim();
-        return s.isEmpty() ? productCode : s;
-    }
-
-    private boolean isBlank(String s) {
-        return s == null || s.trim().isEmpty();
-    }
+    /** 시트 1개 파싱 컨텍스트(POI 객체 묶음). */
+    private record Ctx(Sheet sheet, DataFormatter fmt, FormulaEvaluator ev, String sheetName) {}
 }
