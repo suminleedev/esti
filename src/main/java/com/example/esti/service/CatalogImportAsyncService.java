@@ -50,42 +50,57 @@ public class CatalogImportAsyncService {
     public void importVendorCatalogAsync(String jobId, String vendorCode, Path savedPath) {
         try {
             progressStore.update(jobId, 30, "엑셀 파싱 중...");
+            int saved = importVendorCatalog(vendorCode, savedPath, jobId);
+            progressStore.done(jobId, "완료! (" + saved + "건)");
+        } catch (Exception e) {
+            progressStore.fail(jobId, "실패: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+        } finally {
+            try { Files.deleteIfExists(savedPath); } catch (Exception ignore) {}
+        }
+    }
 
-            // 1) vendor 조회/생성
-            Vendor vendor = vendorRepository.findByVendorCode(vendorCode)
-                    .orElseGet(() -> {
-                        Vendor v = new Vendor();
-                        v.setVendorCode(vendorCode);
-                        v.setVendorName(resolveVendorName(vendorCode));
-                        return vendorRepository.save(v);
-                    });
+    /**
+     * 동기 적재 — 파싱 + DB upsert. 진행률 갱신/파일 정리는 하지 않는다(재사용·테스트용).
+     * 재호출 시 코드 기준 upsert로 멱등(중복 행 없음).
+     *
+     * @return 적재한 세트(VendorProductSet) 수
+     */
+    @Transactional
+    public int importVendorCatalog(String vendorCode, Path savedPath) {
+        return importVendorCatalog(vendorCode, savedPath, null);
+    }
 
-            // 2) 파싱 (대표품목 + 부속 묶음)
-            VendorExcelParser parser = parserFactory.getParser(vendorCode);
-            List<VendorProductSet> sets = parser.parseSets(savedPath);
+    private int importVendorCatalog(String vendorCode, Path savedPath, String jobId) {
+        // 1) vendor 조회/생성
+        Vendor vendor = vendorRepository.findByVendorCode(vendorCode)
+                .orElseGet(() -> {
+                    Vendor v = new Vendor();
+                    v.setVendorCode(vendorCode);
+                    v.setVendorName(resolveVendorName(vendorCode));
+                    return vendorRepository.save(v);
+                });
 
-            int total = Math.max(sets.size(), 1);
-            progressStore.update(jobId, 35, "DB 저장 시작");
+        // 2) 파싱 (대표품목 + 부속 묶음)
+        VendorExcelParser parser = parserFactory.getParser(vendorCode);
+        List<VendorProductSet> sets = parser.parseSets(savedPath);
 
-            int done = 0;
-            for (VendorProductSet set : sets) {
-                saveSet(vendor, set);
-                done++;
+        int total = Math.max(sets.size(), 1);
+        if (jobId != null) progressStore.update(jobId, 35, "DB 저장 시작");
 
+        int done = 0;
+        for (VendorProductSet set : sets) {
+            saveSet(vendor, set);
+            done++;
+
+            if (jobId != null) {
                 int percent = 35 + (int) Math.floor(done * 64.0 / total);
                 if (percent > 99) percent = 99;
                 if (done % 10 == 0 || done == total) {
                     progressStore.update(jobId, percent, "DB 저장 중...");
                 }
             }
-
-            progressStore.done(jobId, "완료!");
-
-        } catch (Exception e) {
-            progressStore.fail(jobId, "실패: " + e.getClass().getSimpleName() + " - " + e.getMessage());
-        } finally {
-            try { Files.deleteIfExists(savedPath); } catch (Exception ignore) {}
         }
+        return sets.size();
     }
 
     /** VendorProductSet 한 건을 대표품목 + 부속 + 관계 + 가격으로 적재. */
@@ -121,13 +136,14 @@ public class CatalogImportAsyncService {
                                               String categoryLarge, String categorySmall, String itemType) {
         VendorProduct product = null;
 
-        // 1) 코드(품번) 우선 — 공급사 범위 내
+        // 1) 코드(품번)가 있으면 코드로만 식별 — 공급사 범위 내.
+        //    (이름이 같은 부속(예: "시트","도기")이 코드만 다른 경우 2)로 넘어가면 한 행으로 잘못 병합되므로
+        //     코드가 있으면 이름 fallback을 타지 않는다.)
         if (productCode != null) {
             product = vendorProductRepository.findByVendorAndProductCode(vendor, productCode).orElse(null);
         }
-
-        // 2) 코드가 없으면 이름 + 대/소분류 (같은 공급사 한정)
-        if (product == null && productName != null && categoryLarge != null && categorySmall != null) {
+        // 2) 코드가 아예 없는 항목(A사 신품번 없음 등)만 이름 + 대/소분류로 멱등 매칭
+        else if (productName != null && categoryLarge != null && categorySmall != null) {
             product = vendorProductRepository
                     .findAllByProductNameAndCategoryLargeAndCategorySmall(productName, categoryLarge, categorySmall)
                     .stream()
@@ -202,6 +218,7 @@ public class CatalogImportAsyncService {
         String rel = (relationType != null && !relationType.isBlank())
                 ? relationType
                 : VendorParsedItem.RELATION_ACCESSORY;
+        if (rel.length() > 50) rel = rel.substring(0, 50); // relation_type 컬럼 길이 방어
 
         boolean exists = vendorProductRelationRepository
                 .findBySourceProductAndTargetProductAndRelationType(source, target, rel)
