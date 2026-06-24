@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch, computed, onBeforeUnmount } from 'vue'
+import { ref, onMounted, watch, onBeforeUnmount } from 'vue'
 import { BASE_URL } from '@/config/api'
 import axios from 'axios'
 
@@ -213,7 +213,7 @@ function cancelEdit() {
 async function saveEdit() {
   if (!editingProduct.value) return
   try {
-    const res = await axios.put(`/api/catalog/${editingProduct.value.id}`, editingProduct.value)
+    await axios.put(`/api/catalog/${editingProduct.value.id}`, editingProduct.value)
     message.value = '수정 성공'
     editingProduct.value = null
     await loadVendorCatalog()

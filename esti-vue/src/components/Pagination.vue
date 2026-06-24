@@ -33,14 +33,12 @@
 {{ Math.min((page + 1) * size, totalElements).toLocaleString() }} 표시
 </div>
 </template>
-<script setup lang="ts">
-import {PropType} from "vue";
-
+<script setup>
 defineProps({
   size: Number,
   page: Number,
   totalPages: Number,
-  pageNumbers: Array as PropType<number[]>,
+  pageNumbers: Array,
   blockSize: Number,
   totalElements: Number,
 })
