@@ -360,7 +360,7 @@ onMounted(() => {
                 <th style="width:3%">#</th>
                 <th style="width:8%">대분류</th>
                 <th style="width:10%">소분류</th>
-                <th style="width:12%">제품명</th>
+                <th styl지e="width:12%">제품명</th>
                 <th style="width:11%">모델명</th>
                 <th style="width:10%">브랜드</th>
                 <th style="width:13%">규격</th>
@@ -406,17 +406,21 @@ onMounted(() => {
                   <td>{{ p.remark }}</td>
                   <td class="text-end">{{ p.unitPrice?.toLocaleString() }}</td>
                   <td>{{ p.oldItemCode }}</td>
-                  <td>
-                    <img
-                      v-if="p.imageUrl"
-                      :src="`${BASE_URL}${p.imageUrl}`"
-                      alt="상품 이미지"
-                      style="max-width: 80px; max-height: 60px"
-                    />
+                  <td style="padding:1px;">
+                    <div class="img-cell">
+                      <img
+                        v-if="p.imageUrl"
+                        :src="`${BASE_URL}${p.imageUrl}`"
+                        alt="상품 이미지"
+                        class="product-img"
+                      />
+                    </div>
                   </td>
-                  <td class="d-flex justify-content-center align-items-center gap-1">
-                    <button class="btn btn-warning btn-sm" @click="startEdit(p)" title="수정">✍🏻</button>
-                    <button class="btn btn-danger btn-sm" @click="deleteProduct(p.catalogId)" title="삭제">␡</button>
+                  <td class="text-center align-middle">
+                    <div class="d-flex justify-content-center align-items-center gap-1">
+                      <button class="btn btn-warning btn-sm" @click="startEdit(p)" title="수정">✍🏻</button>
+                      <button class="btn btn-danger btn-sm" @click="deleteProduct(p.catalogId)" title="삭제">␡</button>
+                    </div>
                   </td>
                 </template>
               </tr>
@@ -488,4 +492,18 @@ onMounted(() => {
   text-overflow: ellipsis;
 }
 
+/* 이미지 영역 가운데 정렬 조정 */
+.img-cell {
+  width: 80px;
+  height: 60px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.product-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
 </style>
