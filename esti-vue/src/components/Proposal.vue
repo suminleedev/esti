@@ -237,7 +237,7 @@
                   style="cursor:pointer"
                 >
                   <img
-                    :src="`${BASE_URL}${item.imageUrl}` || noImg"
+                    :src="item.imageUrl ? `${BASE_URL}${item.imageUrl}` : noImg"
                     class="me-3 rounded"
                     style="width:50px;height:50px;object-fit:contain"
                     @error="onImgErr($event)"
@@ -262,7 +262,7 @@
               <div class="card-body d-flex flex-column">
                 <div class="text-center mb-3 img-box">
                   <img
-                    :src="`${BASE_URL}${candidate.imageUrl}` || noImg"
+                    :src="candidate.imageUrl ? `${BASE_URL}${candidate.imageUrl}` : noImg"
                     class="rounded candidate-img"
                     @error="onImgErr($event)"
                   />
@@ -275,7 +275,7 @@
                   <dl class="row mb-0 small">
                     <dt class="col-4">브랜드</dt><dd class="col-8">{{ candidate.vendorName || '-' }}</dd>
                     <dt class="col-4">규격</dt><dd class="col-8">{{ candidate.specs || '-' }}</dd>
-                    <dt class="col-4">원가</dt><dd class="col-8">{{ candidate.catalogId ? toNumber(candidate.unitPrice).toLocaleString() : '-' }}</dd>
+                    <dt class="col-4">원가</dt><dd class="col-8">{{ candidate.vendorProductId ? toNumber(candidate.unitPrice).toLocaleString() : '-' }}</dd>
 <!--                    <dt class="col-4">특징</dt><dd class="col-8">{{ candidate.description || '-' }}</dd>-->
                   </dl>
                 </div>
@@ -304,7 +304,7 @@
                 </div>
 
                 <div class="mt-auto d-flex gap-2">
-                  <button class="btn btn-primary btn-sm" :disabled="!candidate.catalogId || !lineValid" @click="addLine">
+                  <button class="btn btn-primary btn-sm" :disabled="!candidate.vendorProductId || !lineValid" @click="addLine">
                     제안 항목 추가
                   </button>
                   <button class="btn btn-outline-secondary btn-sm" @click="resetLine">초기화</button>
@@ -543,7 +543,7 @@ const filteredItems = computed(() => {
 
 /* ====== 상세 선택 + 입력 ====== */
 const candidate = reactive({
-  catalogId: null,
+  vendorProductId: null,
   productName: '',
   vendorName: '',
   vendorItemName: '',
@@ -595,7 +595,7 @@ function goExcelUpload() {
 /* ====== 후보 선택 / 초기화 ====== */
 function selectCandidate(item) {
   Object.assign(candidate, {
-    catalogId: item.vendorProductId,
+    vendorProductId: item.vendorProductId,
     productName: item.productName ?? '',
     vendorName: item.vendorName ?? '',
     vendorItemName: item.vendorItemName ?? '',
@@ -612,7 +612,7 @@ function selectCandidate(item) {
 
 function resetLine () {
   Object.assign(candidate, {
-    catalogId: null,
+    vendorProductId: null,
     productName: '',
     vendorName: '',
     vendorItemName: '',
@@ -680,10 +680,10 @@ function createLine(data = {}) {
 
 /* ====== 행 조작 ====== */
 function addLine() {
-  if (!candidate.catalogId || !lineValid.value) return
+  if (!candidate.vendorProductId || !lineValid.value) return
 
   const newLine = createLine({
-    productId: candidate.catalogId,
+    productId: candidate.vendorProductId,
     productName: candidate.productName,
     vendorName: candidate.vendorName,
     vendorItemName: candidate.vendorItemName,
