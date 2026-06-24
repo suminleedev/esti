@@ -237,7 +237,7 @@
                   style="cursor:pointer"
                 >
                   <img
-                    :src="item.imageUrl || noImg"
+                    :src="`${BASE_URL}${item.imageUrl}` || noImg"
                     class="me-3 rounded"
                     style="width:50px;height:50px;object-fit:cover"
                     @error="onImgErr($event)"
@@ -262,7 +262,7 @@
               <div class="card-body d-flex flex-column">
                 <div class="text-center mb-3">
                   <img
-                    :src="candidate.imageUrl || noImg"
+                    :src="`${BASE_URL}${candidate.imageUrl}` || noImg"
                     class="rounded"
                     style="max-width:100%;height:auto;object-fit:cover"
                     @error="onImgErr($event)"
@@ -470,7 +470,8 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
-import noImg from '@/assets/no-image.png' // 없으면 임시로 주석 처리하고 onImgErr에서 대체
+import noImg from '@/assets/no-image.png'
+import { BASE_URL } from '@/config/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -595,7 +596,7 @@ function goExcelUpload() {
 /* ====== 후보 선택 / 초기화 ====== */
 function selectCandidate(item) {
   Object.assign(candidate, {
-    catalogId: item.catalogId,
+    catalogId: item.vendorProductId,
     productName: item.productName ?? '',
     vendorName: item.vendorName ?? '',
     vendorItemName: item.vendorItemName ?? '',
