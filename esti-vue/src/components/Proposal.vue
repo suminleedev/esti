@@ -270,7 +270,7 @@
                 <div class="mb-3">
                   <h6 class="mb-1 text-center">
                     {{ candidate.productName || '품목을 선택하세요' }}
-                    <small v-if="candidate.mainItemCode" class="text-muted">({{ candidate.mainItemCode }})</small>
+                    <small v-if="candidate.mainItemCode" class="d-block text-muted">{{ candidate.mainItemCode }}</small>
                   </h6>
                   <dl class="row mb-0 small">
                     <dt class="col-4">브랜드</dt><dd class="col-8">{{ candidate.vendorName || '-' }}</dd>
