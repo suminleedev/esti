@@ -239,7 +239,7 @@
                   <img
                     :src="`${BASE_URL}${item.imageUrl}` || noImg"
                     class="me-3 rounded"
-                    style="width:50px;height:50px;object-fit:cover"
+                    style="width:50px;height:50px;object-fit:contain"
                     @error="onImgErr($event)"
                   />
                   <div class="flex-grow-1">
@@ -260,11 +260,10 @@
           <div class="col-md-3">
             <div class="card h-100">
               <div class="card-body d-flex flex-column">
-                <div class="text-center mb-3">
+                <div class="text-center mb-3 img-box">
                   <img
                     :src="`${BASE_URL}${candidate.imageUrl}` || noImg"
-                    class="rounded"
-                    style="max-width:100%;height:auto;object-fit:cover"
+                    class="rounded candidate-img"
                     @error="onImgErr($event)"
                   />
                 </div>
@@ -1167,5 +1166,19 @@ onMounted(() => {
   background: rgba(255, 255, 255, 0.15);
   z-index: 10; /* overlay를 위에 배치 */
   /*cursor: not-allowed; // 클릭 불가 표시 */
+}
+
+/* 제품 상세 이미지 표시 */
+.img-box {                 /* 이미지 표시 영역 */
+  height: 250px;           /* 모든 카드의 이미지 영역 높이를 동일하게 유지 */
+  display: flex;
+  justify-content: center; /* 이미지 가로 중앙 정렬 */
+  align-items: center;     /* 이미지 세로 중앙 정렬 */
+  overflow: hidden;        /* 영역을 벗어나는 이미지 숨김 */
+}
+.candidate-img {           /* 이미지 */
+  max-width: 100%;         /* 가로 크기가 영역을 초과하지 않도록 제한 */
+  max-height: 100%;        /* 세로 크기가 영역을 초과하지 않도록 제한 */
+  object-fit: contain;     /* 이미지 비율을 유지하면서 전체가 보이도록 축소 */
 }
 </style>
