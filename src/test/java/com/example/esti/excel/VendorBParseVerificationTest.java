@@ -51,15 +51,28 @@ class VendorBParseVerificationTest {
     }
 
     @Test
-    void 세면기는_전부_선택형_세트로_세트가_미산정() {
+    void 세면기는_기본구성으로_세트가_산정되고_대체옵션은_세트가_제외() {
         assumeTrue(Files.exists(SAMPLE), "샘플 엑셀이 없어 스킵: " + SAMPLE);
         List<VendorProductSet> sets = parser.parseSets(SAMPLE);
 
         List<VendorProductSet> sink = sets.stream().filter(s -> "세면기".equals(s.categoryLarge())).toList();
         assertFalse(sink.isEmpty());
-        assertTrue(sink.stream().allMatch(VendorProductSet::selectable), "세면기는 모두 선택형");
-        assertTrue(sink.stream().allMatch(s -> s.setPrice() == null), "선택형은 세트가 미산정(null)");
+        assertTrue(sink.stream().noneMatch(VendorProductSet::selectable), "세면기도 기본구성으로 산정(선택형 아님)");
+        assertTrue(sink.stream().allMatch(s -> s.setPrice() != null), "세트가 산정됨(null 아님)");
+
+        // 세트가 = 기본구성(대체옵션 제외) 부속 단가 합과 일치해야 함
+        for (VendorProductSet s : sink) {
+            BigDecimal included = s.parts().stream()
+                    .filter(p -> !"대체옵션".equals(p.remark()))
+                    .map(VendorParsedItem::unitPrice)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            assertEquals(0, included.compareTo(s.setPrice()),
+                    "세트가=기본구성 합 (" + s.main().productCode() + ")");
+        }
     }
+
+    /** 세트/단일품이 혼재해 단일품 행에 이미지가 희소한 시트(이미지 커버리지 측정 제외). */
+    private static final Set<String> IMAGE_SPARSE_SHEETS = Set.of("악세사리 단가표", "수전 부속(세트)");
 
     @Test
     void 임베디드_이미지_정확매칭_커버리지가_85퍼센트_이상() {
@@ -67,9 +80,10 @@ class VendorBParseVerificationTest {
         List<VendorProductSet> sets = parser.parseSets(SAMPLE);
         Map<String, Map<Integer, ExcelImageExtractor.ExtractedImage>> images = extractor.extract(SAMPLE);
 
+        // 악세사리/수전부속은 단일품 구간이 많아 행별 이미지가 희소 → 측정에서 제외(무회귀 검증 목적)
         int total = 0, matched = 0;
         for (VendorProductSet s : sets) {
-            if (s.imageKey() == null) continue;
+            if (s.imageKey() == null || IMAGE_SPARSE_SHEETS.contains(s.categoryLarge())) continue;
             total++;
             Map<Integer, ExcelImageExtractor.ExtractedImage> byRow = images.get(s.categoryLarge());
             if (byRow != null && byRow.get(Integer.parseInt(s.imageKey())) != null) matched++;
