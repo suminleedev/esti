@@ -121,7 +121,7 @@ public class CatalogImportAsyncService {
         // 대표품목
         VendorProduct mainProduct = upsertVendorProduct(
                 vendor, mainItem.productCode(), mainItem.productName(),
-                set.categoryLarge(), set.categorySmall(), ITEM_TYPE_SET);
+                set.categoryLarge(), set.categorySmall(), ITEM_TYPE_SET, mainItem.description());
 
         // 임베디드 이미지 연결 (D15) — 대표품목 행에 앵커된 그림
         applyImage(mainProduct, set, images);
@@ -139,7 +139,7 @@ public class CatalogImportAsyncService {
         for (VendorParsedItem part : set.parts()) {
             VendorProduct partProduct = upsertVendorProduct(
                     vendor, part.productCode(), part.productName(),
-                    set.categoryLarge(), set.categorySmall(), ITEM_TYPE_PART);
+                    set.categoryLarge(), set.categorySmall(), ITEM_TYPE_PART, part.description());
 
             // 공유 부속 단가는 코드당 1건 유지(D13) → priceBasis=null
             upsertPrice(vendor, partProduct, part, part.unitPrice(), part.remark(), ITEM_TYPE_PART, null);
@@ -175,7 +175,8 @@ public class CatalogImportAsyncService {
     }
 
     private VendorProduct upsertVendorProduct(Vendor vendor, String productCode, String productName,
-                                              String categoryLarge, String categorySmall, String itemType) {
+                                              String categoryLarge, String categorySmall, String itemType,
+                                              String description) {
         VendorProduct product = null;
 
         // 1) 코드(품번)가 있으면 코드로만 식별 — 공급사 범위 내.
@@ -206,12 +207,25 @@ public class CatalogImportAsyncService {
         product.setCategoryLarge(categoryLarge);
         product.setCategorySmall(categorySmall);
         product.setItemType(itemType);
+        if (description != null && !description.isBlank()) product.setDescription(description);
 
-        // A사 masterCode/detailCode 분리
+        // A사 masterCode/detailCode 분리 (신품번 '-' 기준)
         if ("A".equals(vendor.getVendorCode()) && productCode != null) {
             String[] codes = productCode.split("-", 2);
             product.setMasterCode(codes[0].trim());
             product.setDetailCode(codes.length > 1 && !codes[1].isBlank() ? codes[1].trim() : null);
+        }
+        // B사 masterCode/detailCode 분리 (대표품번_부속코드 '_' 기준). 대표품목은 detail 없음.
+        else if ("B".equals(vendor.getVendorCode()) && productCode != null) {
+            int u = productCode.indexOf('_');
+            if (u > 0) {
+                product.setMasterCode(productCode.substring(0, u).trim());
+                String detail = productCode.substring(u + 1).trim();
+                product.setDetailCode(detail.isBlank() ? null : detail);
+            } else {
+                product.setMasterCode(productCode);
+                product.setDetailCode(null);
+            }
         }
 
         if (isBlank(product.getProductCode()) && productCode != null) {

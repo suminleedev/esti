@@ -15,8 +15,15 @@ public record VendorParsedItem(
         String subItemCode,    // KS품번 등 (B사)
         String relationType,   // 본품=MAIN, 부속=슬롯 라벨(도기/시트/앵글밸브…) 또는 ACCESSORY
         BigDecimal unitPrice,  // 개별 단가 (없으면 0)
-        String remark          // 비고
+        String remark,         // 비고
+        String description     // 원본 품번/부가 설명 보존 (수전부속처럼 코드를 제품코드로 대체할 때 원본 B열 등)
 ) {
     public static final String RELATION_MAIN = "MAIN";
     public static final String RELATION_ACCESSORY = "ACCESSORY";
+
+    /** 기존 7-인자 호출 호환 (description 없음). */
+    public VendorParsedItem(String productCode, String productName, String oldItemCode,
+                            String subItemCode, String relationType, BigDecimal unitPrice, String remark) {
+        this(productCode, productName, oldItemCode, subItemCode, relationType, unitPrice, remark, null);
+    }
 }
