@@ -58,6 +58,7 @@ public class VendorBExcelParser implements VendorExcelParser {
                 switch (family(name)) {
                     case TOILET     -> parseToiletSheet(ctx, result);
                     case WASHBASIN  -> parseWashbasinSheet(ctx, result);
+                    case URINAL_SINK -> parseUrinalSinkSheet(ctx, result);
                     case SLOT       -> parseSlotSheet(ctx, result);
                     case GALAXIA    -> parseGalaxiaSheet(ctx, result);
                     case SET_TOTAL  -> parseHeaderTotalSetSheet(ctx, result);
@@ -75,13 +76,13 @@ public class VendorBExcelParser implements VendorExcelParser {
     // 패밀리 판별
     // ============================================================
 
-    private enum Family { TOILET, WASHBASIN, SLOT, GALAXIA, SET_TOTAL, SET_SUBTOTAL, SINGLE }
+    private enum Family { TOILET, WASHBASIN, URINAL_SINK, SLOT, GALAXIA, SET_TOTAL, SET_SUBTOTAL, SINGLE }
 
     private Family family(String sheetName) {
         String n = sheetName.replaceAll("\\s", "");
         if (n.equals("양변기")) return Family.TOILET;            // 양변기 전용 경로(서브테이블별 헤더/품종 병합 처리)
         if (n.equals("세면기")) return Family.WASHBASIN;          // 세면기 전용 경로(선택형 기본구성·도자 분기·괄호 설명 분리)
-        if (n.contains("소변기")) return Family.SLOT;
+        if (n.contains("소변기")) return Family.URINAL_SINK;       // 소변기·수채 전용 경로(서브테이블별 헤더/대분류 분리)
         if (n.contains("갈라시아")) return Family.GALAXIA;
         if (n.contains("악세사리") || n.contains("악세서리")) return Family.SET_TOTAL;
         if (n.contains("국산부속") || n.contains("수전부속")) return Family.SET_SUBTOTAL;
@@ -418,6 +419,134 @@ public class VendorBExcelParser implements VendorExcelParser {
 
     /** 세면기 슬롯 1개(라벨/부속코드/단가/괄호설명). */
     private record WbSlot(String label, String code, BigDecimal price, String desc) {}
+
+    // ============================================================
+    // (A-2) 소변기·수채 전용 — 서브테이블별 헤더/대분류 분리
+    // ============================================================
+
+    /**
+     * 소변기·수채 시트 전용. 한 시트에 "3. 소변기"·"4. 소제싱크(수채)" 두 서브테이블이 세로로 쌓여 있고,
+     * 서브테이블마다 슬롯 구성과 計 컬럼 위치가 다르다(소변기 計=M / 수채 計=J, 슬롯도 스퍼드·후렌지… vs 수채가랑·수채트랩).
+     *
+     * <ul>
+     *   <li>req1 — 대분류 분리: 헤더(구분/품종/품번)를 만날 때마다 새 서브테이블로 보고, 대분류를 시트명 콤마 분리값으로
+     *       순서대로 부여(소변기 / 수채). 더는 categoryLarge에 시트명("소변기, 수채")을 통째로 저장하지 않는다.</li>
+     *   <li>req2 — 부속/단가 정확화: 헤더를 만날 때마다 슬롯 라벨/計 컬럼을 재인식(가장 가까운 위 헤더 기준)하여,
+     *       수채 서브테이블 부속(수채가랑/수채트랩)·단가·計(J)가 소변기 헤더(스퍼드…/計 M)에 오염되지 않게 한다.</li>
+     * </ul>
+     */
+    private void parseUrinalSinkSheet(Ctx c, List<VendorProductSet> out) {
+        List<String> categories = splitSheetCategories(c.sheetName);
+
+        Map<Integer, String> slots = new LinkedHashMap<>();
+        int totalCol = -1;
+        int catIdx = -1;
+        String currentCat = c.sheetName; // 첫 헤더 전 안전 기본값
+        String carryKind = null;         // 서브테이블 내 품종(B) 병합셀 carry-forward
+
+        int last = c.sheet.getLastRowNum();
+        for (int r = 0; r <= last; r++) {
+            if (isSlotHeader(c, r)) {                       // 새 서브테이블 시작 → 슬롯/計/대분류 갱신
+                totalCol = readUrinalSlotHeader(c, r, slots);
+                catIdx++;
+                currentCat = catIdx < categories.size() ? categories.get(catIdx) : c.sheetName;
+                carryKind = null;
+                continue;
+            }
+            if (!"제품코드".equals(str(c, r, 5))) continue; // 제품코드행만 세트 시작
+            if (slots.isEmpty()) continue;                 // 헤더 전 잡행 방어
+
+            int priceRow = -1;
+            for (int k = r + 1; k <= Math.min(r + 3, last); k++) {
+                if ("대리점가".equals(str(c, k, 5))) { priceRow = k; break; }
+                if ("제품코드".equals(str(c, k, 5))) break; // 다음 제품행 만나면 중단
+            }
+
+            String repCode = normalizeCode(str(c, r, 2)); // C=품번(대표)
+            if (repCode == null) continue;
+            String kind = stripSpace(str(c, r, 1));        // B=품종(병합 하위는 빈칸 → carry-forward)
+            if (kind != null) carryKind = kind; else kind = carryKind;
+            String ksCode = normalizeCode(str(c, r, 4));   // E=KS품번
+
+            List<Slot> present = new ArrayList<>();
+            List<String> slotNotes = new ArrayList<>(); // 코드 아닌 설명 텍스트(예: "후렌지/스프레다 포함")
+            for (Map.Entry<Integer, String> slot : slots.entrySet()) {
+                int col = slot.getKey();
+                String raw = str(c, r, col);
+                String code = normalizeCode(raw);
+                if (code == null) continue;
+                if (!isCodeLike(code)) {            // 코드패턴 아님(한글 설명) → 부속 아님, description으로
+                    String note = stripSpace(raw);
+                    if (note != null) slotNotes.add(note);
+                    continue;
+                }
+                BigDecimal price = priceRow < 0 ? BigDecimal.ZERO : nz(dec(c, priceRow, col));
+                present.add(new Slot(slot.getValue(), code, price));
+            }
+            String desc = slotNotes.isEmpty() ? null : String.join(" / ", slotNotes);
+
+            buildUrinalSinkSet(c, r, priceRow, totalCol, currentCat, repCode, kind, ksCode, present, desc, out);
+        }
+    }
+
+    /** 소변기·수채 헤더행에서 슬롯(col→라벨)을 채우고 計 컬럼 인덱스를 반환. 수량/비고/PLT는 스킵. */
+    private int readUrinalSlotHeader(Ctx c, int headerRow, Map<Integer, String> slots) {
+        slots.clear();
+        int totalCol = -1;
+        short lastCell = c.sheet.getRow(headerRow).getLastCellNum();
+        for (int col = SLOT_FIRST_COL; col < lastCell; col++) {
+            String label = normLabel(str(c, headerRow, col));
+            if (label == null) continue;
+            if (isTotalLabel(label)) { totalCol = col; continue; }
+            if (isSkipSlotLabel(label)) continue;
+            slots.put(col, label);
+        }
+        return totalCol;
+    }
+
+    /** {@code buildSlotTotalSet}와 동일하나 categoryLarge를 서브테이블별 대분류로 받고, 비코드 슬롯 설명을 description에 보존. */
+    private void buildUrinalSinkSet(Ctx c, int r, int priceRow, int totalCol, String categoryLarge,
+                                    String repCode, String kind, String ksCode,
+                                    List<Slot> present, String description, List<VendorProductSet> out) {
+        List<VendorParsedItem> parts = new ArrayList<>();
+        BigDecimal partSum = BigDecimal.ZERO;
+        for (Slot s : present) {
+            partSum = partSum.add(s.price());
+            String relation = s.label().startsWith("도기") ? VendorParsedItem.RELATION_MAIN : s.label();
+            parts.add(part(repCode, s, relation, null));
+        }
+
+        BigDecimal setPrice = (priceRow >= 0 && totalCol >= 0) ? dec(c, priceRow, totalCol) : null;
+        if (setPrice != null && partSum.compareTo(setPrice) != 0) {
+            logger.warn("[B][{}] 計≠부속합 (cat={}, rep={}, 計={}, 합={})",
+                    c.sheetName, categoryLarge, repCode, setPrice, partSum);
+        }
+
+        String repName = join(kind, repCode);
+        if (setPrice == null) repName = repName + " (가격없음)";
+        VendorParsedItem main = new VendorParsedItem(repCode, repName, null, ksCode,
+                VendorParsedItem.RELATION_MAIN, setPrice != null ? setPrice : BigDecimal.ZERO, null, description);
+        out.add(new VendorProductSet("B", categoryLarge, kind, main, parts,
+                setPrice, false, imageKeyOf(r), false));
+    }
+
+    /** 부속 슬롯 값이 코드 패턴인지(한글 설명 텍스트가 아닌지). B사 부속코드는 영숫자뿐이라 한글이 있으면 코드가 아니다. */
+    private boolean isCodeLike(String s) {
+        if (s == null) return false;
+        return s.chars().noneMatch(ch -> ch >= 0xAC00 && ch <= 0xD7A3); // 한글 음절 없음
+    }
+
+    /** 시트명을 콤마/슬래시류로 분리해 대분류 후보 목록 반환("소변기, 수채" → [소변기, 수채]). */
+    private List<String> splitSheetCategories(String sheetName) {
+        List<String> out = new ArrayList<>();
+        if (sheetName != null) {
+            for (String p : sheetName.split("[,，、/]")) {
+                String t = stripSpace(p);
+                if (t != null) out.add(t);
+            }
+        }
+        return out;
+    }
 
     // ============================================================
     // (A) 슬롯 2행형 — 소변기,수채
