@@ -59,16 +59,24 @@ class VendorBExcelParserTest {
     }
 
     @Test
-    void 세면기는_計없는_선택형_세트로_저장() {
+    void 세면기는_기본구성_도기원홀_반다리로_세트가_산정() {
         List<VendorProductSet> sets = parseSample();
 
+        // IL451B: 도기(원홀) 65000 + 반다리 4000 = 69000 (도기 4"는 대체옵션, 세트가 제외)
         VendorProductSet il451 = findByMainCode(sets, "IL451B")
                 .orElseThrow(() -> new AssertionError("IL451B 대표품목 미발견"));
 
-        assertTrue(il451.selectable(), "세면기는 선택형");
-        assertNull(il451.setPrice(), "선택형은 세트가 미산정");
-        assertTrue(il451.main().productName().contains("부속 선택형"));
-        assertFalse(il451.parts().isEmpty(), "슬롯 부속은 존재");
+        assertFalse(il451.selectable(), "세면기도 기본구성으로 세트가 산정");
+        assertEquals(0, new BigDecimal("69000").compareTo(il451.setPrice()), "도기원홀+반다리=69000");
+
+        // 기본 도기(원홀)=MAIN, 대체 도기(4")는 remark=대체옵션
+        assertTrue(il451.parts().stream().anyMatch(p ->
+                p.productName().contains("원홀") && VendorParsedItem.RELATION_MAIN.equals(p.relationType())));
+        assertTrue(il451.parts().stream().anyMatch(p ->
+                p.productName().contains("4") && "대체옵션".equals(p.remark())));
+
+        // 부속 품번 = 대표품번_부속코드 복합코드(A사 방식)
+        assertTrue(il451.parts().stream().allMatch(p -> p.productCode().startsWith("IL451B_")));
     }
 
     @Test
@@ -111,5 +119,43 @@ class VendorBExcelParserTest {
 
         assertTrue(bidet.parts().isEmpty(), "단일행은 부속 없음");
         assertEquals(0, new BigDecimal("120000").compareTo(bidet.setPrice()));
+    }
+
+    @Test
+    void 악세사리_A빈_세트도_G_SET_기준으로_세트화_되고_단일품은_독립저장() {
+        List<VendorProductSet> sets = parseSample();
+
+        // AC8300G: A열이 비었지만 G="SET"인 진짜 5품 세트 (이전엔 윗 세트 부속으로 흡수됨)
+        VendorProductSet ac8300 = findByMainCode(sets, "AC8300G")
+                .orElseThrow(() -> new AssertionError("AC8300G 세트 미발견"));
+        assertEquals(0, new BigDecimal("85000").compareTo(ac8300.setPrice()));
+        assertEquals(5, ac8300.parts().size(), "AC8300G는 5품 세트");
+
+        // 단일품 구간(AT0111S)은 부속 없는 독립 제품으로 저장
+        VendorProductSet single = findByMainCode(sets, "AT0111S")
+                .orElseThrow(() -> new AssertionError("AT0111S 단일품 미발견"));
+        assertTrue(single.parts().isEmpty(), "단일품은 부속 없음");
+        assertEquals(0, new BigDecimal("4800").compareTo(single.setPrice()));
+    }
+
+    @Test
+    void 수전부속_품번패턴이면_품번유지_아니면_제품코드로_대체하고_원본은_description() {
+        List<VendorProductSet> sets = parseSample();
+
+        // "U9111 (직각...)"은 품번패턴 → 코드=U9111, 나머지 B열이 description
+        VendorProductSet u9111 = findByMainCode(sets, "U9111")
+                .orElseThrow(() -> new AssertionError("U9111 미발견"));
+        assertEquals("(직각 노브형-i0110용)", u9111.main().description(), "첫 토큰 뺀 나머지 B");
+
+        // "U9013c 냉수"는 영문으로 끝나는 품번패턴도 허용 → 코드=U9013c, 나머지(냉수)=description
+        VendorProductSet u9013c = findByMainCode(sets, "U9013c")
+                .orElseThrow(() -> new AssertionError("U9013c 미발견"));
+        assertEquals("냉수", u9013c.main().description(), "영문 끝 토큰 허용");
+
+        // "1.5m"은 품번패턴 아님(숫자 시작) → 제품코드(43ds1500)로 대체, B 전체가 description
+        VendorProductSet metal = findByMainCode(sets, "43ds1500")
+                .orElseThrow(() -> new AssertionError("43ds1500(메탈호스 1.5m) 미발견"));
+        assertEquals("1.5m", metal.main().description());
+        assertTrue(metal.parts().isEmpty());
     }
 }
