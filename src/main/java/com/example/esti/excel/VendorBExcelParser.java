@@ -57,6 +57,7 @@ public class VendorBExcelParser implements VendorExcelParser {
 
                 switch (family(name)) {
                     case TOILET     -> parseToiletSheet(ctx, result);
+                    case WASHBASIN  -> parseWashbasinSheet(ctx, result);
                     case SLOT       -> parseSlotSheet(ctx, result);
                     case GALAXIA    -> parseGalaxiaSheet(ctx, result);
                     case SET_TOTAL  -> parseHeaderTotalSetSheet(ctx, result);
@@ -74,12 +75,13 @@ public class VendorBExcelParser implements VendorExcelParser {
     // 패밀리 판별
     // ============================================================
 
-    private enum Family { TOILET, SLOT, GALAXIA, SET_TOTAL, SET_SUBTOTAL, SINGLE }
+    private enum Family { TOILET, WASHBASIN, SLOT, GALAXIA, SET_TOTAL, SET_SUBTOTAL, SINGLE }
 
     private Family family(String sheetName) {
         String n = sheetName.replaceAll("\\s", "");
         if (n.equals("양변기")) return Family.TOILET;            // 양변기 전용 경로(서브테이블별 헤더/품종 병합 처리)
-        if (n.contains("소변기") || n.equals("세면기")) return Family.SLOT;
+        if (n.equals("세면기")) return Family.WASHBASIN;          // 세면기 전용 경로(선택형 기본구성·도자 분기·괄호 설명 분리)
+        if (n.contains("소변기")) return Family.SLOT;
         if (n.contains("갈라시아")) return Family.GALAXIA;
         if (n.contains("악세사리") || n.contains("악세서리")) return Family.SET_TOTAL;
         if (n.contains("국산부속") || n.contains("수전부속")) return Family.SET_SUBTOTAL;
@@ -301,7 +303,124 @@ public class VendorBExcelParser implements VendorExcelParser {
     }
 
     // ============================================================
-    // (A) 슬롯 2행형 — 소변기,수채 / 세면기
+    // (A-1) 세면기 전용 — 計 없는 선택형 슬롯(기본구성으로 세트가 산정).
+    //   · 슬롯(G~M): 도기(원홀)/도기(4")/반다리/긴다리/하프고리/앙카볼트. 수량/PLT는 스킵.
+    //   · 세트가 = 기본 도기(원홀>4") + 기본 다리(반다리>긴다리) + 그 외 필수부속(하프고리·앙카볼트…).
+    //     비기본 도기·다리는 부속으로 보존하되 remark="대체옵션"·세트가 미포함(품목 유실 방지·req1/req2).
+    //   · 품번(C)/슬롯 코드(G~M)의 "코드(설명)" → 코드/description 분리(req3).
+    //   · 도자 종류만 다른 동일 품번 중복(IL672E(화려)/IL672E(클레이탄) 등)은 도기 코드 구분 글자로 분기.
+    // ============================================================
+
+    private void parseWashbasinSheet(Ctx c, List<VendorProductSet> out) {
+        int headerRow = findRow(c, r -> isSlotHeader(c, r));
+        if (headerRow < 0) {
+            logger.warn("[B][{}] 세면기 헤더(구분/품종/품번) 미발견 → 스킵", c.sheetName);
+            return;
+        }
+
+        Map<Integer, String> slots = new LinkedHashMap<>();
+        short lastCell = c.sheet.getRow(headerRow).getLastCellNum();
+        for (int col = SLOT_FIRST_COL; col < lastCell; col++) {
+            String label = normLabel(str(c, headerRow, col));
+            if (label == null) continue;
+            if (isTotalLabel(label)) continue;            // 세면기엔 計 없음
+            if (isSkipWashbasinSlotLabel(label)) continue; // 수량/비고/PLT만 스킵
+            slots.put(col, label);
+        }
+
+        int last = c.sheet.getLastRowNum();
+        Map<Integer, String> dojaOverrides = computeDojaCodeOverrides(c, headerRow, last);
+        String lastKind = null; // 품종(B) 병합셀 대비 carry-forward
+        for (int r = headerRow + 1; r <= last; r++) {
+            if (isSlotHeader(c, r)) continue;
+            if (!"제품코드".equals(str(c, r, 5))) continue; // 제품코드행만 세트 시작
+
+            int priceRow = -1;
+            for (int k = r + 1; k <= Math.min(r + 3, last); k++) {
+                if ("대리점가".equals(str(c, k, 5))) { priceRow = k; break; }
+                if ("제품코드".equals(str(c, k, 5))) break;
+            }
+
+            String[] rep = splitParen(str(c, r, 2)); // C=품번(대표) — 괄호 도자명은 description으로 분리(req3)
+            String repCode = rep[0];
+            if (repCode == null) continue;
+            String repDesc = rep[1];
+            String override = dojaOverrides.get(r);
+            if (override != null) repCode = override; // 도자 종류만 다른 동일 품번 → 도기 코드 구분 글자 접미
+
+            String kindRaw = stripSpace(str(c, r, 1)); // B=품종
+            if (kindRaw != null) lastKind = kindRaw;
+            String kind = lastKind;
+            String ksCode = normalizeCode(str(c, r, 4)); // E=KS품번
+
+            // 현재 행에 코드가 있는 슬롯만 수집(코드 괄호 설명 분리 req3)
+            List<WbSlot> present = new ArrayList<>();
+            for (Map.Entry<Integer, String> slot : slots.entrySet()) {
+                int col = slot.getKey();
+                String[] sc = splitParen(str(c, r, col));
+                if (sc[0] == null) continue;
+                BigDecimal price = priceRow < 0 ? BigDecimal.ZERO : nz(dec(c, priceRow, col));
+                present.add(new WbSlot(slot.getValue(), sc[0], price, sc[1]));
+            }
+
+            // 기본 구성: 도기 원홀>4", 다리 반다리>긴다리 — 기본형만 세트가에 포함
+            WbSlot defDogi = pickWbDefault(present, "도기", "원홀");
+            WbSlot defDari = pickWbDefault(present, "다리", "반다리");
+
+            List<VendorParsedItem> parts = new ArrayList<>();
+            BigDecimal setPrice = BigDecimal.ZERO;
+            for (WbSlot s : present) {
+                boolean isDogi = s.label().contains("도기");
+                boolean isDari = s.label().contains("다리");
+                boolean included;
+                String relation;
+                String remark = null;
+                if (isDogi) {
+                    included = (s == defDogi);
+                    relation = included ? VendorParsedItem.RELATION_MAIN : s.label();
+                    if (!included) remark = "대체옵션";
+                } else if (isDari) {
+                    included = (s == defDari);
+                    relation = s.label();
+                    if (!included) remark = "대체옵션";
+                } else {
+                    included = true; // 하프고리/앙카볼트 등 필수 부속
+                    relation = s.label();
+                }
+                if (included) setPrice = setPrice.add(s.price());
+                parts.add(new VendorParsedItem(partCode(repCode, coldHot(s.code(), s.label())),
+                        s.label(), null, null, relation, s.price(), remark, s.desc()));
+            }
+
+            VendorParsedItem main = new VendorParsedItem(repCode, join(kind, repCode), null, ksCode,
+                    VendorParsedItem.RELATION_MAIN, setPrice, null, repDesc);
+            out.add(new VendorProductSet("B", c.sheetName, kind, main, parts,
+                    setPrice, false, imageKeyOf(r), false));
+        }
+    }
+
+    /** 세면기 슬롯 스킵: 수량/비고/PLT만 제외(도기/다리/하프고리/앙카볼트는 실제 슬롯이라 유지). */
+    private boolean isSkipWashbasinSlotLabel(String label) {
+        String s = label.replace(" ", "");
+        return s.contains("수량") || s.contains("비고") || s.contains("PLT");
+    }
+
+    /** 세면기 슬롯 후보 중 keyword(도기/다리)에 해당하는 것에서 prefer(원홀/반다리) 우선, 없으면 첫 항목. */
+    private WbSlot pickWbDefault(List<WbSlot> present, String keyword, String prefer) {
+        WbSlot first = null;
+        for (WbSlot s : present) {
+            if (!s.label().contains(keyword)) continue;
+            if (s.label().contains(prefer)) return s;
+            if (first == null) first = s;
+        }
+        return first;
+    }
+
+    /** 세면기 슬롯 1개(라벨/부속코드/단가/괄호설명). */
+    private record WbSlot(String label, String code, BigDecimal price, String desc) {}
+
+    // ============================================================
+    // (A) 슬롯 2행형 — 소변기,수채
     // ============================================================
 
     private void parseSlotSheet(Ctx c, List<VendorProductSet> out) {
