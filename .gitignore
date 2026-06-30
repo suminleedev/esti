@@ -49,4 +49,4 @@ CLAUDE.md
 work-logs/
 scripts/
 
-docs/
+docs/.playwright-mcp/
