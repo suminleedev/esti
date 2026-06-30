@@ -734,9 +734,12 @@ public class VendorBExcelParser implements VendorExcelParser {
                     slotFName, partPrice, null));
 
             BigDecimal setPrice = dogiPrice.add(partPrice);
-            VendorParsedItem main = new VendorParsedItem(repCode, repCode,
+            // 갈라시아는 실제 세면기 제품 → 표시용으로 품번 앞에 "갈라시아 세면기" 부여, 소분류=갈라시아.
+            // (대분류는 시트명 "갈라시아" 유지 — categoryLarge는 이미지 매칭 키 겸용이라 바꾸면 이미지가 끊김)
+            String repName = "갈라시아 세면기 " + repCode;
+            VendorParsedItem main = new VendorParsedItem(repCode, repName,
                     null, null, VendorParsedItem.RELATION_MAIN, setPrice, null);
-            out.add(new VendorProductSet("B", c.sheetName, null, main, parts,
+            out.add(new VendorProductSet("B", c.sheetName, "갈라시아", main, parts,
                     setPrice, false, imageKeyOf(r), false));
         }
     }
