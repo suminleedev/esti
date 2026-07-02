@@ -618,7 +618,7 @@ public class VendorBExcelParser implements VendorExcelParser {
                 String name = join("비데", baseCode);                   // 제품명 앞에 '비데' 부기
                 if (price == null) name = name + " (가격없음)";
                 VendorParsedItem main = new VendorParsedItem(baseCode, name, null, null,
-                        VendorParsedItem.RELATION_MAIN, nz(price), remark);         // 비데 비고→remark(기존 유지)
+                        VendorParsedItem.RELATION_MAIN, nz(price), null, remark);   // 비데 비고→description
                 out.add(new VendorProductSet("B", currentCat, currentCat, main,     // 소분류=비데(req2)
                         new ArrayList<>(), nz(price), false, imageKeyOf(c.sheetName, r), false)); // 대분류≠시트명 → 시트명 키
             }
