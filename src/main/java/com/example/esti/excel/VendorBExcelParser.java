@@ -60,6 +60,8 @@ public class VendorBExcelParser implements VendorExcelParser {
                     case WASHBASIN  -> parseWashbasinSheet(ctx, result);
                     case URINAL_SINK -> parseUrinalSinkSheet(ctx, result);
                     case BIDET_ETC  -> parseBidetEtcSheet(ctx, result);
+                    case FAUCET_GENERAL -> parseFaucetGeneralSheet(ctx, result);
+                    case FAUCET_PARTS   -> parseFaucetPartsSheet(ctx, result);
                     case SLOT       -> parseSlotSheet(ctx, result);
                     case GALAXIA    -> parseGalaxiaSheet(ctx, result);
                     case SET_TOTAL  -> parseHeaderTotalSetSheet(ctx, result);
@@ -77,7 +79,7 @@ public class VendorBExcelParser implements VendorExcelParser {
     // 패밀리 판별
     // ============================================================
 
-    private enum Family { TOILET, WASHBASIN, URINAL_SINK, BIDET_ETC, SLOT, GALAXIA, SET_TOTAL, SET_SUBTOTAL, SINGLE }
+    private enum Family { TOILET, WASHBASIN, URINAL_SINK, BIDET_ETC, FAUCET_GENERAL, FAUCET_PARTS, SLOT, GALAXIA, SET_TOTAL, SET_SUBTOTAL, SINGLE }
 
     private Family family(String sheetName) {
         String n = sheetName.replaceAll("\\s", "");
@@ -85,6 +87,10 @@ public class VendorBExcelParser implements VendorExcelParser {
         if (n.equals("세면기")) return Family.WASHBASIN;          // 세면기 전용 경로(선택형 기본구성·도자 분기·괄호 설명 분리)
         if (n.contains("소변기")) return Family.URINAL_SINK;       // 소변기·수채 전용 경로(서브테이블별 헤더/대분류 분리)
         if (n.contains("비데")) return Family.BIDET_ETC;           // 비데·기타 전용 경로(서브테이블별 헤더/대분류 분리)
+        // 수전금구 3-시트: 대분류 통합("수전금구")·가격은 price_basis(시트명)로 분리(§10).
+        //   "수전금구" → 일반(단일 제품) / "수전금구(국산 부속 기준)"·"수전금구(OEM 부속 기준)" → 소계 세트형.
+        //   반드시 아래 국산부속 일반분기보다 먼저 판별(수전금구 부속기준이 SET_SUBTOTAL로 새지 않게).
+        if (n.contains("수전금구")) return n.contains("부속") ? Family.FAUCET_PARTS : Family.FAUCET_GENERAL;
         if (n.contains("갈라시아")) return Family.GALAXIA;
         if (n.contains("악세사리") || n.contains("악세서리")) return Family.SET_TOTAL;
         if (n.contains("국산부속") || n.contains("수전부속")) return Family.SET_SUBTOTAL;
@@ -691,6 +697,142 @@ public class VendorBExcelParser implements VendorExcelParser {
 
     private record BidetCols(int kindCol, int codeCol, int specCol,
                              int productCodeCol, int priceCol, int remarkCol) {}
+
+    // ============================================================
+    // (A-4) 수전금구 3-시트 — 대분류 통합("수전금구") + price_basis(시트명) 분리 (§10)
+    //   · 일반: 단일 제품(부속 없음), 본품 대리점가. 대분류=시트명 그대로라 이미지 매칭 종전대로.
+    //   · 국산/OEM 부속 기준: 소계 세트형(대표=본품 품번, 부속행들, 소계=세트가). 레이아웃 동일 → 공용 파서.
+    //     같은 본품이 3시트에 등장 → upsert로 본품 1행(대분류=수전금구 고정), 가격만 price_basis(시트명)로 3분리(S1·S2).
+    //     대분류≠시트명이라 이미지는 시트명 실은 imageKey로 매칭(S: 비데와 동일 트릭). 부속 출처는 부속 categorySmall(국산/OEM, S4).
+    // ============================================================
+
+    /** 수전금구(일반) — 단일 제품(부속 없음). 시리즈(구분) carry-forward, 대분류=소분류 기준 시리즈. */
+    private void parseFaucetGeneralSheet(Ctx c, List<VendorProductSet> out) {
+        FaucetGenCols cols = null;
+        String carrySeries = null;
+        int last = c.sheet.getLastRowNum();
+        for (int r = 0; r <= last; r++) {
+            FaucetGenCols d = detectFaucetGenHeader(c, r);
+            if (d != null) { cols = d; carrySeries = null; continue; }
+            if (cols == null) continue;
+
+            String code = normalizeCode(str(c, r, cols.codeCol)); // E=품번
+            if (code == null || isHeaderLikeCode(code)) continue;
+
+            String series = cols.seriesCol >= 0 ? stripSpace(str(c, r, cols.seriesCol)) : null; // B=구분/시리즈(병합)
+            if (series != null) carrySeries = series;
+            String name = cols.nameCol >= 0 ? stripSpace(str(c, r, cols.nameCol)) : null;        // C=품목
+            BigDecimal price = cols.priceCol >= 0 ? dec(c, r, cols.priceCol) : null;             // G=대리점가
+            String remark = cols.remarkCol >= 0 ? stripSpace(str(c, r, cols.remarkCol)) : null;  // J=비고(단종 등, R7 잠정)
+
+            String displayName = name != null ? name : code;
+            if (price == null) displayName = displayName + " (가격없음)";
+            // 대분류="수전금구"(=시트명 → 이미지 매칭 종전대로), 소분류=시리즈(본품 안정), priceBasis=categoryLarge(9-arg 기본)
+            VendorParsedItem main = new VendorParsedItem(code, displayName, null, null,
+                    VendorParsedItem.RELATION_MAIN, nz(price), remark);
+            out.add(new VendorProductSet("B", "수전금구", carrySeries, main,
+                    new ArrayList<>(), nz(price), false, imageKeyOf(r), false));
+        }
+    }
+
+    /** 수전금구(일반) 2행 헤더 탐지(품번 + 대리점가). 헤더가 두 줄로 쪼개져 윗행 병합해 읽는다. */
+    private FaucetGenCols detectFaucetGenHeader(Ctx c, int r) {
+        Row row = c.sheet.getRow(r);
+        if (row == null) return null;
+        short lastCell = row.getLastCellNum();
+        int seriesCol = -1, nameCol = -1, codeCol = -1, priceCol = -1, remarkCol = -1;
+        boolean hasCode = false, hasPrice = false;
+        for (int col = 0; col < lastCell; col++) {
+            String h = noSpace(str(c, r, col));
+            if (h == null && r > 0) h = noSpace(str(c, r - 1, col)); // 윗행 병합
+            if (h == null) continue;
+            if (h.equals("품번") && codeCol < 0) { codeCol = col; hasCode = true; }
+            else if ((h.equals("구분") || h.equals("시리즈")) && seriesCol < 0) seriesCol = col;
+            else if (h.equals("품목") && nameCol < 0) nameCol = col;
+            else if (h.contains("대리점가") && priceCol < 0) { priceCol = col; hasPrice = true; }
+            else if (h.contains("비고") && remarkCol < 0) remarkCol = col;
+        }
+        if (!(hasCode && hasPrice)) return null;
+        return new FaucetGenCols(seriesCol, nameCol, codeCol, priceCol, remarkCol);
+    }
+
+    private record FaucetGenCols(int seriesCol, int nameCol, int codeCol, int priceCol, int remarkCol) {}
+
+    /**
+     * 수전금구(국산 부속 기준)·(OEM 부속 기준) 공용 — 소계 세트형.
+     * 대표행(A=시리즈 있음, C=본품 품번, G=본품 단가) + 부속행(A공백, B=부속명, C품번/없으면 D제품코드, G=부속단가) + 소계행(C="소계", G=세트가).
+     * 대분류="수전금구"(통합), 소분류=시리즈, priceBasis=시트명(가격 3분리), 부속 categorySmall=국산/OEM(출처).
+     */
+    private void parseFaucetPartsSheet(Ctx c, List<VendorProductSet> out) {
+        String ns = c.sheetName.replaceAll("\\s", "");
+        String partOrigin = ns.contains("OEM") ? "OEM" : (ns.contains("국산") ? "국산" : null); // 부속 출처(S4)
+
+        int headerRow = findRow(c, r -> {
+            String a = noSpace(str(c, r, 0));
+            return a != null && (a.contains("품목") || a.contains("품명"));
+        });
+        if (headerRow < 0) {
+            logger.warn("[B][{}] 수전금구 부속 헤더(품목) 미발견 → 스킵", c.sheetName);
+            return;
+        }
+        int last = c.sheet.getLastRowNum();
+
+        String series = null, repCode = null, repName = null;
+        BigDecimal repUnit = null;
+        List<VendorParsedItem> parts = null;
+        int repRow = -1;
+
+        for (int r = headerRow + 1; r <= last; r++) {
+            String cCell = noSpace(str(c, r, 2)); // C
+            if (cCell != null && cCell.contains("소계")) {           // 소계행 → 세트 확정(세트가=G)
+                flushFaucetPartsSet(c, out, series, repCode, repName, nz(dec(c, r, 6)), parts, repRow);
+                repCode = null; parts = null; series = null; repUnit = null; repRow = -1;
+                continue;
+            }
+            BigDecimal price = nz(dec(c, r, 6)); // G=단가
+            String bName = stripSpace(str(c, r, 1)); // B=품명/부속명
+            String a = stripSpace(str(c, r, 0));     // A=품목(시리즈) → 대표행 경계
+
+            if (a != null) {                                        // 대표행(본품)
+                flushFaucetPartsSet(c, out, series, repCode, repName, repUnit, parts, repRow); // 소계 없이 닫힌 이전 세트 방어
+                series = a;
+                repCode = normalizeCode(str(c, r, 2));              // C=본품 품번
+                repName = orDefault(bName, repCode);
+                repUnit = price;                                    // 본품 단가(소계 없을 때 폴백)
+                parts = new ArrayList<>();
+                repRow = r;
+            } else if (parts != null && repCode != null) {          // 부속행
+                String pcode = normalizeCode(str(c, r, 2));         // C=부속 품번
+                if (pcode == null) pcode = normalizeCode(str(c, r, 3)); // 없으면 D=제품코드(S6 유실 방지)
+                if (pcode == null) continue;
+                String label = orDefault(bName, pcode);
+                parts.add(new VendorParsedItem(partCode(repCode, faucetDetail(pcode, label)),
+                        label, null, null, VendorParsedItem.RELATION_ACCESSORY, price, null, null, partOrigin));
+            }
+        }
+        flushFaucetPartsSet(c, out, series, repCode, repName, repUnit, parts, repRow);
+    }
+
+    private void flushFaucetPartsSet(Ctx c, List<VendorProductSet> out, String series, String repCode,
+                                     String repName, BigDecimal setPrice, List<VendorParsedItem> parts, int repRow) {
+        if (repCode == null) return;
+        BigDecimal price = setPrice != null ? setPrice : BigDecimal.ZERO;
+        VendorParsedItem main = new VendorParsedItem(repCode, repName, null, null,
+                VendorParsedItem.RELATION_MAIN, price, null);
+        // 대분류="수전금구"(통합), 소분류=시리즈(본품 안정), priceBasis=시트명(가격 분리), 이미지=시트명 실은 키
+        out.add(new VendorProductSet("B", "수전금구", series, main,
+                parts != null ? parts : new ArrayList<>(), price, false,
+                imageKeyOf(c.sheetName, repRow), false, c.sheetName));
+    }
+
+    /** 수전금구 부속 냉/온 구분: 라벨에 냉/온이 있으면 코드에 c/h 접미(같은 제품코드 냉·온수 공유 시 충돌 방지). */
+    private String faucetDetail(String code, String label) {
+        if (code == null || label == null) return code;
+        String n = label.replaceAll("\\s", "");
+        if (n.contains("냉") && !code.endsWith("c")) return code + "c";
+        if (n.contains("온") && !code.endsWith("h")) return code + "h";
+        return code;
+    }
 
     // ============================================================
     // (A) 슬롯 2행형 — 소변기,수채
