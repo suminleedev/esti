@@ -122,6 +122,18 @@ abstract class AbstractVendorBSheetDbVerification {
     }
 
     /**
+     * 대표품목 가격 — priceBasis를 명시 조회(수전금구처럼 대분류≠가격기준일 때).
+     * ({@link #dbSetPrice(String, VendorProduct)}는 basis==categoryLarge를 가정하므로 그 경우엔 이 오버로드 사용, §10 S9)
+     */
+    protected BigDecimal dbSetPriceByBasis(VendorProduct main, String priceBasis) {
+        return priceRepository
+                .findByVendorAndVendorProductAndProposalItemCodeAndPriceBasis(
+                        vendorB(), main, main.getProductCode(), priceBasis)
+                .map(VendorItemPrice::getUnitPrice)
+                .orElseThrow(() -> new AssertionError(main.getProductCode() + " @basis=" + priceBasis + " 가격 미적재"));
+    }
+
+    /**
      * 대표품목 구성 부속(관계 대상 품목).
      * 관계의 targetProduct는 lazy 프록시이므로 id만 뽑아(세션 없이 안전) 재조회해 초기화된 엔티티로 반환한다.
      */

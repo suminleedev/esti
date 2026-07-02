@@ -16,14 +16,22 @@ public record VendorParsedItem(
         String relationType,   // 본품=MAIN, 부속=슬롯 라벨(도기/시트/앵글밸브…) 또는 ACCESSORY
         BigDecimal unitPrice,  // 개별 단가 (없으면 0)
         String remark,         // 비고
-        String description     // 원본 품번/부가 설명 보존 (수전부속처럼 코드를 제품코드로 대체할 때 원본 B열 등)
+        String description,    // 원본 품번/부가 설명 보존 (수전부속처럼 코드를 제품코드로 대체할 때 원본 B열 등)
+        String categorySmall   // 이 품목 전용 소분류(있으면 세트의 categorySmall 대신 사용). null이면 세트값(§10 S4: 수전금구 부속 출처 국산/OEM)
 ) {
     public static final String RELATION_MAIN = "MAIN";
     public static final String RELATION_ACCESSORY = "ACCESSORY";
 
-    /** 기존 7-인자 호출 호환 (description 없음). */
+    /** 기존 7-인자 호출 호환 (description·categorySmall 없음). */
     public VendorParsedItem(String productCode, String productName, String oldItemCode,
                             String subItemCode, String relationType, BigDecimal unitPrice, String remark) {
-        this(productCode, productName, oldItemCode, subItemCode, relationType, unitPrice, remark, null);
+        this(productCode, productName, oldItemCode, subItemCode, relationType, unitPrice, remark, null, null);
+    }
+
+    /** 기존 8-인자 호출 호환 (categorySmall 없음). */
+    public VendorParsedItem(String productCode, String productName, String oldItemCode,
+                            String subItemCode, String relationType, BigDecimal unitPrice,
+                            String remark, String description) {
+        this(productCode, productName, oldItemCode, subItemCode, relationType, unitPrice, remark, description, null);
     }
 }

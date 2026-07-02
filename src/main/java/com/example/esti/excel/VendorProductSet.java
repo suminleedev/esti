@@ -25,8 +25,21 @@ public record VendorProductSet(
         BigDecimal setPrice,          // 세트 합계가. 선택형이면 null
         boolean selectable,           // 선택형 세트(합계 미산정) 여부
         String imageKey,              // 임베디드 이미지 식별키/임시경로 (없으면 null) — P5에서 채움
-        boolean needsReview           // 자동 그룹핑 실패(합계≠부속합산 등) → 검수 필요(D16)
+        boolean needsReview,          // 자동 그룹핑 실패(합계≠부속합산 등) → 검수 필요(D16)
+        String priceBasis             // 대표품목 가격 분리 기준. 기본은 categoryLarge(하위호환).
+                                      // 대분류≠가격기준인 시트(수전금구 3-시트: 대분류 "수전금구" 고정, basis=시트명)에만 별도 지정(§10 S3)
 ) {
+    /**
+     * 기존 9-인자 호출 호환 — {@code priceBasis = categoryLarge}(종전 동작 그대로).
+     * 대분류를 그대로 가격 분리 기준으로 쓰는 모든 기존 파서가 이 생성자를 탄다.
+     */
+    public VendorProductSet(String vendorCode, String categoryLarge, String categorySmall,
+                            VendorParsedItem main, List<VendorParsedItem> parts, BigDecimal setPrice,
+                            boolean selectable, String imageKey, boolean needsReview) {
+        this(vendorCode, categoryLarge, categorySmall, main, parts, setPrice,
+                selectable, imageKey, needsReview, categoryLarge);
+    }
+
     /**
      * imageKey에 원본 시트명을 실을 때 쓰는 구분자(Excel 시트명 금지 문자 "[").
      *
