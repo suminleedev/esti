@@ -85,8 +85,16 @@ class VendorBParseVerificationTest {
         for (VendorProductSet s : sets) {
             if (s.imageKey() == null || IMAGE_SPARSE_SHEETS.contains(s.categoryLarge())) continue;
             total++;
-            Map<Integer, ExcelImageExtractor.ExtractedImage> byRow = images.get(s.categoryLarge());
-            if (byRow != null && byRow.get(Integer.parseInt(s.imageKey())) != null) matched++;
+            // 대분류를 시트명에서 분리한 시트(비데,기타 등)는 imageKey에 시트명을 실어두므로 그걸로 조회
+            String sheetKey = s.categoryLarge();
+            String rowPart = s.imageKey();
+            int sep = s.imageKey().indexOf(VendorProductSet.IMAGE_KEY_SHEET_SEP);
+            if (sep >= 0) {
+                sheetKey = s.imageKey().substring(0, sep);
+                rowPart = s.imageKey().substring(sep + VendorProductSet.IMAGE_KEY_SHEET_SEP.length());
+            }
+            Map<Integer, ExcelImageExtractor.ExtractedImage> byRow = images.get(sheetKey);
+            if (byRow != null && byRow.get(Integer.parseInt(rowPart)) != null) matched++;
         }
         assertTrue(total > 0);
         double coverage = (double) matched / total;

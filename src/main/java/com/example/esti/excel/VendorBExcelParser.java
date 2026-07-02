@@ -59,6 +59,7 @@ public class VendorBExcelParser implements VendorExcelParser {
                     case TOILET     -> parseToiletSheet(ctx, result);
                     case WASHBASIN  -> parseWashbasinSheet(ctx, result);
                     case URINAL_SINK -> parseUrinalSinkSheet(ctx, result);
+                    case BIDET_ETC  -> parseBidetEtcSheet(ctx, result);
                     case SLOT       -> parseSlotSheet(ctx, result);
                     case GALAXIA    -> parseGalaxiaSheet(ctx, result);
                     case SET_TOTAL  -> parseHeaderTotalSetSheet(ctx, result);
@@ -76,13 +77,14 @@ public class VendorBExcelParser implements VendorExcelParser {
     // 패밀리 판별
     // ============================================================
 
-    private enum Family { TOILET, WASHBASIN, URINAL_SINK, SLOT, GALAXIA, SET_TOTAL, SET_SUBTOTAL, SINGLE }
+    private enum Family { TOILET, WASHBASIN, URINAL_SINK, BIDET_ETC, SLOT, GALAXIA, SET_TOTAL, SET_SUBTOTAL, SINGLE }
 
     private Family family(String sheetName) {
         String n = sheetName.replaceAll("\\s", "");
         if (n.equals("양변기")) return Family.TOILET;            // 양변기 전용 경로(서브테이블별 헤더/품종 병합 처리)
         if (n.equals("세면기")) return Family.WASHBASIN;          // 세면기 전용 경로(선택형 기본구성·도자 분기·괄호 설명 분리)
         if (n.contains("소변기")) return Family.URINAL_SINK;       // 소변기·수채 전용 경로(서브테이블별 헤더/대분류 분리)
+        if (n.contains("비데")) return Family.BIDET_ETC;           // 비데·기타 전용 경로(서브테이블별 헤더/대분류 분리)
         if (n.contains("갈라시아")) return Family.GALAXIA;
         if (n.contains("악세사리") || n.contains("악세서리")) return Family.SET_TOTAL;
         if (n.contains("국산부속") || n.contains("수전부속")) return Family.SET_SUBTOTAL;
@@ -547,6 +549,146 @@ public class VendorBExcelParser implements VendorExcelParser {
         }
         return out;
     }
+
+    // ============================================================
+    // (A-3) 비데·기타 전용 — 서브테이블별 헤더/대분류 분리
+    //   한 시트에 "5. 비데"·"6. 기타" 두 서브테이블이 세로로 쌓여 있고 컬럼 배치가 서로 다르다
+    //   (비데: 품번=B·스펙 없음 / 기타: 품번=D·스펙=E). 부속 없는 단일행 제품이다.
+    //
+    //   <ul>
+    //     <li>req1 — 대분류 분리: 헤더(품번+대리점가)를 만날 때마다 새 서브테이블로 보고 컬럼을 재인식,
+    //         대분류를 시트명 콤마 분리값으로 순서대로 부여(비데 / 기타).</li>
+    //     <li>req2 — 비데 소분류=비데 고정(비데 표는 품종 컬럼이 비어 있음).</li>
+    //     <li>req3 — 기타: 전기/배터리처럼 품번(D)이 같고 제품코드(G)만 다른 변형(품번 병합으로 아래 행 D가 빈칸)은
+    //         품번 뒤에 제품코드의 구분글자(e/b 등)를 붙여 두 행 모두 유실 없이 보존.</li>
+    //     <li>req4 — 기타: 스펙(E)을 제품명 뒤 괄호로 덧붙이고, 비고(I)는 description 컬럼에 저장.</li>
+    //   </ul>
+    // ============================================================
+
+    private void parseBidetEtcSheet(Ctx c, List<VendorProductSet> out) {
+        List<String> categories = splitSheetCategories(c.sheetName);
+        Map<Integer, String> codeOverrides = computeBidetCodeOverrides(c); // 기타 변형행 품번 접미(req3)
+
+        BidetCols cols = null;
+        int catIdx = -1;
+        String currentCat = c.sheetName; // 첫 헤더 전 안전 기본값
+        String carryKind = null;         // 기타 품종(A) 병합셀 carry-forward
+        String carryBase = null;         // 기타 품번(D) 병합셀 carry-forward(변형행)
+
+        int last = c.sheet.getLastRowNum();
+        for (int r = 0; r <= last; r++) {
+            BidetCols detected = detectBidetHeader(c, r);
+            if (detected != null) {                          // 새 서브테이블 시작 → 컬럼/대분류 갱신
+                cols = detected;
+                catIdx++;
+                currentCat = catIdx < categories.size() ? categories.get(catIdx) : c.sheetName;
+                carryKind = null;
+                carryBase = null;
+                continue;
+            }
+            if (cols == null) continue;
+
+            boolean etc = cols.specCol >= 0;                 // 스펙 컬럼 존재 → 기타 서브테이블
+            String ownCode = normalizeCode(str(c, r, cols.codeCol));
+            BigDecimal price = cols.priceCol >= 0 ? dec(c, r, cols.priceCol) : null;
+            String prod = cols.productCodeCol >= 0 ? normalizeCode(str(c, r, cols.productCodeCol)) : null;
+            if (ownCode == null && prod == null && price == null) continue; // 병합 잔여/꼬리 빈 행 방어
+
+            if (ownCode != null) carryBase = ownCode;
+            String baseCode = ownCode != null ? ownCode : (etc ? carryBase : null); // 기타 변형행은 직전 품번 이어쓰기
+            if (baseCode == null || isHeaderLikeCode(baseCode)) continue;
+
+            String remark = cols.remarkCol >= 0 ? stripSpace(str(c, r, cols.remarkCol)) : null;
+            String kindRaw = cols.kindCol >= 0 ? stripSpace(str(c, r, cols.kindCol)) : null;
+            if (kindRaw != null) carryKind = kindRaw;
+
+            if (etc) {
+                String code = codeOverrides.getOrDefault(r, baseCode); // 변형이면 e/b 접미(req3)
+                String spec = cols.specCol >= 0 ? stripSpace(str(c, r, cols.specCol)) : null;
+                String name = join(carryKind, baseCode);
+                if (spec != null) name = name + " (" + spec + ")";      // 스펙 괄호 부기(req4)
+                if (price == null) name = name + " (가격없음)";
+                VendorParsedItem main = new VendorParsedItem(code, name, null, null,
+                        VendorParsedItem.RELATION_MAIN, nz(price), null, remark); // 비고→description(req4)
+                out.add(new VendorProductSet("B", currentCat, carryKind, main,
+                        new ArrayList<>(), nz(price), false, imageKeyOf(c.sheetName, r), false)); // 대분류≠시트명 → 시트명 키
+            } else {
+                String name = join(kindRaw, baseCode);
+                if (price == null) name = name + " (가격없음)";
+                VendorParsedItem main = new VendorParsedItem(baseCode, name, null, null,
+                        VendorParsedItem.RELATION_MAIN, nz(price), remark);         // 비데 비고→remark(기존 유지)
+                out.add(new VendorProductSet("B", currentCat, currentCat, main,     // 소분류=비데(req2)
+                        new ArrayList<>(), nz(price), false, imageKeyOf(c.sheetName, r), false)); // 대분류≠시트명 → 시트명 키
+            }
+        }
+    }
+
+    /**
+     * 기타 서브테이블에서 같은 품번(D)을 공유하는 변형(전기/배터리 등)을 찾아 제품코드(G)의 구분글자를 접미한다(req3).
+     * 품번(D)이 채워진 행이 그룹 시작, 아래의 D 빈칸 행은 같은 품번의 변형으로 본다. 그룹 크기 ≥2면
+     * 각 멤버의 제품코드 첫 상이 인덱스 글자를 품번에 붙여 충돌 없이 둘 다 보존한다.
+     * 반환: 대상 행(0-based) → 최종 품번(base+구분글자). 단일 품번(변형 없음)은 포함하지 않는다.
+     */
+    private Map<Integer, String> computeBidetCodeOverrides(Ctx c) {
+        record Member(int row, String prodCode) {}
+        Map<String, List<Member>> groups = new LinkedHashMap<>();
+        BidetCols cols = null;
+        String carryBase = null;
+        int last = c.sheet.getLastRowNum();
+        for (int r = 0; r <= last; r++) {
+            BidetCols detected = detectBidetHeader(c, r);
+            if (detected != null) { cols = detected; carryBase = null; continue; }
+            if (cols == null || cols.specCol < 0) continue; // 기타(스펙 존재) 구간만
+            String ownCode = normalizeCode(str(c, r, cols.codeCol));
+            BigDecimal price = cols.priceCol >= 0 ? dec(c, r, cols.priceCol) : null;
+            String prod = cols.productCodeCol >= 0 ? normalizeCode(str(c, r, cols.productCodeCol)) : null;
+            if (ownCode == null && prod == null && price == null) continue; // 꼬리 빈 행 방어(메인 루프와 동일)
+            if (ownCode != null) carryBase = ownCode;
+            String base = ownCode != null ? ownCode : carryBase;
+            if (base == null || isHeaderLikeCode(base)) continue;
+            groups.computeIfAbsent(base, k -> new ArrayList<>()).add(new Member(r, prod));
+        }
+
+        Map<Integer, String> overrides = new LinkedHashMap<>();
+        for (Map.Entry<String, List<Member>> e : groups.entrySet()) {
+            List<Member> ms = e.getValue();
+            if (ms.size() < 2) continue;                    // 변형 없는 단일 품번은 그대로
+            int k = firstDiffIndex(ms.stream().map(Member::prodCode).toList());
+            for (Member m : ms) {
+                String suffix = (m.prodCode() != null && m.prodCode().length() > k)
+                        ? String.valueOf(m.prodCode().charAt(k)) : "";
+                overrides.put(m.row(), e.getKey() + suffix);
+            }
+        }
+        return overrides;
+    }
+
+    /**
+     * 비데·기타 서브테이블 헤더행 탐지(품번 + 대리점가 동시 존재). 헤더면 컬럼맵, 아니면 null.
+     * 두 서브테이블의 컬럼 위치가 다르므로(비데 품번=B / 기타 품번=D+스펙 E) 헤더마다 재탐지한다.
+     */
+    private BidetCols detectBidetHeader(Ctx c, int r) {
+        Row row = c.sheet.getRow(r);
+        if (row == null) return null;
+        short lastCell = row.getLastCellNum();
+        int kindCol = -1, codeCol = -1, specCol = -1, prodCol = -1, priceCol = -1, remarkCol = -1;
+        boolean hasCode = false, hasPrice = false;
+        for (int col = 0; col < lastCell; col++) {
+            String h = noSpace(str(c, r, col));
+            if (h == null) continue;
+            if (h.equals("품번") && codeCol < 0) { codeCol = col; hasCode = true; }
+            else if ((h.equals("품종") || h.equals("품목")) && kindCol < 0) kindCol = col;
+            else if (h.equals("스펙") && specCol < 0) specCol = col;
+            else if (h.equals("제품코드") && prodCol < 0) prodCol = col;
+            else if (h.contains("대리점가") && priceCol < 0) { priceCol = col; hasPrice = true; }
+            else if (h.contains("비고") && remarkCol < 0) remarkCol = col;
+        }
+        if (!(hasCode && hasPrice)) return null;
+        return new BidetCols(kindCol, codeCol, specCol, prodCol, priceCol, remarkCol);
+    }
+
+    private record BidetCols(int kindCol, int codeCol, int specCol,
+                             int productCodeCol, int priceCol, int remarkCol) {}
 
     // ============================================================
     // (A) 슬롯 2행형 — 소변기,수채
@@ -1062,6 +1204,14 @@ public class VendorBExcelParser implements VendorExcelParser {
     /** 임베디드 이미지 매칭 키 = 대표품목의 0-based 행 인덱스(없으면 null). 시트는 categoryLarge로 식별. */
     private String imageKeyOf(int row) {
         return row >= 0 ? String.valueOf(row) : null;
+    }
+
+    /**
+     * 시트명 포함 이미지 키("시트명" + SEP + 행). 대분류를 시트명에서 분리 저장하는 시트(비데,기타 등)는
+     * categoryLarge로 이미지를 못 찾으므로 원본 시트명을 함께 실어 시트명 기준으로 매칭하게 한다.
+     */
+    private String imageKeyOf(String sheetName, int row) {
+        return row >= 0 ? sheetName + VendorProductSet.IMAGE_KEY_SHEET_SEP + row : null;
     }
 
     /**
