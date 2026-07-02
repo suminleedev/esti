@@ -38,6 +38,10 @@ class VendorBBidetEtcDbTest extends AbstractVendorBSheetDbVerification {
         assertThat(dsb.getCategorySmall()).isEqualTo("비데");
         assertThat(dsb.getProductName()).isEqualTo("비데 DSB-5420");
         assertThat(dbSetPrice("비데", dsb)).isEqualByComparingTo(new BigDecimal("120000"));
+
+        // 비데 비고는 description 컬럼에 저장
+        assertThat(dbSetProduct("비데", "IS-24").getDescription()).isEqualTo("방수 비데");
+        assertThat(dbSetProduct("비데", "DSB-6035R").getDescription()).isEqualTo("리모컨 타입");
     }
 
     @Test

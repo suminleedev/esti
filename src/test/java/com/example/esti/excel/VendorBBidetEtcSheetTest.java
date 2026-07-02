@@ -76,6 +76,17 @@ class VendorBBidetEtcSheetTest {
     }
 
     @Test
+    void 비데_비고는_description에_저장하고_remark는_비움() {
+        List<VendorProductSet> bidets = setsOf("비데");
+        VendorProductSet is24 = byCode(bidets, "IS-24");
+        assertEquals("방수 비데", is24.main().description(), "비데 비고→description");
+        assertNull(is24.main().remark(), "비데 비고는 remark가 아닌 description으로");
+
+        VendorProductSet dsb6035 = byCode(bidets, "DSB-6035R");
+        assertEquals("리모컨 타입", dsb6035.main().description());
+    }
+
+    @Test
     void req3_기타_전기배터리는_품번뒤_구분글자로_둘다보존() {
         List<VendorProductSet> etc = setsOf("기타");
 
