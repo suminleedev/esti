@@ -71,6 +71,7 @@ class VendorBBidetEtcSheetTest {
         VendorProductSet dsb = byCode(bidets, "DSB-5420");
         assertEquals("비데", dsb.categoryLarge());
         assertEquals("비데", dsb.categorySmall());
+        assertEquals("비데 DSB-5420", dsb.main().productName(), "제품명 앞 '비데' 부기");
         assertEquals(0, new BigDecimal("120000").compareTo(dsb.setPrice()));
     }
 
@@ -94,7 +95,7 @@ class VendorBBidetEtcSheetTest {
         List<VendorProductSet> etc = setsOf("기타");
         VendorProductSet hd = byCode(etc, "HD101G");
 
-        assertEquals("핸드 드라이어 HD101G (일반)", hd.main().productName(), "스펙 괄호 부기");
+        assertEquals("핸드 드라이어 (일반) HD101G", hd.main().productName(), "소분류 (스펙) 품목코드");
         assertEquals("보급형", hd.main().description(), "비고→description");
         assertNull(hd.main().remark(), "기타 비고는 remark가 아닌 description으로");
         assertEquals("핸드 드라이어", hd.categorySmall(), "소분류=품종");
@@ -106,8 +107,8 @@ class VendorBBidetEtcSheetTest {
         VendorProductSet electric = byCode(etc, "E102e");
         VendorProductSet battery = byCode(etc, "E102b");
 
-        // 전기: 스펙 소형 → 제품명 괄호, 타입은 비고→description
-        assertEquals("소변기 매립감지기 E102 (소형)", electric.main().productName());
+        // 전기: 소분류 (스펙) 품목코드, 타입은 비고→description
+        assertEquals("소변기 매립감지기 (소형) E102", electric.main().productName());
         assertEquals("전기 타입: 120x120", electric.main().description());
 
         // 배터리행은 품종(A)·품번(D) 병합 빈칸이라 carry-forward, 타입은 description으로 구분

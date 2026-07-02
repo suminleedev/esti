@@ -36,6 +36,7 @@ class VendorBBidetEtcDbTest extends AbstractVendorBSheetDbVerification {
         VendorProduct dsb = dbSetProduct("비데", "DSB-5420");
         assertThat(dsb.getCategoryLarge()).isEqualTo("비데");
         assertThat(dsb.getCategorySmall()).isEqualTo("비데");
+        assertThat(dsb.getProductName()).isEqualTo("비데 DSB-5420");
         assertThat(dbSetPrice("비데", dsb)).isEqualByComparingTo(new BigDecimal("120000"));
     }
 
@@ -54,7 +55,7 @@ class VendorBBidetEtcDbTest extends AbstractVendorBSheetDbVerification {
     @Test
     void req4_기타_스펙은_제품명괄호_비고는_description() {
         VendorProduct hd = dbSetProduct("기타", "HD101G");
-        assertThat(hd.getProductName()).isEqualTo("핸드 드라이어 HD101G (일반)");
+        assertThat(hd.getProductName()).isEqualTo("핸드 드라이어 (일반) HD101G");
         assertThat(hd.getDescription()).isEqualTo("보급형");
         assertThat(hd.getCategorySmall()).isEqualTo("핸드 드라이어");
 
