@@ -605,15 +605,17 @@ public class VendorBExcelParser implements VendorExcelParser {
             if (etc) {
                 String code = codeOverrides.getOrDefault(r, baseCode); // 변형이면 e/b 접미(req3)
                 String spec = cols.specCol >= 0 ? stripSpace(str(c, r, cols.specCol)) : null;
-                String name = join(carryKind, baseCode);
-                if (spec != null) name = name + " (" + spec + ")";      // 스펙 괄호 부기(req4)
+                // 제품명 = 소분류(품종) + (스펙) + 품목코드
+                String name = carryKind;
+                if (spec != null) name = join(name, "(" + spec + ")"); // 스펙 괄호 부기(req4)
+                name = join(name, baseCode);
                 if (price == null) name = name + " (가격없음)";
                 VendorParsedItem main = new VendorParsedItem(code, name, null, null,
                         VendorParsedItem.RELATION_MAIN, nz(price), null, remark); // 비고→description(req4)
                 out.add(new VendorProductSet("B", currentCat, carryKind, main,
                         new ArrayList<>(), nz(price), false, imageKeyOf(c.sheetName, r), false)); // 대분류≠시트명 → 시트명 키
             } else {
-                String name = join(kindRaw, baseCode);
+                String name = join("비데", baseCode);                   // 제품명 앞에 '비데' 부기
                 if (price == null) name = name + " (가격없음)";
                 VendorParsedItem main = new VendorParsedItem(baseCode, name, null, null,
                         VendorParsedItem.RELATION_MAIN, nz(price), remark);         // 비데 비고→remark(기존 유지)
