@@ -26,4 +26,14 @@ public record VendorProductSet(
         boolean selectable,           // 선택형 세트(합계 미산정) 여부
         String imageKey,              // 임베디드 이미지 식별키/임시경로 (없으면 null) — P5에서 채움
         boolean needsReview           // 자동 그룹핑 실패(합계≠부속합산 등) → 검수 필요(D16)
-) {}
+) {
+    /**
+     * imageKey에 원본 시트명을 실을 때 쓰는 구분자(Excel 시트명 금지 문자 "[").
+     *
+     * <p>임베디드 이미지 맵은 <b>시트명</b>으로 키가 잡히는데(ExcelImageExtractor), 대분류를 시트명에서
+     * 분리 저장하는 시트(예: "비데, 기타" → 비데/기타)는 {@code categoryLarge}로 이미지를 찾지 못한다.
+     * 이 경우 파서가 imageKey를 {@code "시트명" + SEP + 행번호}로 채워 시트명 기준으로 이미지를 찾게 한다.
+     * 구분자가 없는 기존 키(순수 행 번호)는 종전대로 {@code categoryLarge}로 조회한다(하위호환).</p>
+     */
+    public static final String IMAGE_KEY_SHEET_SEP = "[";  // Excel 시트명에 금지된 문자라 충돌 불가
+}
