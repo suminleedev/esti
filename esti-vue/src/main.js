@@ -6,9 +6,11 @@ import router from './router'
 import 'bootstrap/dist/css/bootstrap.min.css';
 // bootstrap JS  (include Popper)
 import 'bootstrap/dist/js/bootstrap.bundle.min.js';
+// bootstrap icons
+import 'bootstrap-icons/font/bootstrap-icons.css';
 
-// global apply
-//import './assets/css/estimatePage.css';
+// esti design tokens
+import './assets/tokens.css';
 
 
 const app = createApp(App)
