@@ -211,28 +211,32 @@ function cancelEdit() {
 }
 
 async function saveEdit() {
+  message.value = ''
+  error.value = ''
   if (!editingProduct.value) return
   try {
-    await axios.put(`/api/catalog/${editingProduct.value.id}`, editingProduct.value)
+    await axios.put(`/api/vendor-catalog/${editingProduct.value.vendorItemPriceId}`, editingProduct.value)
     message.value = '수정 성공'
     editingProduct.value = null
     await loadVendorCatalog()
   } catch (e) {
-    error.value = '수정 실패: ' + (e?.response?.data || e?.message)
+    error.value = '수정 실패: ' + (e?.response?.data?.message || e?.message || '')
   }
 }
 
 /**
  * 카탈로그 삭제
  */
-async function deleteProduct(id) {
-  if (!confirm('정말 삭제하시겠습니까?')) return
+async function deleteProduct(p) {
+  message.value = ''
+  error.value = ''
+  if (!confirm(`『${p.productName}』(${p.mainItemCode ?? '-'}) 항목을 삭제하시겠습니까?`)) return
   try {
-    await axios.delete(`/api/catalog/${id}`)
+    await axios.delete(`/api/vendor-catalog/${p.vendorItemPriceId}`)
     message.value = '삭제 성공'
     await loadVendorCatalog()
   } catch (e) {
-    error.value = '삭제 실패: ' + (e?.response?.data || e?.message)
+    error.value = '삭제 실패: ' + (e?.response?.data?.message || e?.message || '')
   }
 }
 
@@ -353,6 +357,17 @@ onMounted(() => {
               </select>
             </div>
           </div>
+
+          <!-- 수정/삭제 결과 피드백 -->
+          <div v-if="message" class="alert alert-success alert-dismissible py-2 my-2" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" aria-label="닫기" @click="message = ''"></button>
+          </div>
+          <div v-if="error" class="alert alert-danger alert-dismissible py-2 my-2" role="alert">
+            {{ error }}
+            <button type="button" class="btn-close" aria-label="닫기" @click="error = ''"></button>
+          </div>
+
           <div class="table-scroll mt-2"><!-- 테이블 내부 스크롤 -->
             <table class="table table-striped table-bordered mt-2 align-middle">
               <thead class="table-light">
@@ -365,21 +380,22 @@ onMounted(() => {
                 <th style="width:10%">브랜드</th>
                 <th style="width:13%">규격</th>
                 <th style="width:7%">단가</th>
-                <th style="width:8%">설명</th>
+<!--                <th style="width:7%">구품번</th>-->
+                <th style="width:9%">설명</th>
                 <th style="width:6%">이미지</th>
                 <th style="width:7%">액션</th>
               </tr>
               </thead>
               <tbody>
-              <tr v-for="(p, idx) in vendorCatalogs" :key="p.catalogId">
-                <template v-if="editingProduct && editingProduct.catalogId === p.catalogId">
+              <tr v-for="(p, idx) in vendorCatalogs" :key="p.vendorItemPriceId">
+                <template v-if="editingProduct && editingProduct.vendorItemPriceId === p.vendorItemPriceId">
                   <!-- 수정 모드 -->
                   <td>{{ idx + 1 }}</td>
                   <td><input v-model="editingProduct.categoryLarge" class="form-control" /></td>
                   <td><input v-model="editingProduct.categorySmall" class="form-control" /></td>
                   <td><input v-model="editingProduct.productName" class="form-control" /></td>
                   <td><input v-model="editingProduct.mainItemCode" class="form-control" /></td>
-                  <td><input v-model="editingProduct.vendorName" class="form-control" /></td>
+                  <td>{{ editingProduct.vendorName }}</td><!-- 브랜드는 공급사 공통 정보라 행 단위 수정 불가 -->
                   <td><input v-model="editingProduct.remark" class="form-control" /></td>
                   <td>
                     <input
@@ -388,11 +404,11 @@ onMounted(() => {
                       class="form-control text-end"
                     />
                   </td>
-                  <td><input v-model="editingProduct.oldItemCode" class="form-control" /></td>
+                  <td><input v-model="editingProduct.description" class="form-control" /></td>
                   <td><input v-model="editingProduct.imageUrl" class="form-control" /></td>
                   <td class="d-flex justify-content-center align-items-center gap-1">
-                    <button class="btn btn-success btn-sm" @click="saveEdit" title="저장">✔️</button>
-                    <button class="btn btn-secondary btn-sm" @click="cancelEdit" title="취소">❌</button>
+                    <button class="btn btn-success btn-sm" @click="saveEdit" title="저장" aria-label="저장"><i class="bi bi-check-lg"></i></button>
+                    <button class="btn btn-secondary btn-sm" @click="cancelEdit" title="취소" aria-label="취소"><i class="bi bi-x-lg"></i></button>
                   </td>
                 </template>
                 <template v-else>
@@ -405,7 +421,8 @@ onMounted(() => {
                   <td>{{ p.vendorName }}</td>
                   <td>{{ p.remark }}</td>
                   <td class="text-end">{{ p.unitPrice?.toLocaleString() }}</td>
-                  <td>{{ p.oldItemCode }}</td>
+<!--                  <td>{{ p.oldItemCode }}</td>-->
+                  <td>{{ p.description }}</td>
                   <td style="padding:1px;">
                     <div class="img-cell">
                       <img
@@ -418,8 +435,8 @@ onMounted(() => {
                   </td>
                   <td class="text-center align-middle">
                     <div class="d-flex justify-content-center align-items-center gap-1">
-                      <button class="btn btn-warning btn-sm" @click="startEdit(p)" title="수정">✍🏻</button>
-                      <button class="btn btn-danger btn-sm" @click="deleteProduct(p.catalogId)" title="삭제">␡</button>
+                      <button class="btn btn-warning btn-sm" @click="startEdit(p)" title="수정" aria-label="수정"><i class="bi bi-pencil-square"></i></button>
+                      <button class="btn btn-danger btn-sm" @click="deleteProduct(p)" title="삭제" aria-label="삭제"><i class="bi bi-trash"></i></button>
                     </div>
                   </td>
                 </template>

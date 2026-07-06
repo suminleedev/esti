@@ -1,9 +1,11 @@
 package com.example.esti.controller;
 
+import com.example.esti.dto.VendorCatalogUpdateRequest;
 import com.example.esti.dto.VendorCatalogView;
 import com.example.esti.progress.ImportProgress;
 import com.example.esti.progress.ImportProgressStore;
 import com.example.esti.service.CatalogImportAsyncService;
+import com.example.esti.service.VendorCatalogCommandService;
 import com.example.esti.service.VendorCatalogQueryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -28,6 +30,7 @@ import java.util.UUID;
 public class VendorCatalogController {
 
     private final VendorCatalogQueryService vendorCatalogQueryService;
+    private final VendorCatalogCommandService vendorCatalogCommandService;
     private final CatalogImportAsyncService catalogImportAsyncService;
     private final ImportProgressStore progressStore;
     /**
@@ -125,6 +128,30 @@ public class VendorCatalogController {
         return ResponseEntity.ok(
                 vendorCatalogQueryService.getVendorCatalogPageAll(pageable)
         );
+    }
+
+    /**
+     * 카탈로그 행(가격 라인) 수정
+     * PUT /api/vendor-catalog/{vendorItemPriceId}
+     */
+    @PutMapping("/{vendorItemPriceId}")
+    public ResponseEntity<VendorCatalogView> updateVendorCatalog(
+            @PathVariable Long vendorItemPriceId,
+            @RequestBody VendorCatalogUpdateRequest request
+    ) {
+        return ResponseEntity.ok(
+                vendorCatalogCommandService.update(vendorItemPriceId, request)
+        );
+    }
+
+    /**
+     * 카탈로그 행(가격 라인) 삭제
+     * DELETE /api/vendor-catalog/{vendorItemPriceId}
+     */
+    @DeleteMapping("/{vendorItemPriceId}")
+    public ResponseEntity<Void> deleteVendorCatalog(@PathVariable Long vendorItemPriceId) {
+        vendorCatalogCommandService.delete(vendorItemPriceId);
+        return ResponseEntity.noContent().build();
     }
 
 }
