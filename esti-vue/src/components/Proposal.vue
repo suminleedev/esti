@@ -274,7 +274,7 @@
                     <dt class="col-4">브랜드</dt><dd class="col-8">{{ candidate.vendorName || '-' }}</dd>
                     <dt class="col-4">규격</dt><dd class="col-8">{{ candidate.specs || '-' }}</dd>
                     <dt class="col-4">원가</dt><dd class="col-8">{{ candidate.vendorProductId ? toNumber(candidate.unitPrice).toLocaleString() : '-' }}</dd>
-<!--                    <dt class="col-4">특징</dt><dd class="col-8">{{ candidate.description || '-' }}</dd>-->
+                    <dt class="col-4">설명</dt><dd class="col-8">{{ candidate.description || '-' }}</dd>
                   </dl>
                 </div>
 
