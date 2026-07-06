@@ -33,7 +33,7 @@
             <label class="form-label small mb-1">평형</label>
             <select v-model="filters.apartmentType" class="form-select form-select-sm">
               <option value="">전체</option>
-              <option v-for="t in apartmentTypes" :key="t" :value="t">{{ t }}</option>
+              <option v-for="t in APARTMENT_TYPES" :key="t" :value="t">{{ t }}</option>
             </select>
           </div>
           <div class="col-md-3">
@@ -48,9 +48,7 @@
             <label class="form-label small mb-1">상태</label>
             <select v-model="filters.status" class="form-select form-select-sm">
               <option value="">전체</option>
-              <option value="DRAFT">임시저장</option>
-              <option value="SUBMITTED">제출완료</option>
-              <option value="SENT">전송확정</option>
+              <option v-for="(v, k) in PROPOSAL_STATUS" :key="k" :value="k">{{ v.label }}</option>
             </select>
           </div>
           <div class="col-md-2 text-end">
@@ -127,19 +125,7 @@
                   </span>
               </td>
               <td>
-                <span
-                  class="badge"
-                  :class="{
-                    'bg-secondary': p.status === 'DRAFT',
-                    'bg-warning text-dark': p.status === 'SUBMITTED',
-                    'bg-dark': p.status === 'SENT'
-                  }"
-                >
-                  {{
-                    p.status === 'DRAFT' ? '임시저장' :
-                    p.status === 'SUBMITTED' ? '저장완료' : '발송완료'
-                  }}
-                </span>
+                <StatusBadge :status="p.status" />
               </td>
               <td class="text-end" @click.stop>
                 <button
@@ -196,13 +182,13 @@ import axios from 'axios'
 
 import { usePagination } from "@/composables/usePagination"
 import Pagination from "@/components/Pagination.vue";
+import StatusBadge from "@/components/common/StatusBadge.vue";
+import { PROPOSAL_STATUS, APARTMENT_TYPES } from "@/constants/labels";
 
 const router = useRouter()
 
 const loading = ref(false)
 const proposals = ref([])
-
-const apartmentTypes = ['24평', '32평', '40평', '48평', '59㎡', '74㎡', '84㎡']
 
 // 필터 상태
 const filters = ref({
