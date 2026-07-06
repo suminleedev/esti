@@ -49,4 +49,5 @@ CLAUDE.md
 work-logs/
 scripts/
 
-docs/.playwright-mcp/
+docs/
+.playwright-mcp/

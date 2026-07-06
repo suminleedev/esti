@@ -7,19 +7,28 @@
       </div>
 
       <div class="row g-3">
-        <!-- 엑셀 업로드 -->
-        <div class="col-12 col-md-6">
+        <!-- 새 제안서 작성 -->
+        <div class="col-12 col-md-4">
+          <button class="menu-card w-100" type="button" @click="goProposalNew">
+            <div class="icon"><i class="bi bi-pencil-square"></i></div>
+            <div class="title">새 제안서 작성</div>
+            <div class="desc">현장 정보와 품목으로 제안서를 만듭니다</div>
+          </button>
+        </div>
+
+        <!-- 카탈로그 관리 -->
+        <div class="col-12 col-md-4">
           <button class="menu-card w-100" type="button" @click="goExcelUpload">
-            <div class="icon">📤</div>
-            <div class="title">엑셀 업로드</div>
+            <div class="icon"><i class="bi bi-upload"></i></div>
+            <div class="title">카탈로그 관리</div>
             <div class="desc">카탈로그/상품 엑셀을 업로드합니다</div>
           </button>
         </div>
 
         <!-- 제안서 목록 -->
-        <div class="col-12 col-md-6">
+        <div class="col-12 col-md-4">
           <button class="menu-card w-100" type="button" @click="goProposalList">
-            <div class="icon">📄</div>
+            <div class="icon"><i class="bi bi-file-earmark-text"></i></div>
             <div class="title">제안서 목록</div>
             <div class="desc">작성한 제안서를 조회/관리합니다</div>
           </button>
@@ -42,11 +51,15 @@ function goExcelUpload() {
 function goProposalList() {
   router.push("/proposal/list");
 }
+
+function goProposalNew() {
+  router.push({ name: "proposal-new" });
+}
 </script>
 
 <style scoped>
 .home-wrap {
-  min-height: calc(100vh - 56px); /* 상단 navbar가 56px이면 */
+  min-height: calc(100vh - var(--esti-header-height));
   padding: 24px;
 }
 

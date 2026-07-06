@@ -5,6 +5,7 @@ import com.example.esti.entity.VendorItemPrice;
 import java.math.BigDecimal;
 
 public record VendorCatalogView(
+        Long vendorItemPriceId,  // 목록 행 식별자 (한 행 = 가격 라인)
         Long vendorProductId,
         String vendorCode,
         String vendorName,
@@ -21,6 +22,7 @@ public record VendorCatalogView(
 ) {
     public static VendorCatalogView from(VendorItemPrice vip) {
         return new VendorCatalogView(
+                vip.getId(),
                 vip.getVendorProduct().getId(),
                 vip.getVendor().getVendorCode(),
                 vip.getVendor().getVendorName(),
