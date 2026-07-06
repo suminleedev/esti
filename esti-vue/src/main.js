@@ -7,8 +7,8 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 // bootstrap JS  (include Popper)
 import 'bootstrap/dist/js/bootstrap.bundle.min.js';
 
-// global apply
-//import './assets/css/estimatePage.css';
+// esti design tokens
+import './assets/tokens.css';
 
 
 const app = createApp(App)
