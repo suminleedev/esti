@@ -365,7 +365,8 @@ onMounted(() => {
                 <th style="width:10%">브랜드</th>
                 <th style="width:13%">규격</th>
                 <th style="width:7%">단가</th>
-                <th style="width:8%">설명</th>
+<!--                <th style="width:7%">구품번</th>-->
+                <th style="width:9%">설명</th>
                 <th style="width:6%">이미지</th>
                 <th style="width:7%">액션</th>
               </tr>
@@ -388,7 +389,7 @@ onMounted(() => {
                       class="form-control text-end"
                     />
                   </td>
-                  <td><input v-model="editingProduct.oldItemCode" class="form-control" /></td>
+                  <td><input v-model="editingProduct.description" class="form-control" /></td>
                   <td><input v-model="editingProduct.imageUrl" class="form-control" /></td>
                   <td class="d-flex justify-content-center align-items-center gap-1">
                     <button class="btn btn-success btn-sm" @click="saveEdit" title="저장">✔️</button>
@@ -405,7 +406,8 @@ onMounted(() => {
                   <td>{{ p.vendorName }}</td>
                   <td>{{ p.remark }}</td>
                   <td class="text-end">{{ p.unitPrice?.toLocaleString() }}</td>
-                  <td>{{ p.oldItemCode }}</td>
+<!--                  <td>{{ p.oldItemCode }}</td>-->
+                  <td>{{ p.description }}</td>
                   <td style="padding:1px;">
                     <div class="img-cell">
                       <img
