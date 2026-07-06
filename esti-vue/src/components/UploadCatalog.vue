@@ -407,8 +407,8 @@ onMounted(() => {
                   <td><input v-model="editingProduct.description" class="form-control" /></td>
                   <td><input v-model="editingProduct.imageUrl" class="form-control" /></td>
                   <td class="d-flex justify-content-center align-items-center gap-1">
-                    <button class="btn btn-success btn-sm" @click="saveEdit" title="저장">✔️</button>
-                    <button class="btn btn-secondary btn-sm" @click="cancelEdit" title="취소">❌</button>
+                    <button class="btn btn-success btn-sm" @click="saveEdit" title="저장" aria-label="저장"><i class="bi bi-check-lg"></i></button>
+                    <button class="btn btn-secondary btn-sm" @click="cancelEdit" title="취소" aria-label="취소"><i class="bi bi-x-lg"></i></button>
                   </td>
                 </template>
                 <template v-else>
@@ -435,8 +435,8 @@ onMounted(() => {
                   </td>
                   <td class="text-center align-middle">
                     <div class="d-flex justify-content-center align-items-center gap-1">
-                      <button class="btn btn-warning btn-sm" @click="startEdit(p)" title="수정">✍🏻</button>
-                      <button class="btn btn-danger btn-sm" @click="deleteProduct(p.catalogId)" title="삭제">␡</button>
+                      <button class="btn btn-warning btn-sm" @click="startEdit(p)" title="수정" aria-label="수정"><i class="bi bi-pencil-square"></i></button>
+                      <button class="btn btn-danger btn-sm" @click="deleteProduct(p.catalogId)" title="삭제" aria-label="삭제"><i class="bi bi-trash"></i></button>
                     </div>
                   </td>
                 </template>
