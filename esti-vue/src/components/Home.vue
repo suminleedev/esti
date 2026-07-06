@@ -10,7 +10,7 @@
         <!-- 엑셀 업로드 -->
         <div class="col-12 col-md-6">
           <button class="menu-card w-100" type="button" @click="goExcelUpload">
-            <div class="icon">📤</div>
+            <div class="icon"><i class="bi bi-upload"></i></div>
             <div class="title">엑셀 업로드</div>
             <div class="desc">카탈로그/상품 엑셀을 업로드합니다</div>
           </button>
@@ -19,7 +19,7 @@
         <!-- 제안서 목록 -->
         <div class="col-12 col-md-6">
           <button class="menu-card w-100" type="button" @click="goProposalList">
-            <div class="icon">📄</div>
+            <div class="icon"><i class="bi bi-file-earmark-text"></i></div>
             <div class="title">제안서 목록</div>
             <div class="desc">작성한 제안서를 조회/관리합니다</div>
           </button>
