@@ -211,6 +211,8 @@ function cancelEdit() {
 }
 
 async function saveEdit() {
+  message.value = ''
+  error.value = ''
   if (!editingProduct.value) return
   try {
     await axios.put(`/api/catalog/${editingProduct.value.id}`, editingProduct.value)
@@ -226,6 +228,8 @@ async function saveEdit() {
  * 카탈로그 삭제
  */
 async function deleteProduct(id) {
+  message.value = ''
+  error.value = ''
   if (!confirm('정말 삭제하시겠습니까?')) return
   try {
     await axios.delete(`/api/catalog/${id}`)
@@ -353,6 +357,17 @@ onMounted(() => {
               </select>
             </div>
           </div>
+
+          <!-- 수정/삭제 결과 피드백 -->
+          <div v-if="message" class="alert alert-success alert-dismissible py-2 my-2" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" aria-label="닫기" @click="message = ''"></button>
+          </div>
+          <div v-if="error" class="alert alert-danger alert-dismissible py-2 my-2" role="alert">
+            {{ error }}
+            <button type="button" class="btn-close" aria-label="닫기" @click="error = ''"></button>
+          </div>
+
           <div class="table-scroll mt-2"><!-- 테이블 내부 스크롤 -->
             <table class="table table-striped table-bordered mt-2 align-middle">
               <thead class="table-light">
