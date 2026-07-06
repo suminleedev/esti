@@ -46,7 +46,7 @@ function goProposalList() {
 
 <style scoped>
 .home-wrap {
-  min-height: calc(100vh - 56px); /* 상단 navbar가 56px이면 */
+  min-height: calc(100vh - var(--esti-header-height));
   padding: 24px;
 }
 
