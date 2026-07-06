@@ -229,7 +229,7 @@
                 </li>
                 <li
                   v-for="item in filteredItems"
-                  :key="item.catalogId"
+                  :key="item.vendorItemPriceId"
                   class="list-group-item d-flex align-items-center"
                   @click="selectCandidate(item)"
                   style="cursor:pointer"
