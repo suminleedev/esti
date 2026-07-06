@@ -50,3 +50,4 @@ work-logs/
 scripts/
 
 docs/
+.playwright-mcp/
