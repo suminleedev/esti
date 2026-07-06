@@ -215,28 +215,28 @@ async function saveEdit() {
   error.value = ''
   if (!editingProduct.value) return
   try {
-    await axios.put(`/api/catalog/${editingProduct.value.id}`, editingProduct.value)
+    await axios.put(`/api/vendor-catalog/${editingProduct.value.vendorItemPriceId}`, editingProduct.value)
     message.value = '수정 성공'
     editingProduct.value = null
     await loadVendorCatalog()
   } catch (e) {
-    error.value = '수정 실패: ' + (e?.response?.data || e?.message)
+    error.value = '수정 실패: ' + (e?.response?.data?.message || e?.message || '')
   }
 }
 
 /**
  * 카탈로그 삭제
  */
-async function deleteProduct(id) {
+async function deleteProduct(p) {
   message.value = ''
   error.value = ''
-  if (!confirm('정말 삭제하시겠습니까?')) return
+  if (!confirm(`『${p.productName}』(${p.mainItemCode ?? '-'}) 항목을 삭제하시겠습니까?`)) return
   try {
-    await axios.delete(`/api/catalog/${id}`)
+    await axios.delete(`/api/vendor-catalog/${p.vendorItemPriceId}`)
     message.value = '삭제 성공'
     await loadVendorCatalog()
   } catch (e) {
-    error.value = '삭제 실패: ' + (e?.response?.data || e?.message)
+    error.value = '삭제 실패: ' + (e?.response?.data?.message || e?.message || '')
   }
 }
 
@@ -387,15 +387,15 @@ onMounted(() => {
               </tr>
               </thead>
               <tbody>
-              <tr v-for="(p, idx) in vendorCatalogs" :key="p.catalogId">
-                <template v-if="editingProduct && editingProduct.catalogId === p.catalogId">
+              <tr v-for="(p, idx) in vendorCatalogs" :key="p.vendorItemPriceId">
+                <template v-if="editingProduct && editingProduct.vendorItemPriceId === p.vendorItemPriceId">
                   <!-- 수정 모드 -->
                   <td>{{ idx + 1 }}</td>
                   <td><input v-model="editingProduct.categoryLarge" class="form-control" /></td>
                   <td><input v-model="editingProduct.categorySmall" class="form-control" /></td>
                   <td><input v-model="editingProduct.productName" class="form-control" /></td>
                   <td><input v-model="editingProduct.mainItemCode" class="form-control" /></td>
-                  <td><input v-model="editingProduct.vendorName" class="form-control" /></td>
+                  <td>{{ editingProduct.vendorName }}</td><!-- 브랜드는 공급사 공통 정보라 행 단위 수정 불가 -->
                   <td><input v-model="editingProduct.remark" class="form-control" /></td>
                   <td>
                     <input
@@ -436,7 +436,7 @@ onMounted(() => {
                   <td class="text-center align-middle">
                     <div class="d-flex justify-content-center align-items-center gap-1">
                       <button class="btn btn-warning btn-sm" @click="startEdit(p)" title="수정" aria-label="수정"><i class="bi bi-pencil-square"></i></button>
-                      <button class="btn btn-danger btn-sm" @click="deleteProduct(p.catalogId)" title="삭제" aria-label="삭제"><i class="bi bi-trash"></i></button>
+                      <button class="btn btn-danger btn-sm" @click="deleteProduct(p)" title="삭제" aria-label="삭제"><i class="bi bi-trash"></i></button>
                     </div>
                   </td>
                 </template>
