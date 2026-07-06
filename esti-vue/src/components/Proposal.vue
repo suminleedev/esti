@@ -10,9 +10,7 @@
 <!--        <span v-if="isNew && isEditMode" class="badge bg-success ms-2">신규작성</span>-->
 <!--        <span v-if="!isNew && isEditMode" class="badge bg-primary ms-2">편집 중</span>-->
         <span v-if="isNew" class="badge bg-success ms-2">신규작성</span>
-        <span v-else-if="isDraft" class="badge bg-secondary ms-2">임시저장</span>
-        <span v-else-if="isSubmitted" class="badge bg-warning text-dark ms-2">저장완료</span>
-        <span v-else class="badge bg-dark ms-2">발송완료</span>
+        <StatusBadge v-else :status="proposalStatus" class="ms-2" />
       </h2>
 
       <div class="d-flex gap-2">
@@ -21,7 +19,7 @@
           v-if="!isNew && !isEditMode && isDraft"
           class="btn btn-outline-primary btn-sm"
           @click="isEditMode = true">수정</button>
-        <!-- 임시저장/저장/전송확정 -->
+        <!-- 임시저장/작성 완료/발송 확정 -->
         <button
           v-if="isEditMode && (isNew || isDraft)"
           class="btn btn-success btn-sm"
@@ -31,11 +29,11 @@
           v-if="(isNew || isDraft) && isEditMode"
           class="btn btn-primary btn-sm"
           :disabled="!canSubmit"
-          @click="submit">제출(저장)</button>
+          @click="submit">작성 완료</button>
         <button
           v-if="!isNew && isSubmitted"
           class="btn btn-dark btn-sm"
-          @click="sendFinal">전송확정</button>
+          @click="sendFinal">발송 확정</button>
         <!-- 삭제 -->
         <button
           v-if="!isNew"
@@ -127,7 +125,7 @@
               <label class="form-label">아파트 평형 *</label>
               <select v-model="form.apartmentType" class="form-select">
                 <option value="">선택하세요</option>
-                <option v-for="t in apartmentTypes" :key="t" :value="t">{{ t }}</option>
+                <option v-for="t in APARTMENT_TYPES" :key="t" :value="t">{{ t }}</option>
               </select>
             </div>
             <div class="col-md-3">
@@ -156,7 +154,7 @@
                 <div class="card-body">
                   <select v-model="form.apartmentType" class="form-select">
                     <option value="">선택하세요</option>
-                    <option v-for="t in apartmentTypes" :key="t" :value="t">{{ t }}</option>
+                    <option v-for="t in APARTMENT_TYPES" :key="t" :value="t">{{ t }}</option>
                   </select>
                   <div class="form-text mt-2">STEP 1에서 선택한 값과 동일하게 유지됩니다.</div>
                 </div>
@@ -171,7 +169,7 @@
                 </div>
                 <div class="card-body">
                   <div class="row">
-                    <div class="col-6" v-for="area in areas" :key="area">
+                    <div class="col-6" v-for="area in AREAS" :key="area">
                       <div class="form-check">
                         <input class="form-check-input" type="checkbox" :value="area" v-model="form.areas" />
                         <label class="form-check-label">{{ area }}</label>
@@ -191,7 +189,7 @@
                 </div>
                 <div class="card-body">
                   <div class="row">
-                    <div class="col-12" v-for="cat in categories" :key="cat">
+                    <div class="col-12" v-for="cat in CATEGORIES" :key="cat">
                       <div class="form-check">
                         <input class="form-check-input" type="checkbox" :value="cat" v-model="form.requiredCategories" />
                         <label class="form-check-label">{{ cat }}</label>
@@ -450,7 +448,7 @@
                     :disabled="!canSubmit"
                     @click="submit"
                   >
-                    제안서 저장
+                    작성 완료
                   </button>
                 </div>
               </div>
@@ -471,6 +469,8 @@ import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import noImg from '@/assets/no-image.png'
 import { BASE_URL } from '@/config/api'
+import StatusBadge from '@/components/common/StatusBadge.vue'
+import { APARTMENT_TYPES, AREAS, CATEGORIES } from '@/constants/labels'
 
 const route = useRoute()
 const router = useRouter()
@@ -496,15 +496,7 @@ const steps = ['기본 정보', '평형/적용부위/유형', '품목 채우기'
 const step = ref(0)
 
 /* ====== 폼/선택 데이터 ====== */
-const apartmentTypes = ['24평', '32평', '40평', '48평', '59㎡', '74㎡', '84㎡']
-const areas = ['욕실1', '욕실2', '주방', '세탁실', '다용도실']
-
-const categories = [
-  '양변기', '비데', '세면기',
-  '세면기 수전', '욕조 수전/슬라이드바',
-  '해바라기샤워수전', '씽크수전', '악세사리'
-]
-
+// 평형/부위/카테고리 목록은 @/constants/labels 에서 import (단일 출처)
 const marginOptions = [10, 15, 20, 25, 30] // 마진율
 
 const form = reactive({
@@ -1001,7 +993,7 @@ async function submit() {
   }
 }
 
-/* ====== 제안서 전송확정  ====== */
+/* ====== 제안서 발송 확정  ====== */
 async function sendFinal() {
   if (!confirm('전송 확정하면 최종본이 되어 수정할 수 없습니다. 진행할까요?')) return
 
