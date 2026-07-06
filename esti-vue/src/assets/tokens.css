@@ -1,0 +1,4 @@
+/* esti 디자인 토큰 — 단일 출처. 하드코딩 값 발견 시 이 파일로 흡수한다. */
+:root {
+  --esti-header-height: 56px;
+}
