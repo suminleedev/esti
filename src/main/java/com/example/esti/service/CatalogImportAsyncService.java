@@ -132,14 +132,18 @@ public class CatalogImportAsyncService {
         if (set.needsReview()) {
             mainRemark = appendRemark(mainRemark, "검수필요");
         }
-        // 대표품목 가격은 시트(categoryLarge)별로 분리 보존 — 같은 품번이 시트마다 다른 가격일 때 충돌 방지
-        upsertPrice(vendor, mainProduct, mainItem, mainPrice, mainRemark, ITEM_TYPE_SET, set.categoryLarge());
+        // 대표품목 가격은 price_basis별로 분리 보존 — 같은 품번이 시트마다 다른 가격일 때 충돌 방지.
+        // priceBasis 기본값=categoryLarge(하위호환). 수전금구 3-시트처럼 대분류를 통합(=수전금구)하고
+        // 가격만 시트별로 나눌 때는 파서가 priceBasis를 시트명으로 지정한다(§10 S2·S3).
+        upsertPrice(vendor, mainProduct, mainItem, mainPrice, mainRemark, ITEM_TYPE_SET, set.priceBasis());
 
         // 부속품 + 관계
         for (VendorParsedItem part : set.parts()) {
+            // 부속 전용 소분류가 있으면 그것으로(§10 S4: 국산/OEM 출처). 없으면 세트 소분류.
+            String partCategorySmall = part.categorySmall() != null ? part.categorySmall() : set.categorySmall();
             VendorProduct partProduct = upsertVendorProduct(
                     vendor, part.productCode(), part.productName(),
-                    set.categoryLarge(), set.categorySmall(), ITEM_TYPE_PART, part.description());
+                    set.categoryLarge(), partCategorySmall, ITEM_TYPE_PART, part.description());
 
             // 공유 부속 단가는 코드당 1건 유지(D13) → priceBasis=null
             upsertPrice(vendor, partProduct, part, part.unitPrice(), part.remark(), ITEM_TYPE_PART, null);
@@ -152,11 +156,21 @@ public class CatalogImportAsyncService {
                             Map<String, Map<Integer, ExtractedImage>> images) {
         if (set.imageKey() == null || images == null || images.isEmpty()) return;
 
-        Map<Integer, ExtractedImage> byRow = images.get(set.categoryLarge());
+        // 이미지 맵은 시트명 키. 대분류를 시트명에서 분리 저장하는 시트(비데,기타 등)는 imageKey에
+        // "시트명SEP행"으로 시트명을 실어두므로 그걸로 조회하고, 없으면 종전대로 categoryLarge로 조회(하위호환).
+        String sheetKey = set.categoryLarge();
+        String rowPart = set.imageKey();
+        int sep = set.imageKey().indexOf(VendorProductSet.IMAGE_KEY_SHEET_SEP);
+        if (sep >= 0) {
+            sheetKey = set.imageKey().substring(0, sep);
+            rowPart = set.imageKey().substring(sep + VendorProductSet.IMAGE_KEY_SHEET_SEP.length());
+        }
+
+        Map<Integer, ExtractedImage> byRow = images.get(sheetKey);
         if (byRow == null) return;
 
         int row;
-        try { row = Integer.parseInt(set.imageKey()); }
+        try { row = Integer.parseInt(rowPart); }
         catch (NumberFormatException e) { return; }
 
         ExtractedImage img = byRow.get(row);
