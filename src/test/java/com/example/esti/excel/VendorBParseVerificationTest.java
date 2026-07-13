@@ -71,8 +71,8 @@ class VendorBParseVerificationTest {
         }
     }
 
-    /** 세트/단일품이 혼재해 단일품 행에 이미지가 희소한 시트(이미지 커버리지 측정 제외). */
-    private static final Set<String> IMAGE_SPARSE_SHEETS = Set.of("악세사리 단가표", "수전 부속(세트)");
+    /** 세트/단일품이 혼재해 단일품 행에 이미지가 희소한 시트(이미지 커버리지 측정 제외). §11·§12부터 대분류는 "수전부속"/"악세사리". */
+    private static final Set<String> IMAGE_SPARSE_SHEETS = Set.of("악세사리", "수전부속");
 
     @Test
     void 임베디드_이미지_정확매칭_커버리지가_85퍼센트_이상() {
