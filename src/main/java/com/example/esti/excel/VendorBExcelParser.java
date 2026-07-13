@@ -10,9 +10,13 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * B사(이누스) 단가표 파서 — 멀티 시트. 시트명으로 4개 양식 패밀리를 판별해 전용 파서로 분기한다(P3).
@@ -22,8 +26,10 @@ import java.util.Map;
  *       헤더의 슬롯 라벨(G~M)을 동적 인식해 도기=MAIN, 나머지=슬롯 라벨 relation(D9).
  *       計 컬럼이 있으면 세트가, 세면기는 計 없음 → 선택형 세트(D10).</li>
  *   <li><b>갈라시아 4행형</b>: 제품코드행 + 대리점가행 + 합계행 + 소비자단가행. 슬롯 E=도기, F=부속.</li>
- *   <li><b>소계 세트형</b>(악세사리 / 수전금구(국산 부속 기준) / 수전 부속(세트)):
+ *   <li><b>소계 세트형</b>(악세사리 / 수전금구(국산·OEM 부속 기준)):
  *       대표행 + 부속행들 + (소계행). 대표품목 + 부속 + 합계.</li>
+ *   <li><b>수전부속 3-시트</b>(§11): 분계표=수전금구 병합 뷰(A-5) /
+ *       수전 부속(세트)(C-3)·부속 단가표(C-4)=부속 카탈로그(대분류 수전부속, priceBasis=시트명).</li>
  *   <li><b>단일행형</b>(비데,기타 / 수전금구): 1행 = 독립 제품. 부속 없음. 대리점가(G)만 채택(D7).
  *       시트 내 서브테이블이 여러 개면 헤더를 반복 탐지.</li>
  * </ul>
@@ -62,6 +68,9 @@ public class VendorBExcelParser implements VendorExcelParser {
                     case BIDET_ETC  -> parseBidetEtcSheet(ctx, result);
                     case FAUCET_GENERAL -> parseFaucetGeneralSheet(ctx, result);
                     case FAUCET_PARTS   -> parseFaucetPartsSheet(ctx, result);
+                    case BREAKDOWN      -> parseBreakdownSheet(ctx, result);
+                    case FITTING_SET    -> parseFittingSetSheet(ctx, result);
+                    case FITTING_PRICE  -> parseFittingPriceSheet(ctx, result);
                     case SLOT       -> parseSlotSheet(ctx, result);
                     case GALAXIA    -> parseGalaxiaSheet(ctx, result);
                     case SET_TOTAL  -> parseHeaderTotalSetSheet(ctx, result);
@@ -79,7 +88,8 @@ public class VendorBExcelParser implements VendorExcelParser {
     // 패밀리 판별
     // ============================================================
 
-    private enum Family { TOILET, WASHBASIN, URINAL_SINK, BIDET_ETC, FAUCET_GENERAL, FAUCET_PARTS, SLOT, GALAXIA, SET_TOTAL, SET_SUBTOTAL, SINGLE }
+    private enum Family { TOILET, WASHBASIN, URINAL_SINK, BIDET_ETC, FAUCET_GENERAL, FAUCET_PARTS,
+        BREAKDOWN, FITTING_SET, FITTING_PRICE, SLOT, GALAXIA, SET_TOTAL, SET_SUBTOTAL, SINGLE }
 
     private Family family(String sheetName) {
         String n = sheetName.replaceAll("\\s", "");
@@ -91,9 +101,14 @@ public class VendorBExcelParser implements VendorExcelParser {
         //   "수전금구" → 일반(단일 제품) / "수전금구(국산 부속 기준)"·"수전금구(OEM 부속 기준)" → 소계 세트형.
         //   반드시 아래 국산부속 일반분기보다 먼저 판별(수전금구 부속기준이 SET_SUBTOTAL로 새지 않게).
         if (n.contains("수전금구")) return n.contains("부속") ? Family.FAUCET_PARTS : Family.FAUCET_GENERAL;
+        // 수전부속 3-시트(§11): 분계표=수전금구 병합 뷰 / 수전 부속(세트)·부속 단가표=부속 카탈로그(대분류 수전부속).
+        //   "부속단가"는 "악세사리단가표"와 겹치지 않게 악세사리 분기보다 앞이어도 무방하나, 명시적으로 여기 배치.
+        if (n.contains("분계표")) return Family.BREAKDOWN;
+        if (n.contains("부속단가")) return Family.FITTING_PRICE;
+        if (n.contains("수전부속")) return Family.FITTING_SET;
         if (n.contains("갈라시아")) return Family.GALAXIA;
         if (n.contains("악세사리") || n.contains("악세서리")) return Family.SET_TOTAL;
-        if (n.contains("국산부속") || n.contains("수전부속")) return Family.SET_SUBTOTAL;
+        if (n.contains("국산부속")) return Family.SET_SUBTOTAL;
         return Family.SINGLE; // 비데,기타 / 수전금구 등
     }
 
@@ -835,6 +850,96 @@ public class VendorBExcelParser implements VendorExcelParser {
     }
 
     // ============================================================
+    // (A-5) 분계표 — 완성수전 부속분계(§11 P1~P4). 본품은 §10 수전금구와 동일 제품(표기만 다름) →
+    //   품번 정규화(G 0130/T0130 → G-0130/T-0130) 후 대분류=수전금구로 병합, 대리점가는 priceBasis=시트명으로 분리(P1).
+    //   부속(몸체/편심/…)은 같은 전산코드가 세트별 단가 상이 → 코드={품번}_{전산코드} 프리픽스, categorySmall=분계(P2).
+    //   대리점가 없는 블록(싱크수전 등)은 구성만 의미(가격 0, P3). 같은 품번 재등장(S 0346 변형 3종)은 첫 블록만 + 검수필요(P4).
+    //   컬럼: A=매입처 B=품번 C=품명 D=세트 전산코드(미저장, S7) F=부속 전산코드 G=부속명 H=기준단가 I=대리점가.
+    // ============================================================
+
+    /** 분계표 품번(공백/하이픈/무구분 혼용): "G 0130"/"G-0121"/"T0130" → 수전금구 표기 "G-0130". */
+    private static final Pattern BREAKDOWN_PN = Pattern.compile("^([A-Z]{1,2})[ -]?(\\d{4})$");
+
+    private void parseBreakdownSheet(Ctx c, List<VendorProductSet> out) {
+        int last = c.sheet.getLastRowNum();
+
+        // P4: 같은 품번이 여러 블록(S 0346 슬림/일반/건설)이면 첫 블록만 적재 + 검수필요 → 중복 품번 사전 집계
+        Map<String, Integer> codeCount = new LinkedHashMap<>();
+        for (int r = 0; r <= last; r++) {
+            Matcher m = breakdownPn(str(c, r, 1));
+            if (m != null) codeCount.merge(m.group(1) + "-" + m.group(2), 1, Integer::sum);
+        }
+
+        Set<String> flushed = new HashSet<>();
+        String code = null, kindName = null;
+        List<VendorParsedItem> parts = null;
+        Set<String> partSeen = null;
+        List<String> vendorNotes = null;
+        BigDecimal setPrice = null;
+        int repRow = -1;
+        boolean needsReview = false, skipBlock = false;
+
+        for (int r = 0; r <= last; r++) {
+            Matcher m = breakdownPn(str(c, r, 1)); // B=품번 → 새 블록 경계
+            if (m != null) {
+                flushBreakdownSet(c, out, code, kindName, setPrice, parts, vendorNotes, repRow, needsReview);
+                String next = m.group(1) + "-" + m.group(2);
+                skipBlock = !flushed.add(next);            // 재등장 블록(S 0346 2·3번째)은 통째로 스킵(P4)
+                code = skipBlock ? null : next;
+                kindName = stripSpace(str(c, r, 2));       // C=품명(욕조샤워 등)
+                parts = new ArrayList<>();
+                partSeen = new HashSet<>();
+                vendorNotes = new ArrayList<>();
+                setPrice = null;
+                repRow = r;
+                needsReview = codeCount.getOrDefault(next, 1) > 1; // 중복 품번의 첫 블록 → 검수필요
+            }
+            if (code == null || skipBlock) continue;
+
+            // 부속행: F=전산코드(영숫자·숫자 시작), G=부속명, H=기준단가. 헤더("전산코드")·안내문은 한글 포함이라 걸러짐.
+            String pf = normalizeCode(str(c, r, 5));
+            if (pf != null && pf.matches("^\\d[0-9a-zA-Z]*$")) {
+                String finalCode = partCode(code, pf);
+                if (partSeen.add(finalCode)) {
+                    parts.add(new VendorParsedItem(finalCode, orDefault(stripSpace(str(c, r, 6)), pf), null, null,
+                            VendorParsedItem.RELATION_ACCESSORY, nz(dec(c, r, 7)), null, null, "분계"));
+                } else {
+                    needsReview = true; // 변형 서브블록(S 0646 HRS/HR/HS 등) 공통 부속 중복 → 첫 건만 유지·검수 표기
+                }
+            }
+
+            String a = stripSpace(str(c, r, 0));           // A=매입처(한양/킴스코…) — R7 잠정으로 가격행 remark 보존
+            if (a != null && !a.startsWith("*") && !a.contains("매입처")) vendorNotes.add(a);
+
+            BigDecimal i = dec(c, r, 8);                   // I=대리점가(문자 "파이프추가 예정" 등은 null)
+            if (i != null) setPrice = i;
+        }
+        flushBreakdownSet(c, out, code, kindName, setPrice, parts, vendorNotes, repRow, needsReview);
+    }
+
+    private Matcher breakdownPn(String raw) {
+        String x = stripSpace(raw);
+        if (x == null) return null;
+        Matcher m = BREAKDOWN_PN.matcher(x);
+        return m.matches() ? m : null;
+    }
+
+    private void flushBreakdownSet(Ctx c, List<VendorProductSet> out, String code, String kindName,
+                                   BigDecimal setPrice, List<VendorParsedItem> parts,
+                                   List<String> vendorNotes, int repRow, boolean needsReview) {
+        if (code == null) return;
+        String remark = (vendorNotes == null || vendorNotes.isEmpty()) ? null : String.join(" / ", vendorNotes);
+        // 이름은 수전금구 본품과 병합(last-wins)돼도 형식이 어긋나지 않게 "품명 품번". 가격없음 접미는 붙이지 않는다(공유 본품 이름 오염 방지, P3).
+        VendorParsedItem main = new VendorParsedItem(code, join(kindName, code), null, null,
+                VendorParsedItem.RELATION_MAIN, nz(setPrice), remark);
+        // 대분류=수전금구(병합, P1)·소분류=품번 유도 시리즈("G-0130"→"G-01", §10 적재값과 동일 형식)·priceBasis=시트명
+        String series = code.substring(0, code.indexOf('-') + 3);
+        out.add(new VendorProductSet("B", "수전금구", series, main,
+                parts != null ? parts : new ArrayList<>(), nz(setPrice), false,
+                imageKeyOf(c.sheetName, repRow), needsReview, c.sheetName));
+    }
+
+    // ============================================================
     // (A) 슬롯 2행형 — 소변기,수채
     // ============================================================
 
@@ -1109,14 +1214,12 @@ public class VendorBExcelParser implements VendorExcelParser {
     }
 
     // ============================================================
-    // (C-2) 소계 세트형 — 소계행으로 세트 종료 (국산 부속 기준 / 수전 부속(세트))
+    // (C-2) 소계 세트형 — 소계행으로 세트 종료 (국산 부속 기준 전용)
     //   대표행(A 있음) + 부속행(A 없음) + 소계행(C/B="소계")
-    //   국산부속: code=C(2), name=B(1), price=G(6) | 수전부속: code=B(1), name=A/B, price=F(5)
     // ============================================================
 
     private void parseSubtotalSetSheet(Ctx c, List<VendorProductSet> out) {
-        boolean korParts = c.sheetName.replaceAll("\\s", "").contains("국산부속");
-        if (!korParts) { parseSujeonPartsSheet(c, out); return; } // 수전부속은 전용 처리(세트/플랫 분리)
+        boolean korParts = c.sheetName.replaceAll("\\s", "").contains("국산부속"); // 수전 부속(세트)는 §11 전용 파서로 분리됨
         int codeCol  = korParts ? 2 : 1; // 국산:C품번 / 수전부속:B품번
         int nameCol  = korParts ? 1 : 0; // 국산:B품명 / 수전부속:A품명
         int priceCol = korParts ? 6 : 5; // 국산:G단가 / 수전부속:F단가
@@ -1183,15 +1286,15 @@ public class VendorBExcelParser implements VendorExcelParser {
     }
 
     // ============================================================
-    // (C-3) 수전 부속(세트) — 세트 구간 + 플랫 단일 구간 혼재
-    //   컬럼: A=품명 B=품번 C=제품코드 F=단가. 소계행(C="소계", F=세트단가)으로 세트 종료.
-    //   - 소계로 닫히는 블록 = 세트(대표=첫 멤버, 나머지=부속). 소계 없는 블록 = 각 행이 독립 부속.
-    //   - 품번(B) 첫 토큰이 품번패턴([영문]시작·숫자끝)이면 코드로, 아니면 제품코드(C)로 대체.
-    //     원본 B열은 description에 보존.
-    //   - 하단 "니쁠" 서브테이블(C=제품코드, D=단가, E=규격)은 별도 인식.
+    // (C-3) 수전 부속(세트) — 부속 카탈로그 세트 뷰(§11 P5~P8). 대분류=수전부속(신규), priceBasis=시트명.
+    //   컬럼: A=품명그룹 B=품번 C=제품코드 E=수량 F=단가 G=이미지/부기 H=비고.
+    //   - 냉/온+소계 블록 → 합성 세트 품번(U9013c/h→U9013) 생성: main=세트(세트가=소계), 부속={base}_c/h(P6).
+    //   - 제품코드(C)에 '+'가 있는 행(U9310 건+행거, U9510~U9550 조합) → main=품번, 부속={품번}_{전산코드}(P7).
+    //   - 그 외 행 = 단품. 품번패턴이면 품번(대문자·하이픈 제거, P9), 아니면 제품코드 폴백(P8). 원본 B 잔여=description.
+    //   - 하단 "니쁠" 서브테이블(C=제품코드, D=단가, E=규격)은 품번이 없어 제품코드를 코드로(P8).
     // ============================================================
 
-    private void parseSujeonPartsSheet(Ctx c, List<VendorProductSet> out) {
+    private void parseFittingSetSheet(Ctx c, List<VendorProductSet> out) {
         int headerRow = findRow(c, r -> {
             String a = noSpace(str(c, r, 0));
             return a != null && a.contains("품명");
@@ -1202,104 +1305,139 @@ public class VendorBExcelParser implements VendorExcelParser {
         }
         int last = c.sheet.getLastRowNum();
 
-        List<SjMember> buf = new ArrayList<>();
-        String blockCat = null;
+        List<FtMember> buf = new ArrayList<>();
+        String group = null;
         boolean nipple = false;
 
         for (int r = headerRow + 1; r <= last; r++) {
             String cText = noSpace(str(c, r, 2));
 
-            // 니쁠 서브헤더(제품코드/단가/규격) 등장 → 이후 별도 레이아웃
-            if ("제품코드".equals(cText)) {
-                flushSjFlat(out, c, buf, blockCat); buf.clear(); blockCat = null;
+            if ("제품코드".equals(cText)) {              // 니쁠 서브헤더(제품코드/단가/규격) → 별도 레이아웃
+                flushFittingFlat(out, c, buf, group); buf.clear(); group = null;
                 nipple = true;
                 continue;
             }
             if (nipple) {
                 String code = normalizeCode(str(c, r, 2)); // C=제품코드
                 if (code == null) continue;
-                BigDecimal price = nz(dec(c, r, 3));        // D=단가
-                String nm = join(orDefault(stripSpace(str(c, r, 1)), "니쁠"), stripSpace(str(c, r, 4)));
-                out.add(sjSingle(c, "니쁠", code, orDefault(nm, code), price, stripSpace(str(c, r, 1)), r));
+                String bLabel = stripSpace(str(c, r, 1));
+                if (bLabel != null) group = bLabel;        // '니쁠'
+                String spec = stripSpace(str(c, r, 4));    // E=규격
+                String name = group;
+                if (spec != null) name = join(name, "(" + spec + ")");
+                name = join(name, code.toLowerCase());
+                out.add(fittingSingle(c, group, code.toLowerCase(), name, dec(c, r, 3), null, null, r)); // D=단가
                 continue;
             }
 
-            // 소계행 → 현재 블록을 세트로 확정
-            if (cText != null && cText.contains("소계")) {
-                flushSjSet(out, c, buf, blockCat, nz(dec(c, r, 5)));
-                buf.clear(); blockCat = null;
+            if (cText != null && cText.contains("소계")) { // 냉/온 블록 종료 → 합성 세트(P6)
+                flushFittingComposite(out, c, buf, group, dec(c, r, 5),
+                        join(stripSpace(str(c, r, 6)), stripSpace(str(c, r, 7)))); // "(세트단가임)" 등
+                buf.clear();
                 continue;
             }
 
             String aRaw = stripSpace(str(c, r, 0));
             if (aRaw != null && aRaw.startsWith("*")) continue; // 각주
+            if (str(c, r, 1) == null && str(c, r, 2) == null) continue;
 
-            String bRaw = str(c, r, 1);
-            String[] cd = resolveSujeonCode(bRaw, str(c, r, 2));
-            String code = cd[0];
-            if (code == null) continue;
-            BigDecimal price = nz(dec(c, r, 5));
-
-            if (aRaw != null) { // 새 블록 시작 → 이전(소계 없던) 블록은 플랫 단일로 방출
-                flushSjFlat(out, c, buf, blockCat); buf.clear();
-                blockCat = aRaw;
+            if (aRaw != null) {                            // 새 그룹 시작 → 이전(소계 없던) 블록은 단품으로 방출
+                flushFittingFlat(out, c, buf, group); buf.clear();
+                group = aRaw;
             }
-            String name = orDefault(join(blockCat, stripSpace(bRaw)), code);
-            buf.add(new SjMember(code, name, price, cd[1], r));
+            buf.add(new FtMember(r, str(c, r, 1), str(c, r, 2), dec(c, r, 5),
+                    join(stripSpace(str(c, r, 6)), stripSpace(str(c, r, 7))))); // F=단가, G+H=부기/비고(R7 잠정)
         }
-        flushSjFlat(out, c, buf, blockCat); // 잔여(소계 없음) → 플랫
-    }
-
-    /** 소계로 닫힌 블록 = 세트(대표=첫 멤버, 나머지=부속, 세트가=소계). */
-    private void flushSjSet(List<VendorProductSet> out, Ctx c, List<SjMember> buf,
-                            String blockCat, BigDecimal subtotal) {
-        if (buf.isEmpty()) return;
-        SjMember rep = buf.get(0);
-        List<VendorParsedItem> parts = new ArrayList<>();
-        for (int i = 1; i < buf.size(); i++) {
-            SjMember m = buf.get(i);
-            parts.add(new VendorParsedItem(partCode(rep.code(), m.code()), m.name(), null, null,
-                    VendorParsedItem.RELATION_ACCESSORY, m.price(), null, m.descr()));
-        }
-        VendorParsedItem main = new VendorParsedItem(rep.code(), rep.name(), null, null,
-                VendorParsedItem.RELATION_MAIN, subtotal, null, rep.descr());
-        out.add(new VendorProductSet("B", c.sheetName, blockCat, main, parts,
-                subtotal, false, imageKeyOf(rep.row()), false));
-    }
-
-    /** 소계 없이 끝난 블록 = 각 멤버가 독립 단일 제품. */
-    private void flushSjFlat(List<VendorProductSet> out, Ctx c, List<SjMember> buf, String blockCat) {
-        for (SjMember m : buf) {
-            out.add(sjSingle(c, blockCat, m.code(), m.name(), m.price(), m.descr(), m.row()));
-        }
-    }
-
-    private VendorProductSet sjSingle(Ctx c, String catSmall, String code, String name,
-                                      BigDecimal price, String descr, int row) {
-        VendorParsedItem main = new VendorParsedItem(code, name, null, null,
-                VendorParsedItem.RELATION_MAIN, price, null, descr);
-        return new VendorProductSet("B", c.sheetName, catSmall, main,
-                new ArrayList<>(), price, false, imageKeyOf(row), false);
+        flushFittingFlat(out, c, buf, group);
     }
 
     /**
-     * 수전부속 코드 결정:
-     * - 품번(B) 첫 토큰이 품번패턴(영문 시작, 끝은 숫자 또는 영문)이면 그 토큰을 코드로, B의 <b>나머지</b> 문자열을 description으로.
-     * - 맞지 않으면(1.5m, 65MM, 한글 등) 제품코드(C)를 코드로, B <b>전체</b>를 description으로.
-     * 반환[0]=code, [1]=description.
+     * 냉/온+소계 블록 → 합성 세트(P6): 접미 제거 품번(U9013c/h→U9013)이 세트 품번,
+     * 부속 코드={base}_c/h(§10 coldHot 관례) — 단가표 단품 U9013C와 코드가 달라 공존.
      */
-    private String[] resolveSujeonCode(String bRaw, String cRaw) {
-        String bClean = stripSpace(bRaw);
-        String token = normalizeCode(firstToken(bRaw));
-        if (token != null && token.matches("^[A-Za-z].*[A-Za-z0-9]$")) {
-            String remainder = null;
-            if (bClean != null && bClean.length() > token.length() && bClean.startsWith(token)) {
-                remainder = bClean.substring(token.length()).trim();
-                if (remainder.isEmpty()) remainder = null;
-            }
-            return new String[]{ token, remainder };       // 첫 토큰=코드, 나머지 B=description
+    private void flushFittingComposite(List<VendorProductSet> out, Ctx c, List<FtMember> buf,
+                                       String group, BigDecimal subtotal, String subRemark) {
+        if (buf.isEmpty()) return;
+        FtMember first = buf.get(0);
+        String firstPn = fittingPartNo(normalizeCode(firstToken(first.bRaw())));
+        if (firstPn == null) { flushFittingFlat(out, c, buf, group); return; } // 품번 없는 블록 방어 → 단품 처리
+        String base = firstPn.matches(".*[CH]$") ? firstPn.substring(0, firstPn.length() - 1) : firstPn;
+
+        List<VendorParsedItem> parts = new ArrayList<>();
+        int idx = 0;
+        for (FtMember m : buf) {
+            String label = stripSpace(m.bRaw());
+            String n = label == null ? "" : label.replaceAll("\\s", "");
+            String suffix = n.contains("냉") ? "c" : n.contains("온") ? "h" : String.valueOf(++idx);
+            parts.add(new VendorParsedItem(partCode(base, suffix), orDefault(label, base + suffix), null, null,
+                    VendorParsedItem.RELATION_ACCESSORY, nz(m.price()), m.remark(), null));
         }
-        return new String[]{ normalizeCode(cRaw), bClean }; // 제품코드(C), B 전체=description
+        VendorParsedItem main = new VendorParsedItem(base, join(join(group, "세트"), base), null, null,
+                VendorParsedItem.RELATION_MAIN, nz(subtotal), subRemark);
+        out.add(new VendorProductSet("B", "수전부속", group, main, parts, nz(subtotal), false,
+                imageKeyOf(c.sheetName, first.row()), false, c.sheetName));
+    }
+
+    /** 소계 없이 끝난 블록 → 행별 단품(제품코드 '+' 조합행은 구성세트, P7). */
+    private void flushFittingFlat(List<VendorProductSet> out, Ctx c, List<FtMember> buf, String group) {
+        for (FtMember m : buf) {
+            if (m.cRaw() != null && m.cRaw().contains("+")) { emitFittingComboSet(out, c, group, m); continue; }
+            String token = normalizeCode(firstToken(m.bRaw()));
+            String bClean = stripSpace(m.bRaw());
+            String code, descr;
+            if (token != null && token.matches("^[A-Za-z].*[A-Za-z0-9]$")) {
+                code = fittingPartNo(token);               // 품번=코드(대문자·하이픈 제거, P9), B 잔여=description
+                descr = (bClean != null && bClean.length() > token.length() && bClean.startsWith(token))
+                        ? orDefault(bClean.substring(token.length()).trim(), null) : null;
+            } else {
+                code = normalizeCode(m.cRaw());            // 품번패턴 아님(1.5m/65MM/한글) → 제품코드 폴백(P8)
+                if (code != null) code = code.toLowerCase(); // 대소문자 오타 흡수(43U9113 등, P9)
+                descr = bClean;                            // B 전체=description
+            }
+            if (code == null) continue;
+            out.add(fittingSingle(c, group, code, orDefault(join(group, bClean), code),
+                    m.price(), m.remark(), descr, m.row()));
+        }
+    }
+
+    /** 제품코드 '+' 조합행(U9310 건+행거, U9510~U9550) → main=품번, 부속={품번}_{전산코드}·단가 없음(P7). */
+    private void emitFittingComboSet(List<VendorProductSet> out, Ctx c, String group, FtMember m) {
+        String token = normalizeCode(firstToken(m.bRaw()));
+        String pn = (token != null && token.matches("^[A-Za-z].*[A-Za-z0-9]$")) ? fittingPartNo(token) : null;
+        if (pn == null) return; // 조합행은 모두 U 품번 보유(방어)
+
+        List<VendorParsedItem> parts = new ArrayList<>();
+        for (String piece : m.cRaw().split("\\+")) {
+            String[] pc = splitParen(piece);               // "43u9360n(건)" → [43u9360n, 건]
+            String pcode = pc[0] != null ? pc[0].toLowerCase() : pc[1]; // '니쁠' 같은 비코드 구성도 보존
+            if (pcode == null) continue;
+            parts.add(new VendorParsedItem(partCode(pn, pcode), orDefault(pc[1], pcode), null, null,
+                    VendorParsedItem.RELATION_ACCESSORY, BigDecimal.ZERO, null));
+        }
+        String bClean = stripSpace(m.bRaw());
+        String name = orDefault(join(group, bClean), pn);
+        if (m.price() == null) name = name + " (가격없음)";
+        VendorParsedItem main = new VendorParsedItem(pn, name, null, null,
+                VendorParsedItem.RELATION_MAIN, nz(m.price()), m.remark());
+        out.add(new VendorProductSet("B", "수전부속", group, main, parts, nz(m.price()), false,
+                imageKeyOf(c.sheetName, m.row()), false, c.sheetName));
+    }
+
+    /** 수전부속 단품 1건(대분류=수전부속, priceBasis=시트명). 가격 없으면 0 + "(가격없음)" 표기(D8). */
+    private VendorProductSet fittingSingle(Ctx c, String catSmall, String code, String name,
+                                           BigDecimal price, String remark, String descr, int row) {
+        if (price == null) name = name + " (가격없음)";
+        VendorParsedItem main = new VendorParsedItem(code, name, null, null,
+                VendorParsedItem.RELATION_MAIN, nz(price), remark, descr);
+        return new VendorProductSet("B", "수전부속", catSmall, main,
+                new ArrayList<>(), nz(price), false, imageKeyOf(c.sheetName, row), false, c.sheetName);
+    }
+
+    /** 수전부속 품번 정규화(P9): 대문자 + 하이픈 제거(U-9110150a→U9110150A, U9013c→U9013C). */
+    private String fittingPartNo(String token) {
+        if (token == null) return null;
+        String x = token.replace("-", "").toUpperCase();
+        return x.isEmpty() ? null : x;
     }
 
     private String firstToken(String s) {
@@ -1311,8 +1449,65 @@ public class VendorBExcelParser implements VendorExcelParser {
         return t.substring(0, i);
     }
 
-    /** 수전부속 버퍼 멤버(코드/표시명/단가/원본B/행). */
-    private record SjMember(String code, String name, BigDecimal price, String descr, int row) {}
+    /** 수전부속 버퍼 멤버(행/원본B/원본C/단가(null=가격없음)/비고). */
+    private record FtMember(int row, String bRaw, String cRaw, BigDecimal price, String remark) {}
+
+    // ============================================================
+    // (C-4) 부속 단가표 — 부속 단품 마스터(§11 P5·P8·P9). 대분류=수전부속, priceBasis=시트명.
+    //   컬럼: A=품목그룹 B=품번 C=규격 D=전산코드 E=단가 F=비고 G=부기("세트시 기본").
+    //   - 품번 있으면 품번=코드(대문자), 없거나 재사용(U9310 건/행거)이면 전산코드 폴백(P8).
+    //   - 하단 니쁠 블록(C=전산코드, D=단가, E=규격)은 레이아웃이 달라 C 코드패턴으로 인식.
+    //   - 세트 시트와 같은 품번은 upsert로 1행 병합, 가격은 시트명 basis 2행으로 분리 보존(P5).
+    // ============================================================
+
+    private void parseFittingPriceSheet(Ctx c, List<VendorProductSet> out) {
+        int headerRow = findRow(c, r -> "품목".equals(noSpace(str(c, r, 0)))
+                && "전산코드".equals(noSpace(str(c, r, 3))));
+        if (headerRow < 0) {
+            logger.warn("[B][{}] 부속 단가표 헤더(품목/전산코드) 미발견 → 스킵", c.sheetName);
+            return;
+        }
+        int last = c.sheet.getLastRowNum();
+
+        String group = null, lastSpec = null;
+        Set<String> seenPn = new HashSet<>(); // 품번 재사용(U9310 행거) 감지 → 전산코드 폴백(P8)
+
+        for (int r = headerRow + 1; r <= last; r++) {
+            String aRaw = stripSpace(str(c, r, 0));
+            if (aRaw != null && (aRaw.startsWith("※") || aRaw.matches("^\\d+\\..*"))) continue; // 특기사항 각주
+            if (aRaw != null) group = aRaw;
+
+            // 니쁠 꼬리 블록: C=전산코드(43…), D=단가, E=규격 (B='니쁠')
+            String cCode = normalizeCode(str(c, r, 2));
+            if (cCode != null && cCode.matches("^43[0-9a-zA-Z]+$")) {
+                String bLabel = stripSpace(str(c, r, 1));
+                if (bLabel != null) group = bLabel;
+                String spec = stripSpace(str(c, r, 4));
+                String name = group;
+                if (spec != null) name = join(name, "(" + spec + ")");
+                name = join(name, cCode.toLowerCase());
+                out.add(fittingSingle(c, group, cCode.toLowerCase(), name, dec(c, r, 3), null, null, r));
+                continue;
+            }
+
+            String pnRaw = stripSpace(str(c, r, 1));                 // B=품번
+            String ecodeRaw = normalizeCode(str(c, r, 3));           // D=전산코드
+            String ecode = ecodeRaw != null ? ecodeRaw.toLowerCase() : null; // 대소문자 오타 흡수(43u0105GC, P9)
+            if (pnRaw == null && ecode == null) continue;
+
+            String pn = fittingPartNo(normalizeCode(firstToken(pnRaw)));
+            String code = (pn != null && seenPn.add(pn)) ? pn : orDefault(ecode, pn);
+            if (code == null) continue;
+
+            String spec = resolveDitto(stripSpace(str(c, r, 2)), lastSpec); // C=규격(ditto " 처리)
+            if (spec != null) lastSpec = spec;
+            String name = group;
+            if (spec != null) name = join(name, "(" + spec + ")");
+            name = join(name, pn != null ? pn : code);
+            String remark = join(stripSpace(str(c, r, 5)), stripSpace(str(c, r, 6))); // F비고+G부기(R7 잠정)
+            out.add(fittingSingle(c, group, code, name, dec(c, r, 4), remark, null, r)); // E=단가
+        }
+    }
 
     // ============================================================
     // (D) 단일행형 — 비데,기타 / 수전금구 (서브테이블 다수 가능)
