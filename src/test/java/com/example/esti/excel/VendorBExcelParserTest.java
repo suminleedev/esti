@@ -139,20 +139,24 @@ class VendorBExcelParserTest {
     }
 
     @Test
-    void 수전부속_품번패턴이면_품번유지_아니면_제품코드로_대체하고_원본은_description() {
+    void 수전부속은_대분류_수전부속과_시트명basis로_적재되고_냉온블록은_합성세트() {
         List<VendorProductSet> sets = parseSample();
 
-        // "U9111 (직각...)"은 품번패턴 → 코드=U9111, 나머지 B열이 description
+        // "U9111 (직각...)"은 품번패턴 → 코드=U9111(대문자 정규화, P9), 나머지 B열이 description
         VendorProductSet u9111 = findByMainCode(sets, "U9111")
                 .orElseThrow(() -> new AssertionError("U9111 미발견"));
         assertEquals("(직각 노브형-i0110용)", u9111.main().description(), "첫 토큰 뺀 나머지 B");
+        assertEquals("수전부속", u9111.categoryLarge(), "대분류=수전부속(§11 P5)");
+        assertEquals("수전 부속(세트)", u9111.priceBasis(), "가격은 시트명 basis");
 
-        // "U9013c 냉수"는 영문으로 끝나는 품번패턴도 허용 → 코드=U9013c, 나머지(냉수)=description
-        VendorProductSet u9013c = findByMainCode(sets, "U9013c")
-                .orElseThrow(() -> new AssertionError("U9013c 미발견"));
-        assertEquals("냉수", u9013c.main().description(), "영문 끝 토큰 허용");
+        // 냉/온+소계 블록(U9013c/h) → 합성 세트 U9013(main) + 부속 U9013_c/h (§11 P6)
+        VendorProductSet u9013 = findByMainCode(sets, "U9013")
+                .orElseThrow(() -> new AssertionError("U9013 합성 세트 미발견"));
+        assertEquals(0, new BigDecimal("10000").compareTo(u9013.setPrice()), "세트가=소계");
+        assertEquals(2, u9013.parts().size());
+        assertTrue(u9013.parts().stream().anyMatch(p -> "U9013_c".equals(p.productCode())));
 
-        // "1.5m"은 품번패턴 아님(숫자 시작) → 제품코드(43ds1500)로 대체, B 전체가 description
+        // "1.5m"은 품번패턴 아님(숫자 시작) → 제품코드(43ds1500)로 대체, B 전체가 description (P8)
         VendorProductSet metal = findByMainCode(sets, "43ds1500")
                 .orElseThrow(() -> new AssertionError("43ds1500(메탈호스 1.5m) 미발견"));
         assertEquals("1.5m", metal.main().description());
