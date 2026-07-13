@@ -21,14 +21,21 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 class VendorBFittingSheetTest {
 
     private static final Path FIXTURE = Path.of("docs/samples/B사 test (수전부속).xlsx");
+    private static final Path OEM_FIXTURE = Path.of("docs/samples/B사 test (신규 OEM 부속).xlsx");
     private static final String SET_BASIS = "수전 부속(세트)";
     private static final String PRICE_BASIS = "부속 단가표";
+    private static final String OEM_BASIS = "신규 OEM 부속 단가표";
 
     private final VendorBExcelParser parser = new VendorBExcelParser();
 
     private List<VendorProductSet> parseFixture() {
         assumeTrue(Files.exists(FIXTURE), "픽스처 엑셀이 없어 스킵: " + FIXTURE);
         return parser.parseSets(FIXTURE);
+    }
+
+    private List<VendorProductSet> parseOemFixture() {
+        assumeTrue(Files.exists(OEM_FIXTURE), "픽스처 엑셀이 없어 스킵: " + OEM_FIXTURE);
+        return parser.parseSets(OEM_FIXTURE);
     }
 
     private List<VendorProductSet> byCode(List<VendorProductSet> sets, String code) {
@@ -155,6 +162,38 @@ class VendorBFittingSheetTest {
 
         // 니쁠 꼬리 블록(품번 없음 → 전산코드, P8)
         assertEquals(0, new BigDecimal("1500").compareTo(one(sets, "43u94p65", PRICE_BASIS).setPrice()));
+    }
+
+    // ===== 신규 OEM 부속 단가표 (§11-1 P12~P16) =====
+
+    @Test
+    void OEM단가표_품번정규화_소분류유도_비고보존() {
+        List<VendorProductSet> sets = parseOemFixture();
+        // U-942245 → U942245(P9) — 세트 시트 OEM 항목과 같은 코드로 나와 upsert 병합(P13)
+        VendorProductSet valve = one(sets, "U942245", OEM_BASIS);
+        assertEquals("수전부속", valve.categoryLarge());
+        assertEquals("일체형 앵글밸브", valve.categorySmall(), "소분류=품명 괄호 앞(P15)");
+        assertEquals(0, new BigDecimal("2300").compareTo(valve.setPrice()));
+        assertEquals("1차 입고분", valve.main().remark(), "비고 보존(R7 잠정)");
+        assertFalse(valve.needsReview());
+
+        // 단종 10종도 적재 + 비고 '단종' 보존(P16)
+        VendorProductSet trap = one(sets, "U9240D", OEM_BASIS);
+        assertEquals(0, new BigDecimal("4400").compareTo(trap.setPrice()));
+        assertEquals("단종", trap.main().remark());
+    }
+
+    @Test
+    void OEM단가표_21종적재_조합예시스킵_코드엇갈림2종만_검수() {
+        List<VendorProductSet> sets = parseOemFixture().stream()
+                .filter(s -> OEM_BASIS.equals(s.priceBasis())).toList();
+        assertEquals(21, sets.size(), "항목 21종(하단 조합 예시 6행 스킵, P16)");
+        assertTrue(sets.stream().noneMatch(s -> s.setPrice().compareTo(new BigDecimal("19200")) == 0),
+                "조합 예시(19,200 등) 미적재");
+        // 세트 시트 폴백행(43u04110/43u944265)과 공존하는 2종만 검수플래그(P14)
+        assertEquals(List.of("U04110", "U944265"),
+                sets.stream().filter(VendorProductSet::needsReview)
+                        .map(s -> s.main().productCode()).sorted().toList());
     }
 
     @Test

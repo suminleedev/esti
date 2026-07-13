@@ -71,6 +71,7 @@ public class VendorBExcelParser implements VendorExcelParser {
                     case BREAKDOWN      -> parseBreakdownSheet(ctx, result);
                     case FITTING_SET    -> parseFittingSetSheet(ctx, result);
                     case FITTING_PRICE  -> parseFittingPriceSheet(ctx, result);
+                    case FITTING_OEM    -> parseOemFittingSheet(ctx, result);
                     case SLOT       -> parseSlotSheet(ctx, result);
                     case GALAXIA    -> parseGalaxiaSheet(ctx, result);
                     case SET_TOTAL  -> parseHeaderTotalSetSheet(ctx, result);
@@ -89,7 +90,7 @@ public class VendorBExcelParser implements VendorExcelParser {
     // ============================================================
 
     private enum Family { TOILET, WASHBASIN, URINAL_SINK, BIDET_ETC, FAUCET_GENERAL, FAUCET_PARTS,
-        BREAKDOWN, FITTING_SET, FITTING_PRICE, SLOT, GALAXIA, SET_TOTAL, SET_SUBTOTAL, SINGLE }
+        BREAKDOWN, FITTING_SET, FITTING_PRICE, FITTING_OEM, SLOT, GALAXIA, SET_TOTAL, SET_SUBTOTAL, SINGLE }
 
     private Family family(String sheetName) {
         String n = sheetName.replaceAll("\\s", "");
@@ -104,6 +105,7 @@ public class VendorBExcelParser implements VendorExcelParser {
         // 수전부속 3-시트(§11): 분계표=수전금구 병합 뷰 / 수전 부속(세트)·부속 단가표=부속 카탈로그(대분류 수전부속).
         //   "부속단가"는 "악세사리단가표"와 겹치지 않게 악세사리 분기보다 앞이어도 무방하나, 명시적으로 여기 배치.
         if (n.contains("분계표")) return Family.BREAKDOWN;
+        if (n.contains("신규") && n.contains("부속단가")) return Family.FITTING_OEM; // 신규 OEM 부속 단가표(§11-1) — 일반 부속단가보다 먼저
         if (n.contains("부속단가")) return Family.FITTING_PRICE;
         if (n.contains("수전부속")) return Family.FITTING_SET;
         if (n.contains("갈라시아")) return Family.GALAXIA;
@@ -1506,6 +1508,53 @@ public class VendorBExcelParser implements VendorExcelParser {
             name = join(name, pn != null ? pn : code);
             String remark = join(stripSpace(str(c, r, 5)), stripSpace(str(c, r, 6))); // F비고+G부기(R7 잠정)
             out.add(fittingSingle(c, group, code, name, dec(c, r, 4), remark, null, r)); // E=단가
+        }
+    }
+
+    // ============================================================
+    // (C-5) 신규 OEM 부속 단가표 — OEM(영파) 부속 단품 21종 + 국산 대비 비교(§11-1 P12~P16).
+    //   컬럼: B=순번 C=품번(하이픈형 U-942245) D=전산코드 E=품명(재질·규격 포함) F=대리점가
+    //         G=차액·H=기존 국산가(파생·중복 정보 → 미저장, P16) I=비고(1차 입고분/단종, R7 잠정).
+    //   대분류=수전부속·priceBasis=시트명. 품번 정규화(P9)로 세트 시트 OEM 9종과 upsert 자연 병합(P13).
+    //   소분류=품명 앞부분(괄호 앞) 유도(P15). 하단 "세면기 수전" 조합 예시(품번 없음)는 스킵(P16).
+    // ============================================================
+
+    /** 세트 시트엔 품번 없이 전산코드로 폴백 적재된 항목(43u04110/43u944265)과 2행 공존 → 검수 표기(P14). */
+    private static final Set<String> OEM_CODE_MISMATCH_REVIEW = Set.of("U04110", "U944265");
+
+    private void parseOemFittingSheet(Ctx c, List<VendorProductSet> out) {
+        int headerRow = findRow(c, r -> "구분".equals(noSpace(str(c, r, 1)))
+                && "품번".equals(noSpace(str(c, r, 2)))
+                && "전산코드".equals(noSpace(str(c, r, 3))));
+        if (headerRow < 0) {
+            logger.warn("[B][{}] 신규 OEM 부속 헤더(구분/품번/전산코드) 미발견 → 스킵", c.sheetName);
+            return;
+        }
+        int last = c.sheet.getLastRowNum();
+
+        for (int r = headerRow + 1; r <= last; r++) {
+            String pnRaw = stripSpace(str(c, r, 2));                 // C=품번 — 없으면 하단 조합 예시행 → 스킵(P16)
+            if (pnRaw == null) continue;
+            String pn = fittingPartNo(normalizeCode(firstToken(pnRaw)));
+            if (pn == null || !pn.matches("^[A-Za-z].*")) continue;
+
+            String itemName = stripSpace(str(c, r, 4));              // E=품명
+            BigDecimal price = dec(c, r, 5);                         // F=대리점가
+            String remark = stripSpace(str(c, r, 8));                // I=비고(1차 입고분/단종)
+
+            String group = itemName;                                 // 소분류=품명 괄호 앞부분(P15)
+            if (group != null) {
+                int p = group.indexOf('(');
+                if (p >= 0) group = stripSpace(group.substring(0, p));
+            }
+
+            String display = join(itemName, pn);
+            if (price == null) display = display + " (가격없음)";
+            VendorParsedItem main = new VendorParsedItem(pn, display, null, null,
+                    VendorParsedItem.RELATION_MAIN, nz(price), remark);
+            out.add(new VendorProductSet("B", "수전부속", group, main, new ArrayList<>(),
+                    nz(price), false, imageKeyOf(c.sheetName, r),
+                    OEM_CODE_MISMATCH_REVIEW.contains(pn), c.sheetName));
         }
     }
 

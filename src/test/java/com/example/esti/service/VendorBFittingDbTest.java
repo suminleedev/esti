@@ -27,16 +27,20 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 class VendorBFittingDbTest extends AbstractVendorBSheetDbVerification {
 
     private static final Path FIXTURE = Path.of("docs/samples/B사 test (수전부속).xlsx");
+    private static final Path OEM_FIXTURE = Path.of("docs/samples/B사 test (신규 OEM 부속).xlsx");
     private static final String SET_BASIS = "수전 부속(세트)";
     private static final String PRICE_BASIS = "부속 단가표";
+    private static final String OEM_BASIS = "신규 OEM 부속 단가표";
 
-    /** 합본 샘플(부모 ensureLoaded) 위에 수전부속 픽스처를 1회 추가 적재(분계표-전용 품번으로 감지). */
+    /** 합본 샘플(부모 ensureLoaded) 위에 수전부속·OEM 픽스처를 1회 추가 적재(각 시트 전용 품번으로 감지). */
     private void ensureFittingLoaded() {
         assumeTrue(Files.exists(FIXTURE), "픽스처 엑셀이 없어 스킵: " + FIXTURE);
-        boolean loaded = productRepository.findAll().stream()
-                .anyMatch(p -> "G-0721".equals(p.getProductCode()));
-        if (!loaded) {
+        assumeTrue(Files.exists(OEM_FIXTURE), "픽스처 엑셀이 없어 스킵: " + OEM_FIXTURE);
+        if (productRepository.findAll().stream().noneMatch(p -> "G-0721".equals(p.getProductCode()))) {
             service.importVendorCatalog("B", FIXTURE);
+        }
+        if (productRepository.findAll().stream().noneMatch(p -> "U9240D".equals(p.getProductCode()))) {
+            service.importVendorCatalog("B", OEM_FIXTURE);
         }
     }
 
@@ -86,6 +90,20 @@ class VendorBFittingDbTest extends AbstractVendorBSheetDbVerification {
     }
 
     @Test
+    void OEM단가표_공유품번은_basis_3행째로_병합되고_단종신규도_적재() {
+        ensureFittingLoaded();
+        // U-942245 → U942245(P9) — 세트 시트 OEM 항목과 1행 병합, 가격은 basis 2행(둘 다 2,300)
+        VendorProduct valve = dbSetProduct("수전부속", "U942245");
+        assertThat(dbSetPriceByBasis(valve, SET_BASIS)).isEqualByComparingTo(new BigDecimal("2300"));
+        assertThat(dbSetPriceByBasis(valve, OEM_BASIS)).isEqualByComparingTo(new BigDecimal("2300"));
+        assertThat(valve.getCategorySmall()).isEqualTo("일체형 앵글밸브"); // 품명 유도(P15, last-wins)
+
+        // 단종 신규 항목(이 시트 고유 정보) 적재(P16)
+        assertThat(dbSetPriceByBasis(dbSetProduct("수전부속", "U9240D"), OEM_BASIS))
+                .isEqualByComparingTo(new BigDecimal("4400"));
+    }
+
+    @Test
     void 픽스처_재업로드_멱등() {
         ensureFittingLoaded();
         long products = productRepository.count();
@@ -93,6 +111,7 @@ class VendorBFittingDbTest extends AbstractVendorBSheetDbVerification {
         long relations = relationRepository.count();
 
         service.importVendorCatalog("B", FIXTURE);
+        service.importVendorCatalog("B", OEM_FIXTURE);
 
         assertThat(productRepository.count()).as("재업로드 후 제품 수 불변").isEqualTo(products);
         assertThat(priceRepository.count()).as("재업로드 후 가격 수 불변").isEqualTo(prices);
