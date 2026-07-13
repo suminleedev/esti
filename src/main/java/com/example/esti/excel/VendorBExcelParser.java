@@ -1138,9 +1138,13 @@ public class VendorBExcelParser implements VendorExcelParser {
     }
 
     // ============================================================
-    // (C-1) 악세사리 — 세트 구간 + 단일품 구간 혼재
+    // (C-1) 악세사리 단가표 — 세트 구간 + 단일품 구간 혼재 (§12 A1~A7)
     //   세트: G열="SET" 대표행 + 부속행들(A·B·C 빈칸, H=가). 세트가 = 대표행 H.
-    //   단일품: 그 외 모든 행 = 독립 제품(부속 없음). A/B=분류, F=품명, G=규격, H=가.
+    //   단일품: 그 외 모든 행 = 독립 제품(부속 없음). A/B=분류(carry), F=품명, G=규격, H=가, J=비고.
+    //   대분류=악세사리(C-1 '단가표' 제거) → 이미지는 시트명 실은 imageKey로 매칭(D52), priceBasis=시트명.
+    //   품명 정비: ditto(")·빈칸·숫자 오염(5000)은 세부분류+규격 또는 직전 실품명으로 폴백(A5·A6).
+    //   규격(G)은 description 보존(동명 이규격 구분, A2), 비고(J)는 remark 잠정 보존(R7, A3).
+    //   U접두 품번(핸드스프레이 필터 3종)은 수전부속 U9120(자동폽업)과 충돌 → {품번}-{전산코드} 결합(A1).
     // ============================================================
 
     private void parseHeaderTotalSetSheet(Ctx c, List<VendorProductSet> out) {
@@ -1157,33 +1161,42 @@ public class VendorBExcelParser implements VendorExcelParser {
         BigDecimal setPrice = null;
         int mainRow = -1;
         boolean inSet = false;
-        String catA = null, catB = null;           // 단일품 구간 분류 carry-forward
-        String lastName = null;                     // 따옴표(ditto) 품명 → 직전 실품명
+        String catA = null, catB = null;           // 분류 carry-forward
+        String lastName = null;                     // 따옴표(ditto)·빈칸 품명 → 직전 실품명
 
         for (int r = headerRow + 1; r <= last; r++) {
             String code = normalizeCode(str(c, r, 3)); // D=품번
             if (code == null) continue;
+            if (code.startsWith("U")) {                // 수전부속 품번 체계와 충돌(U9120) → {품번}-{전산코드}(A1)
+                String ecode = normalizeCode(str(c, r, 4)); // E=전산코드
+                if (ecode != null) code = code + "-" + ecode;
+            }
 
             String aRaw = stripSpace(str(c, r, 0));
             String bRaw = stripSpace(str(c, r, 1));
             String cRaw = stripSpace(str(c, r, 2));
             String spec = stripSpace(str(c, r, 6));     // G=규격(또는 "SET")
             BigDecimal price = nz(dec(c, r, 7));        // H=대리점가
-            String name = resolveDitto(stripSpace(str(c, r, 5)), lastName); // F=품명
+            String remark = stripSpace(str(c, r, 9));   // J=비고(단종/옵션 등, R7 잠정, A3)
+
+            String rawName = stripSpace(str(c, r, 5));  // F=품명
+            if (rawName != null && rawName.matches("\\d+(\\.\\d+)?")) rawName = null; // 숫자 오염(5000) 무효(A5)
+            String name = resolveDitto(rawName, lastName);
             if (name != null) lastName = name;
+            else name = (bRaw != null) ? join(bRaw, spec) : lastName; // 빈칸·오염 폴백: 세부분류+규격 / 직전 실품명(A5·A6)
 
             boolean isSetRep = spec != null && spec.replace(" ", "").equalsIgnoreCase("SET");
             if (isSetRep) {                              // ── 세트 대표행(G=SET) ──
                 if (inSet) flushAccSet(out, c, mainItem, parts, setCat, setPrice, mainRow);
-                setCat = orDefault(bRaw, aRaw);
+                if (aRaw != null) { catA = aRaw; catB = null; }
+                if (bRaw != null) catB = bRaw;
+                setCat = orDefault(catB, catA);          // 대표행 A/B 빈칸(AC8300G)도 carry로 보완(A7)
                 setPrice = price;
-                mainItem = new VendorParsedItem(code, join(setCat, orDefault(name, code)), null, null,
-                        VendorParsedItem.RELATION_MAIN, setPrice, null);
+                mainItem = new VendorParsedItem(code, join(setCat, orDefault(rawName, code)), null, null,
+                        VendorParsedItem.RELATION_MAIN, setPrice, remark);
                 parts = new ArrayList<>();
                 mainRow = r;
                 inSet = true;
-                if (aRaw != null) { catA = aRaw; catB = null; }
-                if (bRaw != null) catB = bRaw;
                 continue;
             }
 
@@ -1191,7 +1204,7 @@ public class VendorBExcelParser implements VendorExcelParser {
             if (isSetPart) {                             // ── 세트 부속행 ──
                 String pName = orDefault(name, code);
                 parts.add(new VendorParsedItem(partCode(mainItem.productCode(), coldHot(code, pName)),
-                        pName, null, null, pName, price, null));
+                        pName, null, null, pName, price, remark)); // 부속 비고(단종 예정/옵션) 보존
                 continue;
             }
 
@@ -1200,10 +1213,11 @@ public class VendorBExcelParser implements VendorExcelParser {
             if (aRaw != null) { catA = aRaw; catB = null; }
             if (bRaw != null) catB = bRaw;
             String catSmall = orDefault(catB, catA);
+            String descr = (spec != null && !spec.equals(name)) ? spec : null; // 규격=description(품명과 같으면 생략, A2)
             VendorParsedItem single = new VendorParsedItem(code, orDefault(name, code), null, null,
-                    VendorParsedItem.RELATION_MAIN, price, spec);
-            out.add(new VendorProductSet("B", c.sheetName, catSmall, single,
-                    new ArrayList<>(), price, false, imageKeyOf(r), false));
+                    VendorParsedItem.RELATION_MAIN, price, remark, descr);
+            out.add(new VendorProductSet("B", "악세사리", catSmall, single,
+                    new ArrayList<>(), price, false, imageKeyOf(c.sheetName, r), false, c.sheetName));
         }
         if (inSet) flushAccSet(out, c, mainItem, parts, setCat, setPrice, mainRow);
     }
@@ -1211,8 +1225,10 @@ public class VendorBExcelParser implements VendorExcelParser {
     private void flushAccSet(List<VendorProductSet> out, Ctx c, VendorParsedItem mainItem,
                              List<VendorParsedItem> parts, String setCat, BigDecimal setPrice, int mainRow) {
         if (mainItem == null) return;
-        out.add(new VendorProductSet("B", c.sheetName, setCat, mainItem,
-                parts != null ? parts : new ArrayList<>(), setPrice, false, imageKeyOf(mainRow), false));
+        // 대분류=악세사리(C-1)·priceBasis=시트명·이미지=시트명 실은 키(D52)
+        out.add(new VendorProductSet("B", "악세사리", setCat, mainItem,
+                parts != null ? parts : new ArrayList<>(), setPrice, false,
+                imageKeyOf(c.sheetName, mainRow), false, c.sheetName));
     }
 
     // ============================================================
