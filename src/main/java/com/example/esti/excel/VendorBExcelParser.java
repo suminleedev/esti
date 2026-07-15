@@ -1365,13 +1365,14 @@ public class VendorBExcelParser implements VendorExcelParser {
             if (nipple) {
                 String code = normalizeCode(str(c, r, 2)); // C=제품코드
                 if (code == null) continue;
+                code = FITTING_CODE_TO_PARTNO.getOrDefault(code.toLowerCase(), code.toLowerCase()); // P14 병합
                 String bLabel = stripSpace(str(c, r, 1));
                 if (bLabel != null) group = bLabel;        // '니쁠'
                 String spec = stripSpace(str(c, r, 4));    // E=규격
                 String name = group;
                 if (spec != null) name = join(name, "(" + spec + ")");
-                name = join(name, code.toLowerCase());
-                out.add(fittingSingle(c, group, code.toLowerCase(), name, dec(c, r, 3), null, null, r)); // D=단가
+                name = join(name, code);
+                out.add(fittingSingle(c, group, code, name, dec(c, r, 3), null, null, r)); // D=단가
                 continue;
             }
 
@@ -1424,6 +1425,13 @@ public class VendorBExcelParser implements VendorExcelParser {
                 imageKeyOf(c.sheetName, first.row()), false, c.sheetName));
     }
 
+    /**
+     * 세트 시트 전산코드 폴백 중 품번이 알려진 항목(신규 OEM 시트의 품번↔전산코드 매핑) → 품번으로 적재해
+     * OEM 시트 행과 upsert 자연 병합(P14 병합 결정, 2026-07-15). 종전엔 2행 공존 + 검수필요 플래그였다.
+     */
+    private static final Map<String, String> FITTING_CODE_TO_PARTNO =
+            Map.of("43u04110", "U04110", "43u944265", "U944265");
+
     /** 소계 없이 끝난 블록 → 행별 단품(제품코드 '+' 조합행은 구성세트, P7). */
     private void flushFittingFlat(List<VendorProductSet> out, Ctx c, List<FtMember> buf, String group) {
         for (FtMember m : buf) {
@@ -1437,7 +1445,10 @@ public class VendorBExcelParser implements VendorExcelParser {
                         ? orDefault(bClean.substring(token.length()).trim(), null) : null;
             } else {
                 code = normalizeCode(m.cRaw());            // 품번패턴 아님(1.5m/65MM/한글) → 제품코드 폴백(P8)
-                if (code != null) code = code.toLowerCase(); // 대소문자 오타 흡수(43U9113 등, P9)
+                if (code != null) {
+                    code = code.toLowerCase();             // 대소문자 오타 흡수(43U9113 등, P9)
+                    code = FITTING_CODE_TO_PARTNO.getOrDefault(code, code); // 품번 매핑이 있으면 품번으로(P14 병합)
+                }
                 descr = bClean;                            // B 전체=description
             }
             if (code == null) continue;
@@ -1599,8 +1610,7 @@ public class VendorBExcelParser implements VendorExcelParser {
     //   소분류=품명 앞부분(괄호 앞) 유도(P15). 하단 "세면기 수전" 조합 예시(품번 없음)는 스킵(P16).
     // ============================================================
 
-    /** 세트 시트엔 품번 없이 전산코드로 폴백 적재된 항목(43u04110/43u944265)과 2행 공존 → 검수 표기(P14). */
-    private static final Set<String> OEM_CODE_MISMATCH_REVIEW = Set.of("U04110", "U944265");
+    // (구 P14 검수 상수 제거) 코드 엇갈림 2종은 세트 시트 폴백을 품번으로 매핑해 병합한다 → FITTING_CODE_TO_PARTNO
 
     private void parseOemFittingSheet(Ctx c, List<VendorProductSet> out) {
         int headerRow = findRow(c, r -> "구분".equals(noSpace(str(c, r, 1)))
@@ -1633,8 +1643,7 @@ public class VendorBExcelParser implements VendorExcelParser {
             VendorParsedItem main = new VendorParsedItem(pn, display, null, null,
                     VendorParsedItem.RELATION_MAIN, nz(price), remark);
             out.add(new VendorProductSet("B", "수전부속", group, main, new ArrayList<>(),
-                    nz(price), false, imageKeyOf(c.sheetName, r),
-                    OEM_CODE_MISMATCH_REVIEW.contains(pn), c.sheetName));
+                    nz(price), false, imageKeyOf(c.sheetName, r), false, c.sheetName));
         }
     }
 

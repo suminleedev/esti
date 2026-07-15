@@ -138,8 +138,8 @@ class VendorBFittingSheetTest {
         List<VendorProductSet> sets = parseFixture();
         // OEM 하이픈·소문자 품번 정규화(P9): U-9110150a → U9110150A
         assertEquals(0, new BigDecimal("8500").compareTo(one(sets, "U9110150A", SET_BASIS).setPrice()));
-        // 품번패턴 아님("1.5m(OEM)") → 제품코드 폴백(P8)
-        assertEquals(0, new BigDecimal("3000").compareTo(one(sets, "43u04110", SET_BASIS).setPrice()));
+        // 품번패턴 아님("1.5m(OEM)") → 제품코드 폴백(P8). 단 품번 매핑이 있는 43u04110은 U04110으로(P14 병합)
+        assertEquals(0, new BigDecimal("3000").compareTo(one(sets, "U04110", SET_BASIS).setPrice()));
         // 가격 없는 행은 0 + "(가격없음)" 표기(D8)
         VendorProductSet pipe = one(sets, "43u91p300", SET_BASIS);
         assertEquals(0, BigDecimal.ZERO.compareTo(pipe.setPrice()));
@@ -228,16 +228,24 @@ class VendorBFittingSheetTest {
     }
 
     @Test
-    void OEM단가표_21종적재_조합예시스킵_코드엇갈림2종만_검수() {
+    void OEM단가표_21종적재_조합예시스킵_검수플래그없음() {
         List<VendorProductSet> sets = parseOemFixture().stream()
                 .filter(s -> OEM_BASIS.equals(s.priceBasis())).toList();
         assertEquals(21, sets.size(), "항목 21종(하단 조합 예시 6행 스킵, P16)");
         assertTrue(sets.stream().noneMatch(s -> s.setPrice().compareTo(new BigDecimal("19200")) == 0),
                 "조합 예시(19,200 등) 미적재");
-        // 세트 시트 폴백행(43u04110/43u944265)과 공존하는 2종만 검수플래그(P14)
-        assertEquals(List.of("U04110", "U944265"),
-                sets.stream().filter(VendorProductSet::needsReview)
-                        .map(s -> s.main().productCode()).sorted().toList());
+        // 코드 엇갈림 2종은 세트 시트 폴백을 품번으로 매핑해 병합(P14 병합 결정) → 검수플래그 없음
+        assertTrue(sets.stream().noneMatch(VendorProductSet::needsReview));
+    }
+
+    @Test
+    void P14병합_세트시트_폴백행도_품번코드로_적재된다() {
+        List<VendorProductSet> sets = parseFixture();
+        // 종전 43u04110/43u944265(전산코드 폴백) → U04110/U944265(품번) — OEM 시트 행과 upsert 자연 병합
+        assertEquals(0, new BigDecimal("3000").compareTo(one(sets, "U04110", SET_BASIS).setPrice()));
+        assertNotNull(one(sets, "U944265", SET_BASIS));
+        assertTrue(byCode(sets, "43u04110").isEmpty(), "구 전산코드 폴백행 잔존 없음");
+        assertTrue(byCode(sets, "43u944265").isEmpty());
     }
 
     @Test
