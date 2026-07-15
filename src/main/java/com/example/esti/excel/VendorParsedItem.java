@@ -17,21 +17,29 @@ public record VendorParsedItem(
         BigDecimal unitPrice,  // 개별 단가 (없으면 0)
         String remark,         // 비고
         String description,    // 원본 품번/부가 설명 보존 (수전부속처럼 코드를 제품코드로 대체할 때 원본 B열 등)
-        String categorySmall   // 이 품목 전용 소분류(있으면 세트의 categorySmall 대신 사용). null이면 세트값(§10 S4: 수전금구 부속 출처 국산/OEM)
+        String categorySmall,  // 이 품목 전용 소분류(있으면 세트의 categorySmall 대신 사용). null이면 세트값(§10 S4: 수전금구 부속 출처 국산/OEM)
+        String specs           // 규격(15파이/70mm 등). 비고 분류 정책(C-2)에서 규격성 비고가 여기로 온다
 ) {
     public static final String RELATION_MAIN = "MAIN";
     public static final String RELATION_ACCESSORY = "ACCESSORY";
 
-    /** 기존 7-인자 호출 호환 (description·categorySmall 없음). */
+    /** 기존 7-인자 호출 호환 (description·categorySmall·specs 없음). */
     public VendorParsedItem(String productCode, String productName, String oldItemCode,
                             String subItemCode, String relationType, BigDecimal unitPrice, String remark) {
-        this(productCode, productName, oldItemCode, subItemCode, relationType, unitPrice, remark, null, null);
+        this(productCode, productName, oldItemCode, subItemCode, relationType, unitPrice, remark, null, null, null);
     }
 
-    /** 기존 8-인자 호출 호환 (categorySmall 없음). */
+    /** 기존 8-인자 호출 호환 (categorySmall·specs 없음). */
     public VendorParsedItem(String productCode, String productName, String oldItemCode,
                             String subItemCode, String relationType, BigDecimal unitPrice,
                             String remark, String description) {
-        this(productCode, productName, oldItemCode, subItemCode, relationType, unitPrice, remark, description, null);
+        this(productCode, productName, oldItemCode, subItemCode, relationType, unitPrice, remark, description, null, null);
+    }
+
+    /** 기존 9-인자 호출 호환 (specs 없음). */
+    public VendorParsedItem(String productCode, String productName, String oldItemCode,
+                            String subItemCode, String relationType, BigDecimal unitPrice,
+                            String remark, String description, String categorySmall) {
+        this(productCode, productName, oldItemCode, subItemCode, relationType, unitPrice, remark, description, categorySmall, null);
     }
 }
