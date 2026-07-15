@@ -130,7 +130,7 @@ public class VendorBExcelParser implements VendorExcelParser {
         }
 
         Map<Integer, String> slots = new LinkedHashMap<>();
-        int totalCol = readSlotHeader(c, firstHeader, slots);
+        SlotHeaderCols hc = readSlotHeader(c, firstHeader, slots);
         String lastKind = null;    // 품종(B) 병합셀 → 직전 품종 유지(req1)
         String prevRepCode = null; // 직전 제품의 base 품번 — 도기수로/사출수로 충돌 판별용
 
@@ -139,7 +139,7 @@ public class VendorBExcelParser implements VendorExcelParser {
         Map<Integer, String> dojaOverrides = computeDojaCodeOverrides(c, firstHeader, last);
         for (int r = firstHeader + 1; r <= last; r++) {
             if (isSlotHeader(c, r)) {                 // 새 서브테이블 헤더 → 슬롯 라벨 갱신(req2)
-                totalCol = readSlotHeader(c, r, slots);
+                hc = readSlotHeader(c, r, slots);
                 continue;
             }
             if (!"제품코드".equals(str(c, r, 5))) continue; // 제품코드행만 세트 시작
@@ -197,9 +197,16 @@ public class VendorBExcelParser implements VendorExcelParser {
                         relation, price, null, sc[1]));
             }
 
-            BigDecimal setPrice = (priceRow >= 0 && totalCol >= 0) ? dec(c, priceRow, totalCol) : null;
+            BigDecimal setPrice = (priceRow >= 0 && hc.totalCol() >= 0) ? dec(c, priceRow, hc.totalCol()) : null;
             if (setPrice != null && partSum.compareTo(setPrice) != 0) {
                 logger.warn("[B][{}] 計≠부속합 (rep={}, 計={}, 합={})", c.sheetName, repCode, setPrice, partSum);
+            }
+
+            // 비고(탱크뚜껑 코드/인치 구분 등 구성 정보)는 제품코드행·대리점가행 양쪽에 나뉨 → 병합해 description(C-2 결정 9)
+            if (hc.noteCol() >= 0) {
+                String note = joinNotes(stripSpace(str(c, r, hc.noteCol())),
+                        priceRow >= 0 ? stripSpace(str(c, priceRow, hc.noteCol())) : null);
+                repDesc = joinNotes(repDesc, note);
             }
 
             String repName = join(kind, repCode);
@@ -216,23 +223,26 @@ public class VendorBExcelParser implements VendorExcelParser {
     }
 
     /**
-     * 양변기 헤더행에서 슬롯(col→라벨)을 채우고 計 컬럼 인덱스를 반환(없으면 -1). 슬롯 라벨은 내부공백 제거 정규화.
+     * 양변기 헤더행에서 슬롯(col→라벨)을 채우고 計·비고 컬럼 인덱스를 반환(없으면 -1). 슬롯 라벨은 내부공백 제거 정규화.
      * 투피스 구간은 G슬롯 라벨이 "하부"(도기 하부)라 일반 슬롯과 달리 스킵하면 안 된다
      * (공용 {@code isSkipSlotLabel}은 수량 서브헤더용 "하부/상부"를 스킵하므로 여기선 쓰지 않는다).
      */
-    private int readSlotHeader(Ctx c, int headerRow, Map<Integer, String> slots) {
+    private SlotHeaderCols readSlotHeader(Ctx c, int headerRow, Map<Integer, String> slots) {
         slots.clear();
-        int totalCol = -1;
+        int totalCol = -1, noteCol = -1;
         short lastCell = c.sheet.getRow(headerRow).getLastCellNum();
         for (int col = SLOT_FIRST_COL; col < lastCell; col++) {
             String label = normLabel(str(c, headerRow, col));
             if (label == null) continue;
             if (isTotalLabel(label)) { totalCol = col; continue; }
+            if (label.replace(" ", "").contains("비고")) { noteCol = col; continue; } // C-2: 비고 → description 수집
             if (isSkipToiletSlotLabel(label)) continue;
             slots.put(col, label);
         }
-        return totalCol;
+        return new SlotHeaderCols(totalCol, noteCol);
     }
+
+    private record SlotHeaderCols(int totalCol, int noteCol) {}
 
     /** 양변기 슬롯 스킵: 수량/비고/PLT만 제외(하부/상부는 실제 도기 슬롯이라 유지). */
     private boolean isSkipToiletSlotLabel(String label) {
@@ -345,12 +355,14 @@ public class VendorBExcelParser implements VendorExcelParser {
         }
 
         Map<Integer, String> slots = new LinkedHashMap<>();
+        int noteCol = -1; // 비고(P) → description 수집(C-2 결정 10)
         short lastCell = c.sheet.getRow(headerRow).getLastCellNum();
         for (int col = SLOT_FIRST_COL; col < lastCell; col++) {
             String label = normLabel(str(c, headerRow, col));
             if (label == null) continue;
             if (isTotalLabel(label)) continue;            // 세면기엔 計 없음
-            if (isSkipWashbasinSlotLabel(label)) continue; // 수량/비고/PLT만 스킵
+            if (label.replace(" ", "").contains("비고")) { noteCol = col; continue; }
+            if (isSkipWashbasinSlotLabel(label)) continue; // 수량/PLT 스킵
             slots.put(col, label);
         }
 
@@ -418,6 +430,13 @@ public class VendorBExcelParser implements VendorExcelParser {
                         s.label(), null, null, relation, s.price(), remark, s.desc()));
             }
 
+            // 비고(언더카운터/세트 판매 기준 등)는 제품코드행·대리점가행 양쪽 → 병합해 description(C-2 결정 10)
+            if (noteCol >= 0) {
+                String note = joinNotes(stripSpace(str(c, r, noteCol)),
+                        priceRow >= 0 ? stripSpace(str(c, priceRow, noteCol)) : null);
+                repDesc = joinNotes(repDesc, note);
+            }
+
             VendorParsedItem main = new VendorParsedItem(repCode, join(kind, repCode), null, ksCode,
                     VendorParsedItem.RELATION_MAIN, setPrice, null, repDesc);
             out.add(new VendorProductSet("B", c.sheetName, kind, main, parts,
@@ -464,7 +483,7 @@ public class VendorBExcelParser implements VendorExcelParser {
         List<String> categories = splitSheetCategories(c.sheetName);
 
         Map<Integer, String> slots = new LinkedHashMap<>();
-        int totalCol = -1;
+        SlotHeaderCols hc = new SlotHeaderCols(-1, -1);
         int catIdx = -1;
         String currentCat = c.sheetName; // 첫 헤더 전 안전 기본값
         String carryKind = null;         // 서브테이블 내 품종(B) 병합셀 carry-forward
@@ -472,7 +491,7 @@ public class VendorBExcelParser implements VendorExcelParser {
         int last = c.sheet.getLastRowNum();
         for (int r = 0; r <= last; r++) {
             if (isSlotHeader(c, r)) {                       // 새 서브테이블 시작 → 슬롯/計/대분류 갱신
-                totalCol = readUrinalSlotHeader(c, r, slots);
+                hc = readUrinalSlotHeader(c, r, slots);
                 catIdx++;
                 currentCat = catIdx < categories.size() ? categories.get(catIdx) : c.sheetName;
                 carryKind = null;
@@ -510,23 +529,31 @@ public class VendorBExcelParser implements VendorExcelParser {
             }
             String desc = slotNotes.isEmpty() ? null : String.join(" / ", slotNotes);
 
-            buildUrinalSinkSet(c, r, priceRow, totalCol, currentCat, repCode, kind, ksCode, present, desc, out);
+            // 비고(감지기 코드/세트 판매 안내 등)는 제품코드행·대리점가행 양쪽 → 병합해 description(C-2 결정 11)
+            if (hc.noteCol() >= 0) {
+                String note = joinNotes(stripSpace(str(c, r, hc.noteCol())),
+                        priceRow >= 0 ? stripSpace(str(c, priceRow, hc.noteCol())) : null);
+                desc = joinNotes(desc, note);
+            }
+
+            buildUrinalSinkSet(c, r, priceRow, hc.totalCol(), currentCat, repCode, kind, ksCode, present, desc, out);
         }
     }
 
-    /** 소변기·수채 헤더행에서 슬롯(col→라벨)을 채우고 計 컬럼 인덱스를 반환. 수량/비고/PLT는 스킵. */
-    private int readUrinalSlotHeader(Ctx c, int headerRow, Map<Integer, String> slots) {
+    /** 소변기·수채 헤더행에서 슬롯(col→라벨)을 채우고 計·비고 컬럼 인덱스를 반환. 수량/PLT는 스킵. */
+    private SlotHeaderCols readUrinalSlotHeader(Ctx c, int headerRow, Map<Integer, String> slots) {
         slots.clear();
-        int totalCol = -1;
+        int totalCol = -1, noteCol = -1;
         short lastCell = c.sheet.getRow(headerRow).getLastCellNum();
         for (int col = SLOT_FIRST_COL; col < lastCell; col++) {
             String label = normLabel(str(c, headerRow, col));
             if (label == null) continue;
             if (isTotalLabel(label)) { totalCol = col; continue; }
+            if (label.replace(" ", "").contains("비고")) { noteCol = col; continue; } // C-2: 비고 → description 수집
             if (isSkipSlotLabel(label)) continue;
             slots.put(col, label);
         }
-        return totalCol;
+        return new SlotHeaderCols(totalCol, noteCol);
     }
 
     /** {@code buildSlotTotalSet}와 동일하나 categoryLarge를 서브테이블별 대분류로 받고, 비코드 슬롯 설명을 description에 보존. */
