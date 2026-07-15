@@ -134,10 +134,11 @@ class VendorBToiletSheetTest {
         List<VendorProductSet> sets = toiletSets();
 
         // IC703E(성오도자) 4oc703wt / IC703E(구륙도자) 4gc703wt → IC703Eo / IC703Eg
+        // (C-2로 Q열 비고가 " / "로 병합될 수 있어 도자명은 앞부분 일치로 확인)
         VendorProductSet o = byCode(sets, "IC703Eo");
         VendorProductSet g = byCode(sets, "IC703Eg");
-        assertEquals("성오도자", o.main().description());
-        assertEquals("구륙도자", g.main().description());
+        assertTrue(o.main().description().startsWith("성오도자"), o.main().description());
+        assertTrue(g.main().description().startsWith("구륙도자"), g.main().description());
         assertTrue(sets.stream().noneMatch(s -> "IC703E".equals(s.main().productCode())), "base 품번 단독 잔존 없음");
 
         // IC855E는 두 모델 가격이 달라(173200/171300) 둘 다 보존되어야 함
@@ -145,6 +146,20 @@ class VendorBToiletSheetTest {
         VendorProductSet e = byCode(sets, "IC855Ee"); // 헝얼자도 4ec855wt
         assertEquals(0, new BigDecimal("173200").compareTo(m.setPrice()));
         assertEquals(0, new BigDecimal("171300").compareTo(e.setPrice()));
+    }
+
+    @Test
+    void C2_비고는_제품코드행_대리점가행을_병합해_description() {
+        List<VendorProductSet> sets = toiletSets();
+
+        // C733: 제품코드행 Q=탱크뚜껑 코드, 대리점가행 Q=인치 구분 → " / " 병합해 description(C-2 결정 9)
+        String d = byCode(sets, "C733").main().description();
+        assertNotNull(d);
+        assertTrue(d.contains("32cap733"), d);
+        assertTrue(d.contains("인치 구분"), d);
+
+        // 비고 없는 제품은 description 오염 없음
+        assertNull(byCode(sets, "MC921").main().description());
     }
 
     @Test

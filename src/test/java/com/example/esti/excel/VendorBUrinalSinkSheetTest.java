@@ -109,11 +109,28 @@ class VendorBUrinalSinkSheetTest {
         VendorProductSet iu302 = byCode(urinals, "IU302E");
 
         // H칸 "후렌지/스프레다 포함"은 코드가 아니므로 부속(스퍼드)으로 만들지 않고 description에 보존
-        assertEquals("후렌지/스프레다 포함", iu302.main().description());
+        // (C-2로 P열 비고가 " / "로 병합될 수 있어 앞부분 일치로 확인)
+        assertTrue(iu302.main().description().startsWith("후렌지/스프레다 포함"), iu302.main().description());
         List<String> names = iu302.parts().stream().map(VendorParsedItem::productName).toList();
         assertFalse(names.contains("스퍼드"), "설명 텍스트가 부속으로 잘못 적재됨: " + names);
         // 도기(4su302wt 95000)만 부속, 計=95000
         assertEquals(0, new BigDecimal("95000").compareTo(iu302.setPrice()));
+    }
+
+    @Test
+    void C2_비고는_description으로_병합_수집() {
+        // U135: P열 비고(노출/매립 감지기 코드 안내) → description(C-2 결정 11)
+        VendorProductSet u135 = byCode(setsOf("소변기"), "U135");
+        assertNotNull(u135.main().description());
+        assertTrue(u135.main().description().contains("노출 감지기"), u135.main().description());
+
+        // 수채 서브테이블 비고도 재인식된 컬럼에서 수집(SS131)
+        String ss131 = byCode(setsOf("수채"), "SS131").main().description();
+        assertNotNull(ss131);
+        assertTrue(ss131.contains("세트로 무조건 포함"), ss131);
+
+        // 비고 없는 제품은 description 오염 없음
+        assertNull(byCode(setsOf("소변기"), "IU374S").main().description());
     }
 
     @Test
