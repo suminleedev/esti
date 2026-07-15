@@ -97,6 +97,10 @@ class VendorBFittingDbTest extends AbstractVendorBSheetDbVerification {
         assertThat(dbSetPriceByBasis(valve, SET_BASIS)).isEqualByComparingTo(new BigDecimal("2300"));
         assertThat(dbSetPriceByBasis(valve, OEM_BASIS)).isEqualByComparingTo(new BigDecimal("2300"));
         assertThat(valve.getCategorySmall()).isEqualTo("일체형 앵글밸브"); // 품명 유도(P15, last-wins)
+        assertThat(valve.getSpecs()).isEqualTo("45mm"); // C-2: 규격성 비고 → specs (세트 시트 유래, OEM null이라 미덮어씀)
+
+        // C-2: 단가표 용도 설명 비고 → 제품 description
+        assertThat(dbSetProduct("수전부속", "U9013C").getDescription()).isEqualTo("손빨래 수전");
 
         // 단종 신규 항목(이 시트 고유 정보) 적재(P16)
         assertThat(dbSetPriceByBasis(dbSetProduct("수전부속", "U9240D"), OEM_BASIS))

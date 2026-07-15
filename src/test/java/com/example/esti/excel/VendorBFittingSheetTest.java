@@ -164,6 +164,50 @@ class VendorBFittingSheetTest {
         assertEquals(0, new BigDecimal("1500").compareTo(one(sets, "43u94p65", PRICE_BASIS).setPrice()));
     }
 
+    // ===== C-2 비고 내용별 분류 (규격=specs / 상태=remark / 속성=description / 매입처=미저장) =====
+
+    @Test
+    void C2_비고분류_규격은specs_상태는remark_속성은description() {
+        List<VendorProductSet> sets = parseFixture();
+
+        // 규격 → specs: 세트 시트 OEM 단품 "45mm", 합성 세트 부속 "15파이"
+        VendorProductSet valve = one(sets, "U942245", SET_BASIS);
+        assertEquals("45mm", valve.main().specs());
+        assertNull(valve.main().remark());
+        assertEquals("15파이", part(one(sets, "U9013", SET_BASIS), "U9013_c").specs());
+
+        // 상태 → remark: U9014M 냉/온 부속 "단종 예정"
+        VendorParsedItem u9014c = part(one(sets, "U9014M", SET_BASIS), "U9014M_c");
+        assertNotNull(u9014c.remark());
+        assertTrue(u9014c.remark().contains("단종"));
+        assertNull(u9014c.specs());
+
+        // 속성 → description: 조합 세트 U9310 "3기능"
+        VendorProductSet u9310 = one(sets, "U9310", SET_BASIS);
+        assertEquals("3기능", u9310.main().description());
+        assertNull(u9310.main().remark());
+
+        // 단가표 비고(용도 설명)는 description: U9013C "손빨래 수전"
+        VendorProductSet u9013c = one(sets, "U9013C", PRICE_BASIS);
+        assertEquals("손빨래 수전", u9013c.main().description());
+        assertNull(u9013c.main().remark());
+    }
+
+    @Test
+    void C2_매입처비고는_저장하지_않는다() {
+        List<VendorProductSet> sets = parseFixture();
+
+        // 세트 시트 욕조왕 블록 비고 "한양"/"E.L" → 미저장 (B 잔여 description은 유지)
+        VendorProductSet wang = one(sets, "43u0520cr", SET_BASIS);
+        assertNull(wang.main().remark());
+        assertNull(wang.main().specs());
+        assertNull(one(sets, "43udscr65", SET_BASIS).main().remark());
+
+        // 분계표 A열 매입처(한양/킴스코) → remark 미저장
+        assertNull(one(sets, "G-0130", "분계표").main().remark());
+        assertNull(one(sets, "T-0130", "분계표").main().remark());
+    }
+
     // ===== 신규 OEM 부속 단가표 (§11-1 P12~P16) =====
 
     @Test
