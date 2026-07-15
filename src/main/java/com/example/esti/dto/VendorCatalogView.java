@@ -18,7 +18,8 @@ public record VendorCatalogView(
         String remark,           // 비고 (VendorItemPrice.remark)
         BigDecimal unitPrice,    // 공급사 세트 단가
         String imageUrl,         // VendorProduct.imageUrl
-        String description       // VendorProduct.description (원본 품번/부가 설명. 예: 수전부속 원본 B열)
+        String description,      // VendorProduct.description (원본 품번/부가 설명. 예: 수전부속 원본 B열)
+        String specs             // VendorProduct.specs (규격. 비고 분류 정책(C-2)의 규격성 비고 + 향후 크롤링 규격)
 ) {
     public static VendorCatalogView from(VendorItemPrice vip) {
         return new VendorCatalogView(
@@ -35,7 +36,8 @@ public record VendorCatalogView(
                 vip.getRemark(),
                 vip.getUnitPrice(),
                 vip.getVendorProduct().getImageUrl(),
-                vip.getVendorProduct().getDescription()
+                vip.getVendorProduct().getDescription(),
+                vip.getVendorProduct().getSpecs()
         );
     }
 }
