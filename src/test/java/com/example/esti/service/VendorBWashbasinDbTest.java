@@ -49,8 +49,8 @@ class VendorBWashbasinDbTest extends AbstractVendorBSheetDbVerification {
     void 도자종류_중복품번_분기되어_양쪽_보존되고_도자명은_description() {
         VendorProduct hwa = dbSetProduct(CAT, "IL672Eh");
         VendorProduct cle = dbSetProduct(CAT, "IL672Ec");
-        assertThat(hwa.getDescription()).isEqualTo("화려");
-        assertThat(cle.getDescription()).isEqualTo("클레이탄");
+        assertThat(hwa.getDescription()).startsWith("화려"); // C-2로 P열 비고가 뒤에 병합될 수 있음
+        assertThat(cle.getDescription()).startsWith("클레이탄");
         assertThat(dbSetPrice(CAT, hwa)).isEqualByComparingTo(new BigDecimal("61000"));
         assertThat(dbSetPrice(CAT, cle)).isEqualByComparingTo(new BigDecimal("61000"));
 

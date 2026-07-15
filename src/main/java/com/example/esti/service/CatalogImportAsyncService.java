@@ -121,7 +121,7 @@ public class CatalogImportAsyncService {
         // 대표품목
         VendorProduct mainProduct = upsertVendorProduct(
                 vendor, mainItem.productCode(), mainItem.productName(),
-                set.categoryLarge(), set.categorySmall(), ITEM_TYPE_SET, mainItem.description());
+                set.categoryLarge(), set.categorySmall(), ITEM_TYPE_SET, mainItem.description(), mainItem.specs());
 
         // 임베디드 이미지 연결 (D15) — 대표품목 행에 앵커된 그림
         applyImage(mainProduct, set, images);
@@ -143,7 +143,7 @@ public class CatalogImportAsyncService {
             String partCategorySmall = part.categorySmall() != null ? part.categorySmall() : set.categorySmall();
             VendorProduct partProduct = upsertVendorProduct(
                     vendor, part.productCode(), part.productName(),
-                    set.categoryLarge(), partCategorySmall, ITEM_TYPE_PART, part.description());
+                    set.categoryLarge(), partCategorySmall, ITEM_TYPE_PART, part.description(), part.specs());
 
             // 공유 부속 단가는 코드당 1건 유지(D13) → priceBasis=null
             upsertPrice(vendor, partProduct, part, part.unitPrice(), part.remark(), ITEM_TYPE_PART, null);
@@ -190,7 +190,7 @@ public class CatalogImportAsyncService {
 
     private VendorProduct upsertVendorProduct(Vendor vendor, String productCode, String productName,
                                               String categoryLarge, String categorySmall, String itemType,
-                                              String description) {
+                                              String description, String specs) {
         VendorProduct product = null;
 
         // 1) 코드(품번)가 있으면 코드로만 식별 — 공급사 범위 내.
@@ -222,6 +222,7 @@ public class CatalogImportAsyncService {
         product.setCategorySmall(categorySmall);
         product.setItemType(itemType);
         if (description != null && !description.isBlank()) product.setDescription(description);
+        if (specs != null && !specs.isBlank()) product.setSpecs(specs);
 
         // A사 masterCode/detailCode 분리 (신품번 '-' 기준)
         if ("A".equals(vendor.getVendorCode()) && productCode != null) {

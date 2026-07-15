@@ -92,4 +92,11 @@ class VendorBFaucetSheetTest {
         assertEquals("G-0113_43sw154hlc", part(kor, "후렉시블호스(냉)").productCode());
         assertEquals("G-0113_43sw154hlh", part(kor, "후렉시블호스(온)").productCode());
     }
+
+    @Test
+    void C2_소계_오른쪽_구성부기는_본품_description() {
+        // 소계행 H "(메탈호스, 일반헤드 포함)" → 본품 description(C-2 결정 12). 부기 없는 블록은 null 유지.
+        assertEquals("(메탈호스, 일반헤드 포함)", byCode(faucetByBasis(KOR), "G-0514").main().description());
+        assertNull(byCode(faucetByBasis(KOR), "G-0110").main().description());
+    }
 }

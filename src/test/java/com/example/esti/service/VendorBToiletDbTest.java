@@ -46,12 +46,12 @@ class VendorBToiletDbTest extends AbstractVendorBSheetDbVerification {
     void 도자종류_중복품번_분기되어_양쪽_보존되고_도자명은_description() {
         VendorProduct o = dbSetProduct(CAT, "IC703Eo");
         VendorProduct g = dbSetProduct(CAT, "IC703Eg");
-        assertThat(o.getDescription()).isEqualTo("성오도자");
-        assertThat(g.getDescription()).isEqualTo("구륙도자");
+        assertThat(o.getDescription()).startsWith("성오도자"); // C-2로 Q열 비고가 뒤에 병합될 수 있음
+        assertThat(g.getDescription()).startsWith("구륙도자");
         assertThat(dbSetProductsOf(CAT)).extracting(VendorProduct::getProductCode)
                 .doesNotContain("IC703E");
 
         // 품번 괄호 설명 분리(req3)
-        assertThat(dbSetProduct(CAT, "IC552EF").getDescription()).isEqualTo("길마위욕");
+        assertThat(dbSetProduct(CAT, "IC552EF").getDescription()).startsWith("길마위욕");
     }
 }

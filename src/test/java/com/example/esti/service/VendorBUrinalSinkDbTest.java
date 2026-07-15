@@ -42,7 +42,7 @@ class VendorBUrinalSinkDbTest extends AbstractVendorBSheetDbVerification {
     @Test
     void 소변기_IU302E_설명텍스트는_부속아니라_description컬럼에_저장() {
         VendorProduct iu302 = dbSetProduct(URINAL, "IU302E");
-        assertThat(iu302.getDescription()).isEqualTo("후렌지/스프레다 포함");
+        assertThat(iu302.getDescription()).startsWith("후렌지/스프레다 포함"); // C-2로 P열 비고가 뒤에 병합될 수 있음
         assertThat(dbPartsOf(iu302)).extracting(VendorProduct::getProductName)
                 .doesNotContain("스퍼드");
     }

@@ -137,10 +137,11 @@ class VendorBWashbasinSheetTest {
         List<VendorProductSet> sets = washbasinSets();
 
         // IL672E(화려) G=4hl672awt / IL672E(클레이탄) G=4cl672awt → IL672Eh / IL672Ec
+        // (C-2로 P열 비고가 " / "로 병합될 수 있어 도자명은 앞부분 일치로 확인)
         VendorProductSet hwa = byCode(sets, "IL672Eh");
         VendorProductSet cle = byCode(sets, "IL672Ec");
-        assertEquals("화려", hwa.main().description());
-        assertEquals("클레이탄", cle.main().description());
+        assertTrue(hwa.main().description().startsWith("화려"), hwa.main().description());
+        assertTrue(cle.main().description().startsWith("클레이탄"), cle.main().description());
         // 도기원홀59000 + 앙카볼트2000 = 61000
         assertEquals(0, new BigDecimal("61000").compareTo(hwa.setPrice()));
         assertEquals(0, new BigDecimal("61000").compareTo(cle.setPrice()));
@@ -148,9 +149,26 @@ class VendorBWashbasinSheetTest {
         // IL674E(모노피) 4ml674awt / IL674E(길마위욕) 4jl674awt → IL674Em / IL674Ej
         VendorProductSet mono = byCode(sets, "IL674Em");
         VendorProductSet gil = byCode(sets, "IL674Ej");
-        assertEquals("모노피", mono.main().description());
-        assertEquals("길마위욕", gil.main().description());
+        assertTrue(mono.main().description().startsWith("모노피"), mono.main().description());
+        assertTrue(gil.main().description().startsWith("길마위욕"), gil.main().description());
         assertEquals(0, new BigDecimal("62000").compareTo(mono.setPrice()));
         assertEquals(0, new BigDecimal("62000").compareTo(gil.setPrice()));
+    }
+
+    @Test
+    void C2_비고는_제품코드행_대리점가행을_병합해_description() {
+        List<VendorProductSet> sets = washbasinSets();
+
+        // IL451B: 제품코드행 P=언더카운터(L)
+        assertEquals("언더카운터(L)", byCode(sets, "IL451B").main().description());
+
+        // IL453: 제품코드행 P=수전 옵션가 + 대리점가행 P=세트 판매 기준 → " / " 병합
+        String d = byCode(sets, "IL453").main().description();
+        assertNotNull(d);
+        assertTrue(d.contains("46ele1010e"), d);
+        assertTrue(d.contains("세트 판매 기준"), d);
+
+        // 비고 없는 제품은 description 오염 없음
+        assertNull(byCode(sets, "IL452E").main().description());
     }
 }
