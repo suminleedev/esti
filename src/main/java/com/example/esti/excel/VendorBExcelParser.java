@@ -802,7 +802,9 @@ public class VendorBExcelParser implements VendorExcelParser {
         for (int r = headerRow + 1; r <= last; r++) {
             String cCell = noSpace(str(c, r, 2)); // C
             if (cCell != null && cCell.contains("소계")) {           // 소계행 → 세트 확정(세트가=G)
-                flushFaucetPartsSet(c, out, series, repCode, repName, nz(dec(c, r, 6)), parts, repRow);
+                // 소계 값 오른쪽(H) 구성 부기 "(메탈호스, 일반헤드 포함)" → 본품 description(C-2 결정 12)
+                flushFaucetPartsSet(c, out, series, repCode, repName, nz(dec(c, r, 6)), parts, repRow,
+                        stripSpace(str(c, r, 7)));
                 repCode = null; parts = null; series = null; repUnit = null; repRow = -1;
                 continue;
             }
@@ -811,7 +813,7 @@ public class VendorBExcelParser implements VendorExcelParser {
             String a = stripSpace(str(c, r, 0));     // A=품목(시리즈) → 대표행 경계
 
             if (a != null) {                                        // 대표행(본품)
-                flushFaucetPartsSet(c, out, series, repCode, repName, repUnit, parts, repRow); // 소계 없이 닫힌 이전 세트 방어
+                flushFaucetPartsSet(c, out, series, repCode, repName, repUnit, parts, repRow, null); // 소계 없이 닫힌 이전 세트 방어
                 series = a;
                 repCode = normalizeCode(str(c, r, 2));              // C=본품 품번
                 repName = orDefault(bName, repCode);
@@ -827,15 +829,17 @@ public class VendorBExcelParser implements VendorExcelParser {
                         label, null, null, VendorParsedItem.RELATION_ACCESSORY, price, null, null, partOrigin));
             }
         }
-        flushFaucetPartsSet(c, out, series, repCode, repName, repUnit, parts, repRow);
+        flushFaucetPartsSet(c, out, series, repCode, repName, repUnit, parts, repRow, null);
     }
 
     private void flushFaucetPartsSet(Ctx c, List<VendorProductSet> out, String series, String repCode,
-                                     String repName, BigDecimal setPrice, List<VendorParsedItem> parts, int repRow) {
+                                     String repName, BigDecimal setPrice, List<VendorParsedItem> parts, int repRow,
+                                     String subtotalNote) {
         if (repCode == null) return;
         BigDecimal price = setPrice != null ? setPrice : BigDecimal.ZERO;
+        // 소계 오른쪽 구성 부기는 본품 description(C-2 결정 12). OEM J=비고(매입처)는 계속 미저장.
         VendorParsedItem main = new VendorParsedItem(repCode, repName, null, null,
-                VendorParsedItem.RELATION_MAIN, price, null);
+                VendorParsedItem.RELATION_MAIN, price, null, subtotalNote);
         // 대분류="수전금구"(통합), 소분류=시리즈(본품 안정), priceBasis=시트명(가격 분리), 이미지=시트명 실은 키
         out.add(new VendorProductSet("B", "수전금구", series, main,
                 parts != null ? parts : new ArrayList<>(), price, false,
