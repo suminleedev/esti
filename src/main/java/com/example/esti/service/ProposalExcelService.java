@@ -55,7 +55,7 @@ public class ProposalExcelService {
             String[] headers = {
                     "No", "공간", "카테고리", "제품명", "업체코드", "업체명", "업체품명",
                     "메인품목코드", "구품목코드", "카탈로그단가", "마진율", "최종단가",
-                    "수량", "금액", "비고", "메모", "이미지URL"
+                    "수량", "금액", "비고", "이미지URL"
             };
 
             for (int i = 0; i < headers.length; i++) {
@@ -92,9 +92,9 @@ public class ProposalExcelService {
                         : calculateAmount(line.getUnitPrice(), line.getQty());
 
                 createCell(row, 13, amount.doubleValue(), numberStyle);
-                createCell(row, 14, nvl(line.getRemark()), textStyle);
-                createCell(row, 15, nvl(line.getNote()), textStyle);
-                createCell(row, 16, nvl(line.getImageUrl()), textStyle);
+                // 내부 비고(카탈로그 remark: 단종/검수필요 등)는 출력하지 않는다 — 고객용 비고는 사용자 입력 note만.
+                createCell(row, 14, nvl(line.getNote()), textStyle);
+                createCell(row, 15, nvl(line.getImageUrl()), textStyle);
 
                 totalAmount = totalAmount.add(amount);
             }
@@ -108,7 +108,7 @@ public class ProposalExcelService {
             int[] widths = {
                     3000, 5000, 5000, 8000, 5000, 6000, 7000,
                     5000, 5000, 4500, 4000, 4500,
-                    3000, 5000, 7000, 7000, 10000
+                    3000, 5000, 7000, 10000
             };
 
             for (int i = 0; i < widths.length; i++) {
