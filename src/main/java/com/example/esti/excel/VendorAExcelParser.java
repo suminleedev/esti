@@ -12,6 +12,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.example.esti.excel.ExcelParseUtils.isBlank;
+
 /**
  * A사(아메리칸스탠다드) 단가표 파서 — 단일 시트.
  *
@@ -287,7 +289,4 @@ public class VendorAExcelParser implements VendorExcelParser {
         return null;
     }
 
-    private boolean isBlank(String s) {
-        return s == null || s.trim().isEmpty();
-    }
 }
