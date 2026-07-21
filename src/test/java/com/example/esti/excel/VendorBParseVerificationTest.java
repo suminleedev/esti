@@ -36,7 +36,7 @@ class VendorBParseVerificationTest {
         List<String> violations = new ArrayList<>();
         int checked = 0;
         for (VendorProductSet s : sets) {
-            if (!EXACT_SUM_SHEETS.contains(s.categoryLarge())) continue;
+            if (!EXACT_SUM_SHEETS.contains(s.sheetName())) continue; // 시트명 기준(갈라시아 대분류=세면기(갈라시아)로 정제됨)
             if (s.selectable() || s.parts().isEmpty() || s.setPrice() == null) continue;
             checked++;
             BigDecimal sum = s.parts().stream().map(VendorParsedItem::unitPrice)
@@ -85,16 +85,9 @@ class VendorBParseVerificationTest {
         for (VendorProductSet s : sets) {
             if (s.imageKey() == null || IMAGE_SPARSE_SHEETS.contains(s.categoryLarge())) continue;
             total++;
-            // 대분류를 시트명에서 분리한 시트(비데,기타 등)는 imageKey에 시트명을 실어두므로 그걸로 조회
-            String sheetKey = s.categoryLarge();
-            String rowPart = s.imageKey();
-            int sep = s.imageKey().indexOf(VendorProductSet.IMAGE_KEY_SHEET_SEP);
-            if (sep >= 0) {
-                sheetKey = s.imageKey().substring(0, sep);
-                rowPart = s.imageKey().substring(sep + VendorProductSet.IMAGE_KEY_SHEET_SEP.length());
-            }
-            Map<Integer, ExcelImageExtractor.ExtractedImage> byRow = images.get(sheetKey);
-            if (byRow != null && byRow.get(Integer.parseInt(rowPart)) != null) matched++;
+            // 이미지 매칭 키는 원본 시트명(§13 sheetName 분리) — categoryLarge를 정제한 시트(비데/기타·갈라시아)도 무관하게 조회
+            Map<Integer, ExcelImageExtractor.ExtractedImage> byRow = images.get(s.sheetName());
+            if (byRow != null && byRow.get(Integer.parseInt(s.imageKey())) != null) matched++;
         }
         assertTrue(total > 0);
         double coverage = (double) matched / total;
