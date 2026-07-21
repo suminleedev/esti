@@ -3,12 +3,11 @@ package com.example.esti.excel;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static com.example.esti.support.TestSamples.requireSample;
 
 /**
  * 수전금구 3-시트 전용 검증(parseFaucetGeneralSheet / parseFaucetPartsSheet).
@@ -25,7 +24,7 @@ class VendorBFaucetSheetTest {
     private final VendorBExcelParser parser = new VendorBExcelParser();
 
     private List<VendorProductSet> faucetByBasis(String priceBasis) {
-        assumeTrue(Files.exists(SAMPLE), "샘플 엑셀이 없어 스킵: " + SAMPLE);
+        requireSample(SAMPLE);
         return parser.parseSets(SAMPLE).stream()
                 .filter(s -> "수전금구".equals(s.categoryLarge()) && priceBasis.equals(s.priceBasis()))
                 .toList();

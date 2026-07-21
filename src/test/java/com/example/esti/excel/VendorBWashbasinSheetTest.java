@@ -3,7 +3,6 @@ package com.example.esti.excel;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -11,7 +10,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static com.example.esti.support.TestSamples.requireSample;
 
 /**
  * 세면기 시트 전용 검증(parseWashbasinSheet).
@@ -32,7 +31,7 @@ class VendorBWashbasinSheetTest {
     private final VendorBExcelParser parser = new VendorBExcelParser();
 
     private List<VendorProductSet> washbasinSets() {
-        assumeTrue(Files.exists(SAMPLE), "샘플 엑셀이 없어 스킵: " + SAMPLE);
+        requireSample(SAMPLE);
         return parser.parseSets(SAMPLE).stream()
                 .filter(s -> "세면기".equals(s.categoryLarge()))
                 .toList();

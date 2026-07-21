@@ -3,13 +3,12 @@ package com.example.esti.excel;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static com.example.esti.support.TestSamples.requireSample;
 
 /**
  * P1 검증: A사 파서가 합계행 기준으로 대표품목+부속을 정확히 묶는지.
@@ -22,7 +21,7 @@ class VendorAExcelParserTest {
     private final VendorAExcelParser parser = new VendorAExcelParser();
 
     private List<VendorProductSet> parseSample() {
-        assumeTrue(Files.exists(SAMPLE), "샘플 엑셀이 없어 스킵: " + SAMPLE);
+        requireSample(SAMPLE);
         return parser.parseSets(SAMPLE);
     }
 

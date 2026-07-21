@@ -2,12 +2,11 @@ package com.example.esti.excel;
 
 import org.junit.jupiter.api.Test;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static com.example.esti.support.TestSamples.requireSample;
 
 /**
  * P5 검증: 엑셀 임베디드 이미지(DrawingML)를 시트별 앵커 행 기준으로 추출하는지(D15).
@@ -21,7 +20,7 @@ class ExcelImageExtractorTest {
 
     @Test
     void 시트별로_이미지를_앵커행_기준으로_추출한다() {
-        assumeTrue(Files.exists(SAMPLE), "샘플 엑셀이 없어 스킵: " + SAMPLE);
+        requireSample(SAMPLE);
 
         Map<String, Map<Integer, ExcelImageExtractor.ExtractedImage>> images = extractor.extract(SAMPLE);
 
