@@ -5,11 +5,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.context.TestPropertySource;
 
 import java.math.BigDecimal;
-import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static com.example.esti.support.TestSamples.requireSample;
 
 /**
  * 수전부속 3-시트 <b>DB 적재</b> 검증(§11). 파싱은 {@code VendorBFittingSheetTest}.
@@ -34,8 +33,8 @@ class VendorBFittingDbTest extends AbstractVendorBSheetDbVerification {
 
     /** 합본 샘플(부모 ensureLoaded) 위에 수전부속·OEM 픽스처를 1회 추가 적재(각 시트 전용 품번으로 감지). */
     private void ensureFittingLoaded() {
-        assumeTrue(Files.exists(FIXTURE), "픽스처 엑셀이 없어 스킵: " + FIXTURE);
-        assumeTrue(Files.exists(OEM_FIXTURE), "픽스처 엑셀이 없어 스킵: " + OEM_FIXTURE);
+        requireSample(FIXTURE);
+        requireSample(OEM_FIXTURE);
         if (productRepository.findAll().stream().noneMatch(p -> "G-0721".equals(p.getProductCode()))) {
             service.importVendorCatalog("B", FIXTURE);
         }

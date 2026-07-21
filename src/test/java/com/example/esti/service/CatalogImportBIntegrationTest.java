@@ -12,11 +12,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.TestPropertySource;
 
 import java.math.BigDecimal;
-import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static com.example.esti.support.TestSamples.requireSample;
 
 /**
  * P4 검증: B사 샘플을 실제 DB(인메모리 Derby)에 적재 → 대표품목/부속/관계/가격이 들어가고,
@@ -43,7 +42,7 @@ class CatalogImportBIntegrationTest {
 
     @Test
     void B사_적재_후_관계_가격_저장되고_재업로드는_멱등() {
-        assumeTrue(Files.exists(SAMPLE), "샘플 엑셀이 없어 스킵: " + SAMPLE);
+        requireSample(SAMPLE);
 
         // 1) 최초 적재
         int sets1 = service.importVendorCatalog("B", SAMPLE);

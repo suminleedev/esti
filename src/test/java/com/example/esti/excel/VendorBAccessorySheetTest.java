@@ -3,12 +3,11 @@ package com.example.esti.excel;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static com.example.esti.support.TestSamples.requireSample;
 
 /**
  * 악세사리 단가표 전용 검증(§12 A1~A7): parseHeaderTotalSetSheet 고도화.
@@ -26,7 +25,7 @@ class VendorBAccessorySheetTest {
     private final VendorBExcelParser parser = new VendorBExcelParser();
 
     private List<VendorProductSet> parseFixture() {
-        assumeTrue(Files.exists(FIXTURE), "픽스처 엑셀이 없어 스킵: " + FIXTURE);
+        requireSample(FIXTURE);
         return parser.parseSets(FIXTURE);
     }
 

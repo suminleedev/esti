@@ -3,12 +3,11 @@ package com.example.esti.excel;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static com.example.esti.support.TestSamples.requireSample;
 
 /**
  * 수전부속 3-시트 전용 검증(§11): parseBreakdownSheet / parseFittingSetSheet / parseFittingPriceSheet.
@@ -29,12 +28,12 @@ class VendorBFittingSheetTest {
     private final VendorBExcelParser parser = new VendorBExcelParser();
 
     private List<VendorProductSet> parseFixture() {
-        assumeTrue(Files.exists(FIXTURE), "픽스처 엑셀이 없어 스킵: " + FIXTURE);
+        requireSample(FIXTURE);
         return parser.parseSets(FIXTURE);
     }
 
     private List<VendorProductSet> parseOemFixture() {
-        assumeTrue(Files.exists(OEM_FIXTURE), "픽스처 엑셀이 없어 스킵: " + OEM_FIXTURE);
+        requireSample(OEM_FIXTURE);
         return parser.parseSets(OEM_FIXTURE);
     }
 

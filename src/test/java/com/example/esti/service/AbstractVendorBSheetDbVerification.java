@@ -15,7 +15,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.TestPropertySource;
 
 import java.math.BigDecimal;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -23,7 +22,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static com.example.esti.support.TestSamples.requireSample;
 
 /**
  * B사 시트별 <b>DB 레벨</b> 검증 기반 클래스.
@@ -73,7 +72,7 @@ abstract class AbstractVendorBSheetDbVerification {
      */
     @BeforeEach
     void ensureLoaded() {
-        assumeTrue(Files.exists(SAMPLE), "샘플 엑셀이 없어 스킵: " + SAMPLE);
+        requireSample(SAMPLE);
         if (productRepository.count() == 0) {
             service.importVendorCatalog("B", SAMPLE);
         }

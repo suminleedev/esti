@@ -3,7 +3,6 @@ package com.example.esti.excel;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -11,7 +10,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static com.example.esti.support.TestSamples.requireSample;
 
 /**
  * P6 통합 검증(파서/추출기 레벨 불변식): 합계 무결성 + 이미지 매칭 커버리지.
@@ -30,7 +29,7 @@ class VendorBParseVerificationTest {
 
     @Test
     void 슬롯_갈라시아_세트는_세트가가_부속단가합과_정확히_일치() {
-        assumeTrue(Files.exists(SAMPLE), "샘플 엑셀이 없어 스킵: " + SAMPLE);
+        requireSample(SAMPLE);
         List<VendorProductSet> sets = parser.parseSets(SAMPLE);
 
         List<String> violations = new ArrayList<>();
@@ -52,7 +51,7 @@ class VendorBParseVerificationTest {
 
     @Test
     void 세면기는_기본구성으로_세트가_산정되고_대체옵션은_세트가_제외() {
-        assumeTrue(Files.exists(SAMPLE), "샘플 엑셀이 없어 스킵: " + SAMPLE);
+        requireSample(SAMPLE);
         List<VendorProductSet> sets = parser.parseSets(SAMPLE);
 
         List<VendorProductSet> sink = sets.stream().filter(s -> "세면기".equals(s.categoryLarge())).toList();
@@ -76,7 +75,7 @@ class VendorBParseVerificationTest {
 
     @Test
     void 임베디드_이미지_정확매칭_커버리지가_85퍼센트_이상() {
-        assumeTrue(Files.exists(SAMPLE), "샘플 엑셀이 없어 스킵: " + SAMPLE);
+        requireSample(SAMPLE);
         List<VendorProductSet> sets = parser.parseSets(SAMPLE);
         Map<String, Map<Integer, ExcelImageExtractor.ExtractedImage>> images = extractor.extract(SAMPLE);
 
