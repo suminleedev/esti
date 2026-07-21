@@ -15,8 +15,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import static com.example.esti.excel.ExcelParseUtils.*;
 
 /**
  * B사(이누스) 단가표 파서 — 멀티 시트. 시트명으로 4개 양식 패밀리를 판별해 전용 파서로 분기한다(P3).
@@ -41,7 +44,6 @@ public class VendorBExcelParser implements VendorExcelParser {
 
     private static final Logger logger = LoggerFactory.getLogger(VendorBExcelParser.class);
 
-    private static final int CODE_MAX_LEN = 50;
     private static final int SLOT_FIRST_COL = 6; // G열부터 슬롯 후보
 
     @Override
@@ -72,7 +74,6 @@ public class VendorBExcelParser implements VendorExcelParser {
                     case FITTING_SET    -> parseFittingSetSheet(ctx, result);
                     case FITTING_PRICE  -> parseFittingPriceSheet(ctx, result);
                     case FITTING_OEM    -> parseOemFittingSheet(ctx, result);
-                    case SLOT       -> parseSlotSheet(ctx, result);
                     case GALAXIA    -> parseGalaxiaSheet(ctx, result);
                     case SET_TOTAL  -> parseHeaderTotalSetSheet(ctx, result);
                     case SET_SUBTOTAL -> parseSubtotalSetSheet(ctx, result);
@@ -90,7 +91,7 @@ public class VendorBExcelParser implements VendorExcelParser {
     // ============================================================
 
     private enum Family { TOILET, WASHBASIN, URINAL_SINK, BIDET_ETC, FAUCET_GENERAL, FAUCET_PARTS,
-        BREAKDOWN, FITTING_SET, FITTING_PRICE, FITTING_OEM, SLOT, GALAXIA, SET_TOTAL, SET_SUBTOTAL, SINGLE }
+        BREAKDOWN, FITTING_SET, FITTING_PRICE, FITTING_OEM, GALAXIA, SET_TOTAL, SET_SUBTOTAL, SINGLE }
 
     private Family family(String sheetName) {
         String n = sheetName.replaceAll("\\s", "");
@@ -130,7 +131,7 @@ public class VendorBExcelParser implements VendorExcelParser {
         }
 
         Map<Integer, String> slots = new LinkedHashMap<>();
-        SlotHeaderCols hc = readSlotHeader(c, firstHeader, slots);
+        SlotHeaderCols hc = readSlotHeader(c, firstHeader, slots, this::isSkipBasicSlotLabel);
         String lastKind = null;    // 품종(B) 병합셀 → 직전 품종 유지(req1)
         String prevRepCode = null; // 직전 제품의 base 품번 — 도기수로/사출수로 충돌 판별용
 
@@ -139,16 +140,12 @@ public class VendorBExcelParser implements VendorExcelParser {
         Map<Integer, String> dojaOverrides = computeDojaCodeOverrides(c, firstHeader, last);
         for (int r = firstHeader + 1; r <= last; r++) {
             if (isSlotHeader(c, r)) {                 // 새 서브테이블 헤더 → 슬롯 라벨 갱신(req2)
-                hc = readSlotHeader(c, r, slots);
+                hc = readSlotHeader(c, r, slots, this::isSkipBasicSlotLabel);
                 continue;
             }
             if (!"제품코드".equals(str(c, r, 5))) continue; // 제품코드행만 세트 시작
 
-            int priceRow = -1;
-            for (int k = r + 1; k <= Math.min(r + 3, last); k++) {
-                if ("대리점가".equals(str(c, k, 5))) { priceRow = k; break; }
-                if ("제품코드".equals(str(c, k, 5))) break;
-            }
+            int priceRow = findPriceRow(c, r, last);
 
             String[] rep = splitParen(str(c, r, 2)); // C=품번(대표) — 괄호 설명은 description으로 분리(req3)
             String baseCode = rep[0];
@@ -223,11 +220,11 @@ public class VendorBExcelParser implements VendorExcelParser {
     }
 
     /**
-     * 양변기 헤더행에서 슬롯(col→라벨)을 채우고 計·비고 컬럼 인덱스를 반환(없으면 -1). 슬롯 라벨은 내부공백 제거 정규화.
-     * 투피스 구간은 G슬롯 라벨이 "하부"(도기 하부)라 일반 슬롯과 달리 스킵하면 안 된다
-     * (공용 {@code isSkipSlotLabel}은 수량 서브헤더용 "하부/상부"를 스킵하므로 여기선 쓰지 않는다).
+     * 슬롯 2행형 헤더행에서 슬롯(col→라벨)을 채우고 計·비고 컬럼 인덱스를 반환(없으면 -1). 슬롯 라벨은 내부공백 제거 정규화.
+     * 살아있는 3개 슬롯 파서(양변기/세면기/소변기·수채) 공용 — 슬롯 스킵 규칙만 {@code skip}으로 주입한다
+     * (양변기/세면기는 하부/상부를 실제 도기 슬롯으로 유지, 소변기·수채는 스킵). 計 없는 시트(세면기)는 totalCol=-1.
      */
-    private SlotHeaderCols readSlotHeader(Ctx c, int headerRow, Map<Integer, String> slots) {
+    private SlotHeaderCols readSlotHeader(Ctx c, int headerRow, Map<Integer, String> slots, Predicate<String> skip) {
         slots.clear();
         int totalCol = -1, noteCol = -1;
         short lastCell = c.sheet.getRow(headerRow).getLastCellNum();
@@ -236,7 +233,7 @@ public class VendorBExcelParser implements VendorExcelParser {
             if (label == null) continue;
             if (isTotalLabel(label)) { totalCol = col; continue; }
             if (label.replace(" ", "").contains("비고")) { noteCol = col; continue; } // C-2: 비고 → description 수집
-            if (isSkipToiletSlotLabel(label)) continue;
+            if (skip.test(label)) continue;
             slots.put(col, label);
         }
         return new SlotHeaderCols(totalCol, noteCol);
@@ -244,29 +241,12 @@ public class VendorBExcelParser implements VendorExcelParser {
 
     private record SlotHeaderCols(int totalCol, int noteCol) {}
 
-    /** 양변기 슬롯 스킵: 수량/비고/PLT만 제외(하부/상부는 실제 도기 슬롯이라 유지). */
-    private boolean isSkipToiletSlotLabel(String label) {
+    /** 슬롯 스킵(양변기·세면기): 수량/비고/PLT만 제외(하부/상부는 실제 도기 슬롯이라 유지). */
+    private boolean isSkipBasicSlotLabel(String label) {
         String s = label.replace(" ", "");
         return s.contains("수량") || s.contains("비고") || s.contains("PLT");
     }
 
-    /**
-     * "코드(설명)" 분리. 반환[0]=정규화 코드, [1]=괄호 안 설명.
-     * 순수 "(설명)"이면 [null, 설명], 괄호 없으면 [코드, null], 빈 셀이면 [null, null].
-     */
-    private String[] splitParen(String raw) {
-        String x = stripSpace(raw);
-        if (x == null) return new String[]{null, null};
-        int p = x.indexOf('(');
-        if (p < 0) return new String[]{normalizeCode(x), null};
-        String codePart = x.substring(0, p).trim();
-        int q = x.indexOf(')', p + 1);
-        String desc = (q > p ? x.substring(p + 1, q) : x.substring(p + 1)).trim();
-        return new String[]{
-                codePart.isEmpty() ? null : normalizeCode(codePart),
-                desc.isEmpty() ? null : desc
-        };
-    }
 
     /**
      * "탱크(사출수로)" 슬롯의 표시명 결정: 품번에 "(사출수로)" 표시가 있는 사출수로 품목이면 "사출수로",
@@ -297,11 +277,7 @@ public class VendorBExcelParser implements VendorExcelParser {
             String base = splitParen(str(c, r, 2))[0];
             if (base == null) continue;
 
-            int priceRow = -1;
-            for (int k = r + 1; k <= Math.min(r + 3, last); k++) {
-                if ("대리점가".equals(str(c, k, 5))) { priceRow = k; break; }
-                if ("제품코드".equals(str(c, k, 5))) break;
-            }
+            int priceRow = findPriceRow(c, r, last);
             boolean suro = false;
             if (priceRow >= 0) {
                 String[] v = splitParen(str(c, priceRow, 2));
@@ -354,17 +330,9 @@ public class VendorBExcelParser implements VendorExcelParser {
             return;
         }
 
+        // 세면기엔 計 없음 → totalCol 미사용(세트가는 기본구성 합산). 비고(P) → description 수집(C-2 결정 10)
         Map<Integer, String> slots = new LinkedHashMap<>();
-        int noteCol = -1; // 비고(P) → description 수집(C-2 결정 10)
-        short lastCell = c.sheet.getRow(headerRow).getLastCellNum();
-        for (int col = SLOT_FIRST_COL; col < lastCell; col++) {
-            String label = normLabel(str(c, headerRow, col));
-            if (label == null) continue;
-            if (isTotalLabel(label)) continue;            // 세면기엔 計 없음
-            if (label.replace(" ", "").contains("비고")) { noteCol = col; continue; }
-            if (isSkipWashbasinSlotLabel(label)) continue; // 수량/PLT 스킵
-            slots.put(col, label);
-        }
+        int noteCol = readSlotHeader(c, headerRow, slots, this::isSkipBasicSlotLabel).noteCol();
 
         int last = c.sheet.getLastRowNum();
         Map<Integer, String> dojaOverrides = computeDojaCodeOverrides(c, headerRow, last);
@@ -373,11 +341,7 @@ public class VendorBExcelParser implements VendorExcelParser {
             if (isSlotHeader(c, r)) continue;
             if (!"제품코드".equals(str(c, r, 5))) continue; // 제품코드행만 세트 시작
 
-            int priceRow = -1;
-            for (int k = r + 1; k <= Math.min(r + 3, last); k++) {
-                if ("대리점가".equals(str(c, k, 5))) { priceRow = k; break; }
-                if ("제품코드".equals(str(c, k, 5))) break;
-            }
+            int priceRow = findPriceRow(c, r, last);
 
             String[] rep = splitParen(str(c, r, 2)); // C=품번(대표) — 괄호 도자명은 description으로 분리(req3)
             String repCode = rep[0];
@@ -444,12 +408,6 @@ public class VendorBExcelParser implements VendorExcelParser {
         }
     }
 
-    /** 세면기 슬롯 스킵: 수량/비고/PLT만 제외(도기/다리/하프고리/앙카볼트는 실제 슬롯이라 유지). */
-    private boolean isSkipWashbasinSlotLabel(String label) {
-        String s = label.replace(" ", "");
-        return s.contains("수량") || s.contains("비고") || s.contains("PLT");
-    }
-
     /** 세면기 슬롯 후보 중 keyword(도기/다리)에 해당하는 것에서 prefer(원홀/반다리) 우선, 없으면 첫 항목. */
     private WbSlot pickWbDefault(List<WbSlot> present, String keyword, String prefer) {
         WbSlot first = null;
@@ -491,7 +449,7 @@ public class VendorBExcelParser implements VendorExcelParser {
         int last = c.sheet.getLastRowNum();
         for (int r = 0; r <= last; r++) {
             if (isSlotHeader(c, r)) {                       // 새 서브테이블 시작 → 슬롯/計/대분류 갱신
-                hc = readUrinalSlotHeader(c, r, slots);
+                hc = readSlotHeader(c, r, slots, this::isSkipSlotLabel);
                 catIdx++;
                 currentCat = catIdx < categories.size() ? categories.get(catIdx) : c.sheetName;
                 carryKind = null;
@@ -500,11 +458,7 @@ public class VendorBExcelParser implements VendorExcelParser {
             if (!"제품코드".equals(str(c, r, 5))) continue; // 제품코드행만 세트 시작
             if (slots.isEmpty()) continue;                 // 헤더 전 잡행 방어
 
-            int priceRow = -1;
-            for (int k = r + 1; k <= Math.min(r + 3, last); k++) {
-                if ("대리점가".equals(str(c, k, 5))) { priceRow = k; break; }
-                if ("제품코드".equals(str(c, k, 5))) break; // 다음 제품행 만나면 중단
-            }
+            int priceRow = findPriceRow(c, r, last);
 
             String repCode = normalizeCode(str(c, r, 2)); // C=품번(대표)
             if (repCode == null) continue;
@@ -540,23 +494,8 @@ public class VendorBExcelParser implements VendorExcelParser {
         }
     }
 
-    /** 소변기·수채 헤더행에서 슬롯(col→라벨)을 채우고 計·비고 컬럼 인덱스를 반환. 수량/PLT는 스킵. */
-    private SlotHeaderCols readUrinalSlotHeader(Ctx c, int headerRow, Map<Integer, String> slots) {
-        slots.clear();
-        int totalCol = -1, noteCol = -1;
-        short lastCell = c.sheet.getRow(headerRow).getLastCellNum();
-        for (int col = SLOT_FIRST_COL; col < lastCell; col++) {
-            String label = normLabel(str(c, headerRow, col));
-            if (label == null) continue;
-            if (isTotalLabel(label)) { totalCol = col; continue; }
-            if (label.replace(" ", "").contains("비고")) { noteCol = col; continue; } // C-2: 비고 → description 수집
-            if (isSkipSlotLabel(label)) continue;
-            slots.put(col, label);
-        }
-        return new SlotHeaderCols(totalCol, noteCol);
-    }
 
-    /** {@code buildSlotTotalSet}와 동일하나 categoryLarge를 서브테이블별 대분류로 받고, 비코드 슬롯 설명을 description에 보존. */
+    /** 소변기·수채 세트 1건 적재: categoryLarge를 서브테이블별 대분류로 받고, 비코드 슬롯 설명을 description에 보존. */
     private void buildUrinalSinkSet(Ctx c, int r, int priceRow, int totalCol, String categoryLarge,
                                     String repCode, String kind, String ksCode,
                                     List<Slot> present, String description, List<VendorProductSet> out) {
@@ -663,14 +602,16 @@ public class VendorBExcelParser implements VendorExcelParser {
                 VendorParsedItem main = new VendorParsedItem(code, name, null, null,
                         VendorParsedItem.RELATION_MAIN, nz(price), null, remark); // 비고→description(req4)
                 out.add(new VendorProductSet("B", currentCat, carryKind, main,
-                        new ArrayList<>(), nz(price), false, imageKeyOf(c.sheetName, r), false)); // 대분류≠시트명 → 시트명 키
+                        new ArrayList<>(), nz(price), false, imageKeyOf(r), false,
+                        currentCat, c.sheetName)); // 대분류·priceBasis=소분류(비데/기타), 이미지는 sheetName("비데, 기타")로 매칭
             } else {
                 String name = join("비데", baseCode);                   // 제품명 앞에 '비데' 부기
                 if (price == null) name = name + " (가격없음)";
                 VendorParsedItem main = new VendorParsedItem(baseCode, name, null, null,
                         VendorParsedItem.RELATION_MAIN, nz(price), null, remark);   // 비데 비고→description
                 out.add(new VendorProductSet("B", currentCat, currentCat, main,     // 소분류=비데(req2)
-                        new ArrayList<>(), nz(price), false, imageKeyOf(c.sheetName, r), false)); // 대분류≠시트명 → 시트명 키
+                        new ArrayList<>(), nz(price), false, imageKeyOf(r), false,
+                        currentCat, c.sheetName)); // 대분류·priceBasis=소분류(비데), 이미지는 sheetName("비데, 기타")로 매칭
             }
         }
     }
@@ -870,16 +811,7 @@ public class VendorBExcelParser implements VendorExcelParser {
         // 대분류="수전금구"(통합), 소분류=시리즈(본품 안정), priceBasis=시트명(가격 분리), 이미지=시트명 실은 키
         out.add(new VendorProductSet("B", "수전금구", series, main,
                 parts != null ? parts : new ArrayList<>(), price, false,
-                imageKeyOf(c.sheetName, repRow), false, c.sheetName));
-    }
-
-    /** 수전금구 부속 냉/온 구분: 라벨에 냉/온이 있으면 코드에 c/h 접미(같은 제품코드 냉·온수 공유 시 충돌 방지). */
-    private String faucetDetail(String code, String label) {
-        if (code == null || label == null) return code;
-        String n = label.replaceAll("\\s", "");
-        if (n.contains("냉") && !code.endsWith("c")) return code + "c";
-        if (n.contains("온") && !code.endsWith("h")) return code + "h";
-        return code;
+                imageKeyOf(repRow), false, c.sheetName));
     }
 
     // ============================================================
@@ -965,143 +897,23 @@ public class VendorBExcelParser implements VendorExcelParser {
         String series = code.substring(0, code.indexOf('-') + 3);
         out.add(new VendorProductSet("B", "수전금구", series, main,
                 parts != null ? parts : new ArrayList<>(), nz(setPrice), false,
-                imageKeyOf(c.sheetName, repRow), needsReview, c.sheetName));
+                imageKeyOf(repRow), needsReview, c.sheetName));
     }
 
     // ============================================================
-    // (A) 슬롯 2행형 — 소변기,수채
+    // 슬롯 공용 헬퍼 — 살아있는 3개 슬롯 파서(양변기/세면기/소변기·수채)가 공유.
     // ============================================================
-
-    private void parseSlotSheet(Ctx c, List<VendorProductSet> out) {
-        int headerRow = findRow(c, r -> "구분".equals(str(c, r, 0))
-                && "품종".equals(str(c, r, 1)) && "품번".equals(str(c, r, 2)));
-        if (headerRow < 0) {
-            logger.warn("[B][{}] 슬롯 헤더(구분/품종/품번) 미발견 → 스킵", c.sheetName);
-            return;
-        }
-
-        // 헤더에서 슬롯/計 컬럼 동적 인식 (슬롯 라벨은 내부공백 제거하여 정규화)
-        Map<Integer, String> slots = new LinkedHashMap<>();
-        int totalCol = -1;
-        short lastCell = c.sheet.getRow(headerRow).getLastCellNum();
-        for (int col = SLOT_FIRST_COL; col < lastCell; col++) {
-            String label = normLabel(str(c, headerRow, col));
-            if (label == null) continue;
-            if (isTotalLabel(label)) { totalCol = col; continue; }
-            if (isSkipSlotLabel(label)) continue;
-            slots.put(col, label);
-        }
-        boolean selectable = (totalCol < 0); // 計 없음 → 세면기(선택형 슬롯, 기본구성으로 세트가 산정)
-
-        int last = c.sheet.getLastRowNum();
-        for (int r = headerRow + 1; r <= last; r++) {
-            if (!"제품코드".equals(str(c, r, 5))) continue; // 제품코드행만 세트 시작
-
-            int priceRow = -1;
-            for (int k = r + 1; k <= Math.min(r + 3, last); k++) {
-                if ("대리점가".equals(str(c, k, 5))) { priceRow = k; break; }
-                if ("제품코드".equals(str(c, k, 5))) break; // 다음 제품행 만나면 중단
-            }
-
-            String repCode = normalizeCode(str(c, r, 2)); // C=품번(대표)
-            if (repCode == null) continue;
-            String kind = stripSpace(str(c, r, 1));        // B=품종
-            String ksCode = normalizeCode(str(c, r, 4));   // E=KS품번
-
-            // 현재 행에 실제로 코드가 있는 슬롯만 수집
-            List<Slot> present = new ArrayList<>();
-            for (Map.Entry<Integer, String> slot : slots.entrySet()) {
-                int col = slot.getKey();
-                String slotLabel = slot.getValue();
-                String code = normalizeCode(str(c, r, col));
-                if (code == null) continue;
-                BigDecimal price = priceRow < 0 ? BigDecimal.ZERO : nz(dec(c, priceRow, col));
-                present.add(new Slot(slotLabel, code, price));
-            }
-
-            if (selectable) {
-                buildSelectableSet(c, r, repCode, kind, ksCode, present, out);
-            } else {
-                buildSlotTotalSet(c, r, priceRow, totalCol, repCode, kind, ksCode, present, out);
-            }
-        }
-    }
-
-    /** 양변기/소변기: 計(합계) 컬럼으로 세트가 확정. 부속 품번 = 대표품번_부속코드. */
-    private void buildSlotTotalSet(Ctx c, int r, int priceRow, int totalCol,
-                                   String repCode, String kind, String ksCode,
-                                   List<Slot> present, List<VendorProductSet> out) {
-        List<VendorParsedItem> parts = new ArrayList<>();
-        BigDecimal partSum = BigDecimal.ZERO;
-        for (Slot s : present) {
-            partSum = partSum.add(s.price());
-            String relation = s.label().startsWith("도기") ? VendorParsedItem.RELATION_MAIN : s.label();
-            parts.add(part(repCode, s, relation, null));
-        }
-
-        BigDecimal setPrice = (priceRow >= 0 && totalCol >= 0) ? dec(c, priceRow, totalCol) : null;
-        if (setPrice != null && partSum.compareTo(setPrice) != 0) {
-            logger.warn("[B][{}] 計≠부속합 (rep={}, 計={}, 합={})", c.sheetName, repCode, setPrice, partSum);
-        }
-
-        String repName = join(kind, repCode);
-        if (setPrice == null) repName = repName + " (가격없음)"; // D8
-        VendorParsedItem main = new VendorParsedItem(repCode, repName, null, ksCode,
-                VendorParsedItem.RELATION_MAIN, setPrice != null ? setPrice : BigDecimal.ZERO, null);
-        out.add(new VendorProductSet("B", c.sheetName, kind, main, parts,
-                setPrice, false, imageKeyOf(r), false));
-    }
 
     /**
-     * 세면기: 計 컬럼이 없는 선택형 슬롯이지만, "기본 구성"을 정해 세트가를 산정한다.
-     * - 도기: 원홀 우선(없으면 존재하는 도기) / 다리: 반다리 우선(없으면 존재하는 다리) → 기본형만 세트가 포함
-     * - 그 외 슬롯(하프고리/앙카볼트 등): 필수 부속 → 세트가 포함
-     * - 비기본 도기·다리(4"/긴다리): 부속으로 저장하되 remark="대체옵션", 세트가 미포함
+     * 제품코드행(r) 다음의 "대리점가" 행 인덱스를 찾는다(없으면 -1). 최대 3행 내에서 탐색하되
+     * 다음 제품코드행을 만나면 중단. 슬롯 2행형(양변기/세면기/소변기·수채) 공통 골격.
      */
-    private void buildSelectableSet(Ctx c, int r, String repCode, String kind, String ksCode,
-                                    List<Slot> present, List<VendorProductSet> out) {
-        Slot defDogi = pickDefault(present, "도기", "원홀");
-        Slot defDari = pickDefault(present, "다리", "반다리");
-
-        List<VendorParsedItem> parts = new ArrayList<>();
-        BigDecimal setPrice = BigDecimal.ZERO;
-        for (Slot s : present) {
-            boolean isDogi = s.label().contains("도기");
-            boolean isDari = s.label().contains("다리");
-            boolean included;
-            String relation;
-            String remark = null;
-            if (isDogi) {
-                included = (s == defDogi);
-                relation = included ? VendorParsedItem.RELATION_MAIN : s.label();
-                if (!included) remark = "대체옵션";
-            } else if (isDari) {
-                included = (s == defDari);
-                relation = s.label();
-                if (!included) remark = "대체옵션";
-            } else {
-                included = true; // 필수 부속
-                relation = s.label();
-            }
-            if (included) setPrice = setPrice.add(s.price());
-            parts.add(part(repCode, s, relation, remark));
+    private int findPriceRow(Ctx c, int r, int last) {
+        for (int k = r + 1; k <= Math.min(r + 3, last); k++) {
+            if ("대리점가".equals(str(c, k, 5))) return k;
+            if ("제품코드".equals(str(c, k, 5))) break;
         }
-
-        VendorParsedItem main = new VendorParsedItem(repCode, join(kind, repCode), null, ksCode,
-                VendorParsedItem.RELATION_MAIN, setPrice, null);
-        out.add(new VendorProductSet("B", c.sheetName, kind, main, parts,
-                setPrice, false, imageKeyOf(r), false));
-    }
-
-    /** present 슬롯 중 keyword(도기/다리)에 해당하는 것에서 prefer(원홀/반다리) 우선, 없으면 첫 항목. */
-    private Slot pickDefault(List<Slot> present, String keyword, String prefer) {
-        Slot first = null;
-        for (Slot s : present) {
-            if (!s.label().contains(keyword)) continue;
-            if (s.label().contains(prefer)) return s;
-            if (first == null) first = s;
-        }
-        return first;
+        return -1;
     }
 
     /** 슬롯 1개 → 부속 품목. 품번 = 대표품번_부속코드(냉수c/온수h 구분 반영). */
@@ -1154,13 +966,13 @@ public class VendorBExcelParser implements VendorExcelParser {
                     slotFName, partPrice, null));
 
             BigDecimal setPrice = dogiPrice.add(partPrice);
-            // 갈라시아는 실제 세면기 제품 → 표시용으로 품번 앞에 "갈라시아 세면기" 부여, 소분류=갈라시아.
-            // (대분류는 시트명 "갈라시아" 유지 — categoryLarge는 이미지 매칭 키 겸용이라 바꾸면 이미지가 끊김)
+            // 갈라시아는 실제 세면기 제품 → 대분류=세면기(갈라시아)(D46), 소분류=갈라시아, 품번 앞 "갈라시아 세면기" 접두.
+            // sheetName("갈라시아")을 별도 보존해 이미지 매칭은 categoryLarge와 독립(§13 sheetName 분리로 D46 해소).
             String repName = "갈라시아 세면기 " + repCode;
             VendorParsedItem main = new VendorParsedItem(repCode, repName,
                     null, null, VendorParsedItem.RELATION_MAIN, setPrice, null);
-            out.add(new VendorProductSet("B", c.sheetName, "갈라시아", main, parts,
-                    setPrice, false, imageKeyOf(r), false));
+            out.add(new VendorProductSet("B", "세면기(갈라시아)", "갈라시아", main, parts,
+                    setPrice, false, imageKeyOf(r), false, c.sheetName)); // priceBasis=sheetName="갈라시아"(가격 종전과 동일)
         }
     }
 
@@ -1244,7 +1056,7 @@ public class VendorBExcelParser implements VendorExcelParser {
             VendorParsedItem single = new VendorParsedItem(code, orDefault(name, code), null, null,
                     VendorParsedItem.RELATION_MAIN, price, remark, descr);
             out.add(new VendorProductSet("B", "악세사리", catSmall, single,
-                    new ArrayList<>(), price, false, imageKeyOf(c.sheetName, r), false, c.sheetName));
+                    new ArrayList<>(), price, false, imageKeyOf(r), false, c.sheetName));
         }
         if (inSet) flushAccSet(out, c, mainItem, parts, setCat, setPrice, mainRow);
     }
@@ -1255,7 +1067,7 @@ public class VendorBExcelParser implements VendorExcelParser {
         // 대분류=악세사리(C-1)·priceBasis=시트명·이미지=시트명 실은 키(D52)
         out.add(new VendorProductSet("B", "악세사리", setCat, mainItem,
                 parts != null ? parts : new ArrayList<>(), setPrice, false,
-                imageKeyOf(c.sheetName, mainRow), false, c.sheetName));
+                imageKeyOf(mainRow), false, c.sheetName));
     }
 
     // ============================================================
@@ -1422,7 +1234,7 @@ public class VendorBExcelParser implements VendorExcelParser {
         VendorParsedItem main = new VendorParsedItem(base, join(join(group, "세트"), base), null, null,
                 VendorParsedItem.RELATION_MAIN, nz(subtotal), subRemark);
         out.add(new VendorProductSet("B", "수전부속", group, main, parts, nz(subtotal), false,
-                imageKeyOf(c.sheetName, first.row()), false, c.sheetName));
+                imageKeyOf(first.row()), false, c.sheetName));
     }
 
     /**
@@ -1478,7 +1290,7 @@ public class VendorBExcelParser implements VendorExcelParser {
         VendorParsedItem main = new VendorParsedItem(pn, name, null, null,
                 VendorParsedItem.RELATION_MAIN, nz(m.price()), ns.remark(), ns.description(), null, ns.specs());
         out.add(new VendorProductSet("B", "수전부속", group, main, parts, nz(m.price()), false,
-                imageKeyOf(c.sheetName, m.row()), false, c.sheetName));
+                imageKeyOf(m.row()), false, c.sheetName));
     }
 
     /**
@@ -1493,7 +1305,7 @@ public class VendorBExcelParser implements VendorExcelParser {
                 VendorParsedItem.RELATION_MAIN, nz(price), ns.remark(),
                 joinNotes(descr, ns.description()), null, ns.specs());
         return new VendorProductSet("B", "수전부속", catSmall, main,
-                new ArrayList<>(), nz(price), false, imageKeyOf(c.sheetName, row), false, c.sheetName);
+                new ArrayList<>(), nz(price), false, imageKeyOf(row), false, c.sheetName);
     }
 
     // ---- C-2 비고 내용별 분류 (수전 부속(세트)·부속 단가표 계열) ----------------------------------
@@ -1526,21 +1338,6 @@ public class VendorBExcelParser implements VendorExcelParser {
         static final NoteSplit EMPTY = new NoteSplit(null, null, null);
     }
 
-    /** 수전부속 품번 정규화(P9): 대문자 + 하이픈 제거(U-9110150a→U9110150A, U9013c→U9013C). */
-    private String fittingPartNo(String token) {
-        if (token == null) return null;
-        String x = token.replace("-", "").toUpperCase();
-        return x.isEmpty() ? null : x;
-    }
-
-    private String firstToken(String s) {
-        if (s == null) return null;
-        String t = s.replace(' ', ' ').trim();
-        if (t.isEmpty()) return null;
-        int i = 0;
-        while (i < t.length() && !Character.isWhitespace(t.charAt(i))) i++;
-        return t.substring(0, i);
-    }
 
     /** 수전부속 버퍼 멤버(행/원본B/원본C/단가(null=가격없음)/비고). */
     private record FtMember(int row, String bRaw, String cRaw, BigDecimal price, String remark) {}
@@ -1643,7 +1440,7 @@ public class VendorBExcelParser implements VendorExcelParser {
             VendorParsedItem main = new VendorParsedItem(pn, display, null, null,
                     VendorParsedItem.RELATION_MAIN, nz(price), remark);
             out.add(new VendorProductSet("B", "수전부속", group, main, new ArrayList<>(),
-                    nz(price), false, imageKeyOf(c.sheetName, r), false, c.sheetName));
+                    nz(price), false, imageKeyOf(r), false, c.sheetName));
         }
     }
 
@@ -1678,17 +1475,12 @@ public class VendorBExcelParser implements VendorExcelParser {
         }
     }
 
-    /** 임베디드 이미지 매칭 키 = 대표품목의 0-based 행 인덱스(없으면 null). 시트는 categoryLarge로 식별. */
+    /**
+     * 임베디드 이미지 매칭 키 = 대표품목의 0-based 행 인덱스(없으면 null).
+     * 시트 식별은 {@code VendorProductSet.sheetName}이 담당한다(§13 sheetName 분리).
+     */
     private String imageKeyOf(int row) {
         return row >= 0 ? String.valueOf(row) : null;
-    }
-
-    /**
-     * 시트명 포함 이미지 키("시트명" + SEP + 행). 대분류를 시트명에서 분리 저장하는 시트(비데,기타 등)는
-     * categoryLarge로 이미지를 못 찾으므로 원본 시트명을 함께 실어 시트명 기준으로 매칭하게 한다.
-     */
-    private String imageKeyOf(String sheetName, int row) {
-        return row >= 0 ? sheetName + VendorProductSet.IMAGE_KEY_SHEET_SEP + row : null;
     }
 
     /**
@@ -1774,80 +1566,6 @@ public class VendorBExcelParser implements VendorExcelParser {
     }
 
     private BigDecimal nz(BigDecimal v) { return v != null ? v : BigDecimal.ZERO; }
-
-    private String stripSpace(String s) {
-        if (s == null) return null;
-        String x = s.replace(' ', ' ').replaceAll("\\s+", " ").trim();
-        return x.isEmpty() ? null : x;
-    }
-
-    /** 헤더 비교용: 모든 공백 제거("품 번"→"품번"). */
-    private String noSpace(String s) {
-        if (s == null) return null;
-        String x = s.replaceAll("[\\s ]+", "");
-        return x.isEmpty() ? null : x;
-    }
-
-    private String normalizeCode(String s) {
-        String x = stripSpace(s);
-        if (x == null) return null;
-        int p = x.indexOf('(');
-        if (p > 0) x = x.substring(0, p).trim();
-        if (x.length() > CODE_MAX_LEN) x = x.substring(0, CODE_MAX_LEN);
-        return x.isEmpty() ? null : x;
-    }
-
-    /**
-     * 부속 품번 = 대표품번 + '_' + 부속코드 (A사 master-detail 방식 차용).
-     * 같은 부속이 세트마다 고유 품번을 가지며, 서비스가 '_' 기준 masterCode/detailCode로 분리한다.
-     */
-    private String partCode(String masterCode, String detailCode) {
-        if (isBlank(masterCode)) return detailCode;
-        if (isBlank(detailCode)) return masterCode;
-        return masterCode + "_" + detailCode;
-    }
-
-    /**
-     * 동일 코드가 냉수용/온수용으로 중복될 때 코드에 c/h를 부여해 구분(관계 유실 방지).
-     * 품명에 "냉수"면 c, "온수"면 h. (이미 해당 접미사면 그대로)
-     */
-    private String coldHot(String code, String name) {
-        if (code == null || name == null) return code;
-        String n = name.replaceAll("\\s", "");
-        String cc = code.replaceAll("\\s", "");
-        // 코드에 이미 냉/온수 표식이 있으면(접미사 c/h 또는 한글) 중복 부여하지 않음
-        if (n.contains("냉수") && !cc.endsWith("c") && !cc.contains("냉수")) return code + "c";
-        if (n.contains("온수") && !cc.endsWith("h") && !cc.contains("온수")) return code + "h";
-        return code;
-    }
-
-    /** 슬롯/부속 라벨 정규화: 글자 사이 공백까지 제거("긴 다 리"→"긴다리", "매립 감지기"→"매립감지기"). */
-    private String normLabel(String s) {
-        return noSpace(s);
-    }
-
-    /** 따옴표(ditto, 〃) 셀이면 직전 실품명으로 대체. lastName이 없으면 원본 유지. */
-    private String resolveDitto(String name, String lastName) {
-        if (isDitto(name) && lastName != null) return lastName;
-        return name;
-    }
-
-    private boolean isDitto(String s) {
-        if (s == null) return false;
-        String t = s.trim();
-        return t.equals("\"") || t.equals("“") || t.equals("”") || t.equals("″")
-                || t.equals("〃") || t.equals("''") || t.equals("\"\"");
-    }
-
-    private String join(String a, String b) {
-        if (isBlank(a)) return b;
-        if (isBlank(b)) return a;
-        return a + " " + b;
-    }
-
-    private String orDefault(String v, String def) { return isBlank(v) ? def : v; }
-
-    private boolean isBlank(String s) { return s == null || s.trim().isEmpty(); }
 
     private RuntimeException wrap(String msg, Exception e) {
         Throwable root = e;
