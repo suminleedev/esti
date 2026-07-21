@@ -18,6 +18,8 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static com.example.esti.excel.ExcelParseUtils.*;
+
 /**
  * B사(이누스) 단가표 파서 — 멀티 시트. 시트명으로 4개 양식 패밀리를 판별해 전용 파서로 분기한다(P3).
  *
@@ -41,7 +43,6 @@ public class VendorBExcelParser implements VendorExcelParser {
 
     private static final Logger logger = LoggerFactory.getLogger(VendorBExcelParser.class);
 
-    private static final int CODE_MAX_LEN = 50;
     private static final int SLOT_FIRST_COL = 6; // G열부터 슬롯 후보
 
     @Override
@@ -250,23 +251,6 @@ public class VendorBExcelParser implements VendorExcelParser {
         return s.contains("수량") || s.contains("비고") || s.contains("PLT");
     }
 
-    /**
-     * "코드(설명)" 분리. 반환[0]=정규화 코드, [1]=괄호 안 설명.
-     * 순수 "(설명)"이면 [null, 설명], 괄호 없으면 [코드, null], 빈 셀이면 [null, null].
-     */
-    private String[] splitParen(String raw) {
-        String x = stripSpace(raw);
-        if (x == null) return new String[]{null, null};
-        int p = x.indexOf('(');
-        if (p < 0) return new String[]{normalizeCode(x), null};
-        String codePart = x.substring(0, p).trim();
-        int q = x.indexOf(')', p + 1);
-        String desc = (q > p ? x.substring(p + 1, q) : x.substring(p + 1)).trim();
-        return new String[]{
-                codePart.isEmpty() ? null : normalizeCode(codePart),
-                desc.isEmpty() ? null : desc
-        };
-    }
 
     /**
      * "탱크(사출수로)" 슬롯의 표시명 결정: 품번에 "(사출수로)" 표시가 있는 사출수로 품목이면 "사출수로",
@@ -873,15 +857,6 @@ public class VendorBExcelParser implements VendorExcelParser {
         out.add(new VendorProductSet("B", "수전금구", series, main,
                 parts != null ? parts : new ArrayList<>(), price, false,
                 imageKeyOf(repRow), false, c.sheetName));
-    }
-
-    /** 수전금구 부속 냉/온 구분: 라벨에 냉/온이 있으면 코드에 c/h 접미(같은 제품코드 냉·온수 공유 시 충돌 방지). */
-    private String faucetDetail(String code, String label) {
-        if (code == null || label == null) return code;
-        String n = label.replaceAll("\\s", "");
-        if (n.contains("냉") && !code.endsWith("c")) return code + "c";
-        if (n.contains("온") && !code.endsWith("h")) return code + "h";
-        return code;
     }
 
     // ============================================================
@@ -1528,21 +1503,6 @@ public class VendorBExcelParser implements VendorExcelParser {
         static final NoteSplit EMPTY = new NoteSplit(null, null, null);
     }
 
-    /** 수전부속 품번 정규화(P9): 대문자 + 하이픈 제거(U-9110150a→U9110150A, U9013c→U9013C). */
-    private String fittingPartNo(String token) {
-        if (token == null) return null;
-        String x = token.replace("-", "").toUpperCase();
-        return x.isEmpty() ? null : x;
-    }
-
-    private String firstToken(String s) {
-        if (s == null) return null;
-        String t = s.replace(' ', ' ').trim();
-        if (t.isEmpty()) return null;
-        int i = 0;
-        while (i < t.length() && !Character.isWhitespace(t.charAt(i))) i++;
-        return t.substring(0, i);
-    }
 
     /** 수전부속 버퍼 멤버(행/원본B/원본C/단가(null=가격없음)/비고). */
     private record FtMember(int row, String bRaw, String cRaw, BigDecimal price, String remark) {}
@@ -1771,80 +1731,6 @@ public class VendorBExcelParser implements VendorExcelParser {
     }
 
     private BigDecimal nz(BigDecimal v) { return v != null ? v : BigDecimal.ZERO; }
-
-    private String stripSpace(String s) {
-        if (s == null) return null;
-        String x = s.replace(' ', ' ').replaceAll("\\s+", " ").trim();
-        return x.isEmpty() ? null : x;
-    }
-
-    /** 헤더 비교용: 모든 공백 제거("품 번"→"품번"). */
-    private String noSpace(String s) {
-        if (s == null) return null;
-        String x = s.replaceAll("[\\s ]+", "");
-        return x.isEmpty() ? null : x;
-    }
-
-    private String normalizeCode(String s) {
-        String x = stripSpace(s);
-        if (x == null) return null;
-        int p = x.indexOf('(');
-        if (p > 0) x = x.substring(0, p).trim();
-        if (x.length() > CODE_MAX_LEN) x = x.substring(0, CODE_MAX_LEN);
-        return x.isEmpty() ? null : x;
-    }
-
-    /**
-     * 부속 품번 = 대표품번 + '_' + 부속코드 (A사 master-detail 방식 차용).
-     * 같은 부속이 세트마다 고유 품번을 가지며, 서비스가 '_' 기준 masterCode/detailCode로 분리한다.
-     */
-    private String partCode(String masterCode, String detailCode) {
-        if (isBlank(masterCode)) return detailCode;
-        if (isBlank(detailCode)) return masterCode;
-        return masterCode + "_" + detailCode;
-    }
-
-    /**
-     * 동일 코드가 냉수용/온수용으로 중복될 때 코드에 c/h를 부여해 구분(관계 유실 방지).
-     * 품명에 "냉수"면 c, "온수"면 h. (이미 해당 접미사면 그대로)
-     */
-    private String coldHot(String code, String name) {
-        if (code == null || name == null) return code;
-        String n = name.replaceAll("\\s", "");
-        String cc = code.replaceAll("\\s", "");
-        // 코드에 이미 냉/온수 표식이 있으면(접미사 c/h 또는 한글) 중복 부여하지 않음
-        if (n.contains("냉수") && !cc.endsWith("c") && !cc.contains("냉수")) return code + "c";
-        if (n.contains("온수") && !cc.endsWith("h") && !cc.contains("온수")) return code + "h";
-        return code;
-    }
-
-    /** 슬롯/부속 라벨 정규화: 글자 사이 공백까지 제거("긴 다 리"→"긴다리", "매립 감지기"→"매립감지기"). */
-    private String normLabel(String s) {
-        return noSpace(s);
-    }
-
-    /** 따옴표(ditto, 〃) 셀이면 직전 실품명으로 대체. lastName이 없으면 원본 유지. */
-    private String resolveDitto(String name, String lastName) {
-        if (isDitto(name) && lastName != null) return lastName;
-        return name;
-    }
-
-    private boolean isDitto(String s) {
-        if (s == null) return false;
-        String t = s.trim();
-        return t.equals("\"") || t.equals("“") || t.equals("”") || t.equals("″")
-                || t.equals("〃") || t.equals("''") || t.equals("\"\"");
-    }
-
-    private String join(String a, String b) {
-        if (isBlank(a)) return b;
-        if (isBlank(b)) return a;
-        return a + " " + b;
-    }
-
-    private String orDefault(String v, String def) { return isBlank(v) ? def : v; }
-
-    private boolean isBlank(String s) { return s == null || s.trim().isEmpty(); }
 
     private RuntimeException wrap(String msg, Exception e) {
         Throwable root = e;
