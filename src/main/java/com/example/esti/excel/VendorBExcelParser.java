@@ -663,14 +663,16 @@ public class VendorBExcelParser implements VendorExcelParser {
                 VendorParsedItem main = new VendorParsedItem(code, name, null, null,
                         VendorParsedItem.RELATION_MAIN, nz(price), null, remark); // 비고→description(req4)
                 out.add(new VendorProductSet("B", currentCat, carryKind, main,
-                        new ArrayList<>(), nz(price), false, imageKeyOf(c.sheetName, r), false)); // 대분류≠시트명 → 시트명 키
+                        new ArrayList<>(), nz(price), false, imageKeyOf(r), false,
+                        currentCat, c.sheetName)); // 대분류·priceBasis=소분류(비데/기타), 이미지는 sheetName("비데, 기타")로 매칭
             } else {
                 String name = join("비데", baseCode);                   // 제품명 앞에 '비데' 부기
                 if (price == null) name = name + " (가격없음)";
                 VendorParsedItem main = new VendorParsedItem(baseCode, name, null, null,
                         VendorParsedItem.RELATION_MAIN, nz(price), null, remark);   // 비데 비고→description
                 out.add(new VendorProductSet("B", currentCat, currentCat, main,     // 소분류=비데(req2)
-                        new ArrayList<>(), nz(price), false, imageKeyOf(c.sheetName, r), false)); // 대분류≠시트명 → 시트명 키
+                        new ArrayList<>(), nz(price), false, imageKeyOf(r), false,
+                        currentCat, c.sheetName)); // 대분류·priceBasis=소분류(비데), 이미지는 sheetName("비데, 기타")로 매칭
             }
         }
     }
@@ -870,7 +872,7 @@ public class VendorBExcelParser implements VendorExcelParser {
         // 대분류="수전금구"(통합), 소분류=시리즈(본품 안정), priceBasis=시트명(가격 분리), 이미지=시트명 실은 키
         out.add(new VendorProductSet("B", "수전금구", series, main,
                 parts != null ? parts : new ArrayList<>(), price, false,
-                imageKeyOf(c.sheetName, repRow), false, c.sheetName));
+                imageKeyOf(repRow), false, c.sheetName));
     }
 
     /** 수전금구 부속 냉/온 구분: 라벨에 냉/온이 있으면 코드에 c/h 접미(같은 제품코드 냉·온수 공유 시 충돌 방지). */
@@ -965,7 +967,7 @@ public class VendorBExcelParser implements VendorExcelParser {
         String series = code.substring(0, code.indexOf('-') + 3);
         out.add(new VendorProductSet("B", "수전금구", series, main,
                 parts != null ? parts : new ArrayList<>(), nz(setPrice), false,
-                imageKeyOf(c.sheetName, repRow), needsReview, c.sheetName));
+                imageKeyOf(repRow), needsReview, c.sheetName));
     }
 
     // ============================================================
@@ -1154,13 +1156,13 @@ public class VendorBExcelParser implements VendorExcelParser {
                     slotFName, partPrice, null));
 
             BigDecimal setPrice = dogiPrice.add(partPrice);
-            // 갈라시아는 실제 세면기 제품 → 표시용으로 품번 앞에 "갈라시아 세면기" 부여, 소분류=갈라시아.
-            // (대분류는 시트명 "갈라시아" 유지 — categoryLarge는 이미지 매칭 키 겸용이라 바꾸면 이미지가 끊김)
+            // 갈라시아는 실제 세면기 제품 → 대분류=세면기(갈라시아)(D46), 소분류=갈라시아, 품번 앞 "갈라시아 세면기" 접두.
+            // sheetName("갈라시아")을 별도 보존해 이미지 매칭은 categoryLarge와 독립(§13 sheetName 분리로 D46 해소).
             String repName = "갈라시아 세면기 " + repCode;
             VendorParsedItem main = new VendorParsedItem(repCode, repName,
                     null, null, VendorParsedItem.RELATION_MAIN, setPrice, null);
-            out.add(new VendorProductSet("B", c.sheetName, "갈라시아", main, parts,
-                    setPrice, false, imageKeyOf(r), false));
+            out.add(new VendorProductSet("B", "세면기(갈라시아)", "갈라시아", main, parts,
+                    setPrice, false, imageKeyOf(r), false, c.sheetName)); // priceBasis=sheetName="갈라시아"(가격 종전과 동일)
         }
     }
 
@@ -1244,7 +1246,7 @@ public class VendorBExcelParser implements VendorExcelParser {
             VendorParsedItem single = new VendorParsedItem(code, orDefault(name, code), null, null,
                     VendorParsedItem.RELATION_MAIN, price, remark, descr);
             out.add(new VendorProductSet("B", "악세사리", catSmall, single,
-                    new ArrayList<>(), price, false, imageKeyOf(c.sheetName, r), false, c.sheetName));
+                    new ArrayList<>(), price, false, imageKeyOf(r), false, c.sheetName));
         }
         if (inSet) flushAccSet(out, c, mainItem, parts, setCat, setPrice, mainRow);
     }
@@ -1255,7 +1257,7 @@ public class VendorBExcelParser implements VendorExcelParser {
         // 대분류=악세사리(C-1)·priceBasis=시트명·이미지=시트명 실은 키(D52)
         out.add(new VendorProductSet("B", "악세사리", setCat, mainItem,
                 parts != null ? parts : new ArrayList<>(), setPrice, false,
-                imageKeyOf(c.sheetName, mainRow), false, c.sheetName));
+                imageKeyOf(mainRow), false, c.sheetName));
     }
 
     // ============================================================
@@ -1422,7 +1424,7 @@ public class VendorBExcelParser implements VendorExcelParser {
         VendorParsedItem main = new VendorParsedItem(base, join(join(group, "세트"), base), null, null,
                 VendorParsedItem.RELATION_MAIN, nz(subtotal), subRemark);
         out.add(new VendorProductSet("B", "수전부속", group, main, parts, nz(subtotal), false,
-                imageKeyOf(c.sheetName, first.row()), false, c.sheetName));
+                imageKeyOf(first.row()), false, c.sheetName));
     }
 
     /**
@@ -1478,7 +1480,7 @@ public class VendorBExcelParser implements VendorExcelParser {
         VendorParsedItem main = new VendorParsedItem(pn, name, null, null,
                 VendorParsedItem.RELATION_MAIN, nz(m.price()), ns.remark(), ns.description(), null, ns.specs());
         out.add(new VendorProductSet("B", "수전부속", group, main, parts, nz(m.price()), false,
-                imageKeyOf(c.sheetName, m.row()), false, c.sheetName));
+                imageKeyOf(m.row()), false, c.sheetName));
     }
 
     /**
@@ -1493,7 +1495,7 @@ public class VendorBExcelParser implements VendorExcelParser {
                 VendorParsedItem.RELATION_MAIN, nz(price), ns.remark(),
                 joinNotes(descr, ns.description()), null, ns.specs());
         return new VendorProductSet("B", "수전부속", catSmall, main,
-                new ArrayList<>(), nz(price), false, imageKeyOf(c.sheetName, row), false, c.sheetName);
+                new ArrayList<>(), nz(price), false, imageKeyOf(row), false, c.sheetName);
     }
 
     // ---- C-2 비고 내용별 분류 (수전 부속(세트)·부속 단가표 계열) ----------------------------------
@@ -1643,7 +1645,7 @@ public class VendorBExcelParser implements VendorExcelParser {
             VendorParsedItem main = new VendorParsedItem(pn, display, null, null,
                     VendorParsedItem.RELATION_MAIN, nz(price), remark);
             out.add(new VendorProductSet("B", "수전부속", group, main, new ArrayList<>(),
-                    nz(price), false, imageKeyOf(c.sheetName, r), false, c.sheetName));
+                    nz(price), false, imageKeyOf(r), false, c.sheetName));
         }
     }
 
@@ -1678,17 +1680,12 @@ public class VendorBExcelParser implements VendorExcelParser {
         }
     }
 
-    /** 임베디드 이미지 매칭 키 = 대표품목의 0-based 행 인덱스(없으면 null). 시트는 categoryLarge로 식별. */
+    /**
+     * 임베디드 이미지 매칭 키 = 대표품목의 0-based 행 인덱스(없으면 null).
+     * 시트 식별은 {@code VendorProductSet.sheetName}이 담당한다(§13 sheetName 분리).
+     */
     private String imageKeyOf(int row) {
         return row >= 0 ? String.valueOf(row) : null;
-    }
-
-    /**
-     * 시트명 포함 이미지 키("시트명" + SEP + 행). 대분류를 시트명에서 분리 저장하는 시트(비데,기타 등)는
-     * categoryLarge로 이미지를 못 찾으므로 원본 시트명을 함께 실어 시트명 기준으로 매칭하게 한다.
-     */
-    private String imageKeyOf(String sheetName, int row) {
-        return row >= 0 ? sheetName + VendorProductSet.IMAGE_KEY_SHEET_SEP + row : null;
     }
 
     /**

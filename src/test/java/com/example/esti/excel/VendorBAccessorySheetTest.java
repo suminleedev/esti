@@ -46,8 +46,7 @@ class VendorBAccessorySheetTest {
         VendorProductSet ac8100 = one(sets, "AC8100");
         assertEquals("악세사리", ac8100.categoryLarge(), "C-1: '단가표' 제거");
         assertEquals(BASIS, ac8100.priceBasis(), "가격은 시트명 basis");
-        assertTrue(ac8100.imageKey().startsWith(BASIS + VendorProductSet.IMAGE_KEY_SHEET_SEP),
-                "대분류≠시트명 → 이미지는 시트명 실은 키(D52)");
+        assertEquals(BASIS, ac8100.sheetName(), "대분류≠시트명 → 이미지는 sheetName으로 매칭(§13)");
         assertEquals(0, new BigDecimal("60000").compareTo(ac8100.setPrice()));
         assertEquals(4, ac8100.parts().size());
     }
