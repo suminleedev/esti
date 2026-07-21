@@ -156,21 +156,13 @@ public class CatalogImportAsyncService {
                             Map<String, Map<Integer, ExtractedImage>> images) {
         if (set.imageKey() == null || images == null || images.isEmpty()) return;
 
-        // 이미지 맵은 시트명 키. 대분류를 시트명에서 분리 저장하는 시트(비데,기타 등)는 imageKey에
-        // "시트명SEP행"으로 시트명을 실어두므로 그걸로 조회하고, 없으면 종전대로 categoryLarge로 조회(하위호환).
-        String sheetKey = set.categoryLarge();
-        String rowPart = set.imageKey();
-        int sep = set.imageKey().indexOf(VendorProductSet.IMAGE_KEY_SHEET_SEP);
-        if (sep >= 0) {
-            sheetKey = set.imageKey().substring(0, sep);
-            rowPart = set.imageKey().substring(sep + VendorProductSet.IMAGE_KEY_SHEET_SEP.length());
-        }
-
-        Map<Integer, ExtractedImage> byRow = images.get(sheetKey);
+        // 이미지 맵은 시트명 키(ExcelImageExtractor). 대분류를 시트명에서 분리·정제하는 시트(비데/기타·갈라시아 등)도
+        // set.sheetName()으로 원본 시트명을 보존하므로 categoryLarge와 무관하게 시트명 기준으로 조회한다(§13 sheetName 분리).
+        Map<Integer, ExtractedImage> byRow = images.get(set.sheetName());
         if (byRow == null) return;
 
         int row;
-        try { row = Integer.parseInt(rowPart); }
+        try { row = Integer.parseInt(set.imageKey()); }
         catch (NumberFormatException e) { return; }
 
         ExtractedImage img = byRow.get(row);

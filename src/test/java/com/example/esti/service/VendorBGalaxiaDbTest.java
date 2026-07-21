@@ -13,7 +13,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class VendorBGalaxiaDbTest extends AbstractVendorBSheetDbVerification {
 
-    private static final String CAT = "갈라시아";
+    /** 대분류=정제값(D46). 조회/유실검증은 이 값으로. */
+    private static final String CAT = "세면기(갈라시아)";
+    /** 가격 분리 기준=원본 시트명(§13 sheetName 분리 후에도 priceBasis는 종전과 동일). */
+    private static final String BASIS = "갈라시아";
 
     @Test
     void 유실0_충돌0_재업로드_멱등() {
@@ -29,16 +32,16 @@ class VendorBGalaxiaDbTest extends AbstractVendorBSheetDbVerification {
     }
 
     @Test
-    void req1_소분류는_갈라시아_대분류는_시트명유지() {
+    void req1_소분류는_갈라시아_대분류는_세면기갈라시아() {
         VendorProduct art = dbSetProduct(CAT, "art6103");
         assertThat(art.getCategorySmall()).isEqualTo("갈라시아");
-        assertThat(art.getCategoryLarge()).isEqualTo("갈라시아");
+        assertThat(art.getCategoryLarge()).isEqualTo("세면기(갈라시아)");
     }
 
     @Test
     void 세트가_도기부속합_430000() {
         VendorProduct art = dbSetProduct(CAT, "art6103");
-        assertThat(dbSetPrice(CAT, art)).isEqualByComparingTo(new BigDecimal("430000"));
+        assertThat(dbSetPriceByBasis(art, BASIS)).isEqualByComparingTo(new BigDecimal("430000"));
         assertThat(dbPartsOf(art)).hasSize(2);
     }
 }

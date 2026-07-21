@@ -15,8 +15,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *
  * <p>갈라시아는 실제 세면기 제품이라 표시를 보강한다(단순 표시 목적).</p>
  * <ul>
- *   <li>req1 — 소분류=갈라시아. (대분류는 시트명 "갈라시아" 유지 — categoryLarge가 이미지 매칭 키 겸용이라
- *       바꾸면 갈라시아 임베디드 이미지가 끊기므로 표시는 productName/소분류로만 보강)</li>
+ *   <li>req1 — 소분류=갈라시아, 대분류=세면기(갈라시아)(D46). §13 sheetName 분리로 이미지 매칭이
+ *       categoryLarge와 독립(sheetName="갈라시아")이 되어 대분류를 정제값으로 바꿔도 이미지가 유지된다.</li>
  *   <li>req2 — 메인 productName에 품번 앞 "갈라시아 세면기" 부여(이전엔 품번만 저장).</li>
  * </ul>
  * 샘플(docs/samples/...)은 git 추적 제외이므로 파일이 없으면 스킵한다.
@@ -30,7 +30,7 @@ class VendorBGalaxiaSheetTest {
     private List<VendorProductSet> galaxiaSets() {
         assumeTrue(Files.exists(SAMPLE), "샘플 엑셀이 없어 스킵: " + SAMPLE);
         return parser.parseSets(SAMPLE).stream()
-                .filter(s -> "갈라시아".equals(s.categoryLarge()))
+                .filter(s -> "갈라시아".equals(s.sheetName()))
                 .toList();
     }
 
@@ -50,10 +50,11 @@ class VendorBGalaxiaSheetTest {
     }
 
     @Test
-    void req1_소분류는_갈라시아_대분류는_시트명유지() {
+    void req1_소분류는_갈라시아_대분류는_세면기갈라시아_이미지키는_시트명() {
         VendorProductSet art = byCode(galaxiaSets(), "art6103");
         assertEquals("갈라시아", art.categorySmall(), "소분류=갈라시아");
-        assertEquals("갈라시아", art.categoryLarge(), "대분류는 시트명 유지(이미지 매칭 보존)");
+        assertEquals("세면기(갈라시아)", art.categoryLarge(), "대분류=세면기(갈라시아)(D46)");
+        assertEquals("갈라시아", art.sheetName(), "이미지 매칭 키=원본 시트명");
     }
 
     @Test
