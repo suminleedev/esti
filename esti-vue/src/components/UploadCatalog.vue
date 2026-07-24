@@ -5,6 +5,11 @@ import axios from 'axios'
 
 import { usePagination } from "@/composables/usePagination"
 import Pagination from "@/components/Pagination.vue";
+import { useToast } from "@/composables/useToast"
+import { useConfirm } from "@/composables/useConfirm"
+
+const toast = useToast()
+const { confirm } = useConfirm()
 
 // 페이징
 const {
@@ -12,8 +17,6 @@ const {
   goToPage, firstPage, lastPage, prevBlock, nextBlock, resetToFirst
 } = usePagination(loadVendorCatalog)
 
-const message = ref('')
-const error = ref('')
 const editingProduct = ref(null) // 수정 중인 제품
 /* ===== 공급사 단가표 엑셀 업로드 상태 ===== */
 const uploadVendorCode = ref('A')   // 업로드 영역 전용 : 기본값 A사
@@ -108,7 +111,7 @@ async function startProgressPolling(jobId) {
       // 네트워크 순간 오류 정도는 무시해도 됨
       console.error('진행률 조회 실패', e)
     }
-  }, 100) // 0.1초마다 폴링
+  }, 700) // 0.7초마다 폴링
 }
 
 /**
@@ -211,16 +214,14 @@ function cancelEdit() {
 }
 
 async function saveEdit() {
-  message.value = ''
-  error.value = ''
   if (!editingProduct.value) return
   try {
     await axios.put(`/api/vendor-catalog/${editingProduct.value.vendorItemPriceId}`, editingProduct.value)
-    message.value = '수정 성공'
     editingProduct.value = null
     await loadVendorCatalog()
+    toast.success('수정되었습니다')
   } catch (e) {
-    error.value = '수정 실패: ' + (e?.response?.data?.message || e?.message || '')
+    toast.error('수정 실패: ' + (e?.response?.data?.message || e?.message || ''))
   }
 }
 
@@ -228,15 +229,18 @@ async function saveEdit() {
  * 카탈로그 삭제
  */
 async function deleteProduct(p) {
-  message.value = ''
-  error.value = ''
-  if (!confirm(`『${p.productName}』(${p.mainItemCode ?? '-'}) 항목을 삭제하시겠습니까?`)) return
+  const ok = await confirm({
+    title: '카탈로그 삭제',
+    message: `『${p.productName}』(${p.mainItemCode ?? '-'}) 항목을 삭제할까요?`,
+    confirmLabel: '삭제',
+  })
+  if (!ok) return
   try {
     await axios.delete(`/api/vendor-catalog/${p.vendorItemPriceId}`)
-    message.value = '삭제 성공'
     await loadVendorCatalog()
+    toast.success('삭제되었습니다')
   } catch (e) {
-    error.value = '삭제 실패: ' + (e?.response?.data?.message || e?.message || '')
+    toast.error('삭제 실패: ' + (e?.response?.data?.message || e?.message || ''))
   }
 }
 
@@ -358,16 +362,6 @@ onMounted(() => {
             </div>
           </div>
 
-          <!-- 수정/삭제 결과 피드백 -->
-          <div v-if="message" class="alert alert-success alert-dismissible py-2 my-2" role="alert">
-            {{ message }}
-            <button type="button" class="btn-close" aria-label="닫기" @click="message = ''"></button>
-          </div>
-          <div v-if="error" class="alert alert-danger alert-dismissible py-2 my-2" role="alert">
-            {{ error }}
-            <button type="button" class="btn-close" aria-label="닫기" @click="error = ''"></button>
-          </div>
-
           <div class="table-scroll mt-2"><!-- 테이블 내부 스크롤 -->
             <table class="table table-striped table-bordered mt-2 align-middle">
               <thead class="table-light">
@@ -441,8 +435,14 @@ onMounted(() => {
                   </td>
                 </template>
               </tr>
-              <tr v-if="vendorCatalogs.length === 0">
-                <td colspan="11" class="text-center text-muted">등록된 제품이 없습니다</td>
+              <tr v-if="loading && vendorCatalogs.length === 0">
+                <td colspan="11" class="text-center text-muted py-4">
+                  <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                  불러오는 중...
+                </td>
+              </tr>
+              <tr v-else-if="!loading && vendorCatalogs.length === 0">
+                <td colspan="11" class="text-center text-muted py-4">등록된 제품이 없습니다</td>
               </tr>
               </tbody>
             </table>
