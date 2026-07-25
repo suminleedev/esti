@@ -51,13 +51,21 @@ public class CatalogImportAsyncService {
         };
     }
 
+    /** 적재 결과 요약 — 총 세트 수와 대표품목 신규/갱신 수. */
+    public record ImportResult(int total, int created, int updated) {}
+
+    /** upsertVendorProduct 결과 — 저장된 제품과 신규 생성 여부. */
+    private record UpsertResult(VendorProduct product, boolean created) {}
+
     @Async
     @Transactional
     public void importVendorCatalogAsync(String jobId, String vendorCode, Path savedPath) {
         try {
             progressStore.update(jobId, 30, "엑셀 파싱 중...");
-            int saved = importVendorCatalog(vendorCode, savedPath, jobId);
-            progressStore.done(jobId, "완료! (" + saved + "건)");
+            ImportResult result = importVendorCatalog(vendorCode, savedPath, jobId);
+            String message = "완료! (총 " + result.total() + "건, 신규 "
+                    + result.created() + " · 갱신 " + result.updated() + ")";
+            progressStore.done(jobId, message, result.created(), result.updated());
         } catch (Exception e) {
             progressStore.fail(jobId, "실패: " + e.getClass().getSimpleName() + " - " + e.getMessage());
         } finally {
@@ -73,10 +81,10 @@ public class CatalogImportAsyncService {
      */
     @Transactional
     public int importVendorCatalog(String vendorCode, Path savedPath) {
-        return importVendorCatalog(vendorCode, savedPath, null);
+        return importVendorCatalog(vendorCode, savedPath, null).total();
     }
 
-    private int importVendorCatalog(String vendorCode, Path savedPath, String jobId) {
+    private ImportResult importVendorCatalog(String vendorCode, Path savedPath, String jobId) {
         // 1) vendor 조회/생성
         Vendor vendor = vendorRepository.findByVendorCode(vendorCode)
                 .orElseGet(() -> {
@@ -97,8 +105,14 @@ public class CatalogImportAsyncService {
         if (jobId != null) progressStore.update(jobId, 35, "DB 저장 시작");
 
         int done = 0;
+        int created = 0;
+        int updated = 0;
         for (VendorProductSet set : sets) {
-            saveSet(vendor, set, images);
+            boolean mainCreated = saveSet(vendor, set, images);
+            // 대표품목(세트) 단위 집계 — main 있는 세트만 카운트(빈 세트는 saveSet에서 null 처리)
+            if (set.main() != null) {
+                if (mainCreated) created++; else updated++;
+            }
             done++;
 
             if (jobId != null) {
@@ -109,19 +123,23 @@ public class CatalogImportAsyncService {
                 }
             }
         }
-        return sets.size();
+        return new ImportResult(sets.size(), created, updated);
     }
 
-    /** VendorProductSet 한 건을 대표품목 + 부속 + 관계 + 가격으로 적재. */
-    private void saveSet(Vendor vendor, VendorProductSet set,
-                         Map<String, Map<Integer, ExtractedImage>> images) {
+    /**
+     * VendorProductSet 한 건을 대표품목 + 부속 + 관계 + 가격으로 적재.
+     * @return 대표품목이 신규 생성됐으면 true(기존 갱신이면 false). 빈 세트(main 없음)는 false.
+     */
+    private boolean saveSet(Vendor vendor, VendorProductSet set,
+                            Map<String, Map<Integer, ExtractedImage>> images) {
         VendorParsedItem mainItem = set.main();
-        if (mainItem == null) return;
+        if (mainItem == null) return false;
 
         // 대표품목
-        VendorProduct mainProduct = upsertVendorProduct(
+        UpsertResult mainRes = upsertVendorProduct(
                 vendor, mainItem.productCode(), mainItem.productName(),
                 set.categoryLarge(), set.categorySmall(), ITEM_TYPE_SET, mainItem.description(), mainItem.specs());
+        VendorProduct mainProduct = mainRes.product();
 
         // 임베디드 이미지 연결 (D15) — 대표품목 행에 앵커된 그림
         applyImage(mainProduct, set, images);
@@ -143,12 +161,13 @@ public class CatalogImportAsyncService {
             String partCategorySmall = part.categorySmall() != null ? part.categorySmall() : set.categorySmall();
             VendorProduct partProduct = upsertVendorProduct(
                     vendor, part.productCode(), part.productName(),
-                    set.categoryLarge(), partCategorySmall, ITEM_TYPE_PART, part.description(), part.specs());
+                    set.categoryLarge(), partCategorySmall, ITEM_TYPE_PART, part.description(), part.specs()).product();
 
             // 공유 부속 단가는 코드당 1건 유지(D13) → priceBasis=null
             upsertPrice(vendor, partProduct, part, part.unitPrice(), part.remark(), ITEM_TYPE_PART, null);
             upsertRelation(mainProduct, partProduct, part.relationType());
         }
+        return mainRes.created();
     }
 
     /** 대표품목 행에 앵커된 임베디드 이미지를 저장하고 imageUrl을 연결(D15). 없으면 무시. */
@@ -180,9 +199,9 @@ public class CatalogImportAsyncService {
         }
     }
 
-    private VendorProduct upsertVendorProduct(Vendor vendor, String productCode, String productName,
-                                              String categoryLarge, String categorySmall, String itemType,
-                                              String description, String specs) {
+    private UpsertResult upsertVendorProduct(Vendor vendor, String productCode, String productName,
+                                             String categoryLarge, String categorySmall, String itemType,
+                                             String description, String specs) {
         VendorProduct product = null;
 
         // 1) 코드(품번)가 있으면 코드로만 식별 — 공급사 범위 내.
@@ -203,9 +222,11 @@ public class CatalogImportAsyncService {
         }
 
         // 3) 신규
+        boolean created = false;
         if (product == null) {
             product = new VendorProduct();
             product.setProductCode(productCode);
+            created = true;
         }
 
         product.setVendor(vendor);
@@ -239,7 +260,7 @@ public class CatalogImportAsyncService {
             product.setProductCode(productCode);
         }
 
-        return vendorProductRepository.save(product);
+        return new UpsertResult(vendorProductRepository.save(product), created);
     }
 
     /**
