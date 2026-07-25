@@ -2,10 +2,8 @@ package com.example.esti.service;
 
 import com.example.esti.dto.ProposalTemplateRequest;
 import com.example.esti.dto.ProposalTemplateResponse;
-import com.example.esti.entity.ProductCatalog;
 import com.example.esti.entity.ProposalTemplate;
 import com.example.esti.entity.ProposalTemplateLine;
-import com.example.esti.repository.ProductCatalogRepository;
 import com.example.esti.repository.ProposalTemplateLineRepository;
 import com.example.esti.repository.ProposalTemplateRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,7 +21,6 @@ public class ProposalTemplateService {
 
     private final ProposalTemplateRepository templateRepo;
     private final ProposalTemplateLineRepository lineRepo;
-    private final ProductCatalogRepository catalogRepo;
     private final ObjectMapper mapper;
 
     /* CREATE */
@@ -79,8 +76,7 @@ public class ProposalTemplateService {
                 lines.stream().map(l -> {
                     ProposalTemplateResponse.Line o = new ProposalTemplateResponse.Line();
                     o.setId(l.getId());
-                    //o.setProductId(l.getProduct().getId());
-                    o.setProductId(l.getProduct() != null ? l.getProduct().getId() : null);
+                    o.setProductId(l.getProductId());
 
                     o.setVendorItemName(l.getVendorItemName());
                     o.setMainItemCode(l.getMainItemCode());
@@ -140,41 +136,30 @@ public class ProposalTemplateService {
         if (lines == null || lines.isEmpty()) return;
 
         for (ProposalTemplateRequest.Line lineReq : lines) {
-
-            ProductCatalog product = catalogRepo.findById(lineReq.getProductId())
-                    .orElseThrow(() -> new RuntimeException("Product not found"));
-
+            // ProposalLine과 동일하게 요청 값을 역정규화 스냅샷으로 저장(상품 엔티티 조회 없음)
             ProposalTemplateLine line = new ProposalTemplateLine();
             line.setTemplate(template);
-            line.setProduct(product);
-
-            line.setVendorItemName(nvl(lineReq.getVendorItemName(), product.getName()));
-            line.setMainItemCode(nvl(lineReq.getMainItemCode(), product.getModel()));
-            line.setVendorName(nvl(lineReq.getVendorName(), product.getBrand()));
-
-            line.setSpecs(product.getSpecs());
-            line.setDescription(product.getDescription());
-            line.setImageUrl(product.getImageUrl());
+            line.setProductId(lineReq.getProductId());
 
             line.setVendorCode(lineReq.getVendorCode());
             line.setVendorName(lineReq.getVendorName());
             line.setVendorItemName(lineReq.getVendorItemName());
-
+            line.setMainItemCode(lineReq.getMainItemCode());
             line.setOldItemCode(lineReq.getOldItemCode());
+
+            line.setSpecs(lineReq.getSpecs());
+            line.setDescription(lineReq.getDescription());
+            line.setImageUrl(lineReq.getImageUrl());
             line.setUnitPrice(lineReq.getUnitPrice());
             line.setRemark(lineReq.getRemark());
-            line.setArea(lineReq.getArea());
 
+            line.setArea(lineReq.getArea());
             line.setCategory(lineReq.getCategory());
             line.setDefaultQty(lineReq.getDefaultQty());
             line.setNote(lineReq.getNote());
 
             lineRepo.save(line);
         }
-    }
-
-    private String nvl(String v, String fallback) {
-        return v != null && !v.isBlank() ? v : fallback;
     }
 }
 
