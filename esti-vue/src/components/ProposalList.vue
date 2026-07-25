@@ -67,12 +67,12 @@
         <small class="text-muted">클릭하면 상세 페이지로 이동합니다.</small>
       </div>
       <div class="card-body p-0">
-        <div v-if="loading" class="p-3 text-center text-muted small">
-          로딩 중...
-        </div>
-        <div v-else-if="proposals.length === 0" class="p-3 text-center text-muted small">
-          검색 조건에 해당하는 제안서가 없습니다.
-        </div>
+        <EmptyState
+          v-if="loading || proposals.length === 0"
+          :loading="loading"
+          icon="bi-clipboard-x"
+          message="검색 조건에 해당하는 제안서가 없습니다."
+        />
         <div v-else class="table-responsive">
           <div class="table-scroll">
           <table class="table table-sm table-hover mb-0 align-middle">
@@ -182,6 +182,7 @@ import { useToast } from "@/composables/useToast"
 import { useConfirm } from "@/composables/useConfirm"
 import Pagination from "@/components/Pagination.vue";
 import StatusBadge from "@/components/common/StatusBadge.vue";
+import EmptyState from "@/components/common/EmptyState.vue";
 import { PROPOSAL_STATUS, APARTMENT_TYPES } from "@/constants/labels";
 
 const router = useRouter()

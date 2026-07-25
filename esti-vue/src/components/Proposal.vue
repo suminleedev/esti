@@ -237,14 +237,17 @@
                 <input v-model="search" class="form-control form-control-sm" placeholder="검색 (이름/모델/브랜드/규격)" />
               </div>
               <ul class="list-group list-group-flush overflow-auto" style="max-height:670px">
-                <li v-if="items.length === 0" class="p-3 text-center text-muted small">
-                  <div>등록된 제품이 없습니다.</div>
-                  <button
-                    class="btn btn-outline-primary btn-sm mt-3"
-                    type="button"
-                    @click="goExcelUpload">
-                    엑셀 업로드
-                  </button>
+                <li v-if="items.length === 0">
+                  <EmptyState icon="bi-box-seam" message="등록된 제품이 없습니다.">
+                    <template #cta>
+                      <button
+                        class="btn btn-outline-primary btn-sm"
+                        type="button"
+                        @click="goExcelUpload">
+                        엑셀 업로드
+                      </button>
+                    </template>
+                  </EmptyState>
                 </li>
                 <li
                   v-for="item in filteredItems"
@@ -486,6 +489,7 @@ import axios from 'axios'
 import noImg from '@/assets/no-image.png'
 import { BASE_URL } from '@/config/api'
 import StatusBadge from '@/components/common/StatusBadge.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { usePrompt } from '@/composables/usePrompt'
