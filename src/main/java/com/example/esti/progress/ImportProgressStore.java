@@ -13,23 +13,27 @@ public class ImportProgressStore {
 
     public String createJob() {
         String jobId = UUID.randomUUID().toString();
-        store.put(jobId, new ImportProgress(0, "대기 중", false, false));
+        store.put(jobId, new ImportProgress(0, "대기 중", false, false, null, null));
         return jobId;
     }
 
     public void update(String jobId, int percent, String message) {
-        store.put(jobId, new ImportProgress(percent, message, false, false));
+        store.put(jobId, new ImportProgress(percent, message, false, false, null, null));
     }
 
     public void done(String jobId, String message) {
-        store.put(jobId, new ImportProgress(100, message, true, false));
+        done(jobId, message, null, null);
+    }
+
+    public void done(String jobId, String message, Integer created, Integer updated) {
+        store.put(jobId, new ImportProgress(100, message, true, false, created, updated));
     }
 
     public void fail(String jobId, String message) {
-        store.put(jobId, new ImportProgress(100, message, true, true));
+        store.put(jobId, new ImportProgress(100, message, true, true, null, null));
     }
 
     public ImportProgress get(String jobId) {
-        return store.getOrDefault(jobId, new ImportProgress(0, "존재하지 않는 job", true, true));
+        return store.getOrDefault(jobId, new ImportProgress(0, "존재하지 않는 job", true, true, null, null));
     }
 }

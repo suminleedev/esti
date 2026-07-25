@@ -94,10 +94,12 @@ async function startProgressPolling(jobId) {
           return
         }
 
-        // 완료 요약 배지(G-최소): 기존 완료 메시지에서 총계(N건)를 뽑아 정돈 표시
+        // 완료 요약 배지: 총계(N건)는 메시지에서 파싱(G-최소), 신규/갱신은 구조화 필드(G-완전)
         const totalMatch = String(data.message || '').match(/(\d[\d,]*)\s*건/)
         vendorSummary.value = {
           total: totalMatch ? totalMatch[1] : null,
+          created: typeof data.created === 'number' ? data.created : null,
+          updated: typeof data.updated === 'number' ? data.updated : null,
           raw: data.message || '업로드/반영 완료',
         }
         vendorMessage.value = ''
@@ -350,7 +352,13 @@ onMounted(() => {
             <span v-if="vendorSummary.total" class="badge text-bg-success">
               총 {{ vendorSummary.total }}건
             </span>
-            <span v-else class="small text-muted">{{ vendorSummary.raw }}</span>
+            <span v-if="vendorSummary.created !== null" class="badge text-bg-primary">
+              신규 {{ vendorSummary.created }}
+            </span>
+            <span v-if="vendorSummary.updated !== null" class="badge text-bg-secondary">
+              갱신 {{ vendorSummary.updated }}
+            </span>
+            <span v-if="!vendorSummary.total" class="small text-muted">{{ vendorSummary.raw }}</span>
           </div>
         </div>
 
