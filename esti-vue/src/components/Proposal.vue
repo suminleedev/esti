@@ -23,12 +23,10 @@
         <button
           v-if="isEditMode && (isNew || isDraft)"
           class="btn btn-success btn-sm"
-          :disabled="!canDraft"
           @click="saveDraft">임시저장</button>
         <button
           v-if="(isNew || isDraft) && isEditMode"
           class="btn btn-primary btn-sm"
-          :disabled="!canSubmit"
           @click="submit">작성 완료</button>
         <button
           v-if="!isNew && isSubmitted"
@@ -96,6 +94,16 @@
     <ul class="nav nav-pills mb-3">
       <li class="nav-item" v-for="(s, i) in steps" :key="i">
         <button class="nav-link" :class="{ active: step === i }" @click="go(i)">
+          <i
+            v-if="stepStatus[i]"
+            class="bi bi-check-circle-fill me-1"
+            :class="step === i ? '' : 'text-success'"
+          ></i>
+          <i
+            v-else
+            class="bi bi-circle me-1"
+            :class="step === i ? '' : 'text-danger'"
+          ></i>
           {{ s }}
         </button>
       </li>
@@ -110,7 +118,7 @@
           <div class="row g-3">
             <div class="col-md-6">
               <label class="form-label">현장명 *</label>
-              <input v-model.trim="form.projectName" class="form-control" placeholder="예) 신안 XX아파트 위생기구 납품" />
+              <input ref="projectNameRef" v-model.trim="form.projectName" class="form-control" placeholder="예) 신안 XX아파트 위생기구 납품" />
             </div>
             <div class="col-md-3">
               <label class="form-label">담당자</label>
@@ -123,14 +131,14 @@
 
             <div class="col-md-3">
               <label class="form-label">아파트 평형 *</label>
-              <select v-model="form.apartmentType" class="form-select">
+              <select ref="apartmentTypeRef" v-model="form.apartmentType" class="form-select">
                 <option value="">선택하세요</option>
                 <option v-for="t in APARTMENT_TYPES" :key="t" :value="t">{{ t }}</option>
               </select>
             </div>
             <div class="col-md-3">
               <label class="form-label">세대수 *</label>
-              <input v-model.number="form.households" type="number" min="1" class="form-control" placeholder="예) 240" />
+              <input ref="householdsRef" v-model.number="form.households" type="number" min="1" class="form-control" placeholder="예) 240" />
             </div>
             <div class="col-md-6">
               <label class="form-label">비고</label>
@@ -139,7 +147,7 @@
           </div>
 
           <div class="text-end mt-3">
-            <button class="btn btn-primary" :disabled="!validStep1" @click="next">다음</button>
+            <button class="btn btn-primary" @click="goNext">다음</button>
           </div>
         </div><!-- /STEP 1 -->
 
@@ -204,7 +212,7 @@
 
           <div class="text-end mt-3">
             <button class="btn btn-secondary me-2" @click="prev">이전</button>
-            <button class="btn btn-primary" :disabled="!validStep2" @click="next">다음</button>
+            <button class="btn btn-primary" @click="goNext">다음</button>
           </div>
         </div><!-- /STEP 2 -->
 
@@ -438,15 +446,14 @@
                 <div class="small text-muted">
                   필수유형 충족:
                   <span :class="missingRequired.length ? 'text-danger' : 'text-success'">
-          {{ missingRequired.length ? '미완료' : '완료' }}
-        </span>
+                    {{ missingRequired.length ? `미충족: ${missingRequired.join(', ')}` : '완료' }}
+                  </span>
                 </div>
                 <div>
                   <button class="btn btn-secondary btn-sm me-2" @click="prev">이전</button>
                   <button
                     class="btn btn-success btn-sm"
                     v-if="isEditMode && (isNew || isDraft)"
-                    :disabled="!canSubmit"
                     @click="submit"
                   >
                     작성 완료
@@ -465,16 +472,23 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import noImg from '@/assets/no-image.png'
 import { BASE_URL } from '@/config/api'
 import StatusBadge from '@/components/common/StatusBadge.vue'
+import { useToast } from '@/composables/useToast'
 import { APARTMENT_TYPES, AREAS, CATEGORIES } from '@/constants/labels'
 
 const route = useRoute()
 const router = useRouter()
+const toast = useToast()
+
+/* ====== STEP1 필드 refs (검증 실패 시 포커스 이동용) ====== */
+const projectNameRef = ref(null)
+const apartmentTypeRef = ref(null)
+const householdsRef = ref(null)
 
 /* ====== 라우트 / 모드 (URL 파라미터) ====== */
 const proposalId = computed(() => route.params.id)
@@ -745,6 +759,59 @@ const canSubmit = computed(() =>
   validStep1.value && validStep2.value && missingRequired.value.length === 0 && lines.length > 0
 )
 
+/* STEP3(품목) 표시용 유효성 — 규칙은 canSubmit과 동일, 아이콘 표시에만 사용 */
+const validStep3 = computed(() => missingRequired.value.length === 0 && lines.length > 0)
+
+/* 스텝 탭 완료 상태(✓/미완료) — 표시 전용 */
+const stepStatus = computed(() => [validStep1.value, validStep2.value, validStep3.value])
+
+/* ====== 검증 안내(조용한 disable 대신 클릭 시 부족 항목 안내) ====== */
+// STEP1 부족 항목 안내 + 첫 미충족 필드 포커스
+function warnStep1() {
+  const missing = []
+  if (!form.projectName) missing.push('현장명')
+  if (!form.apartmentType) missing.push('평형')
+  if (!(Number(form.households) > 0)) missing.push('세대수')
+  toast.error(`다음 항목을 입력하세요: ${missing.join(', ')}`)
+  step.value = 0
+  nextTick(() => {
+    if (!form.projectName) projectNameRef.value?.focus()
+    else if (!form.apartmentType) apartmentTypeRef.value?.focus()
+    else householdsRef.value?.focus()
+  })
+}
+
+// STEP2 부족 항목 안내
+function warnStep2() {
+  const missing = []
+  if (!form.apartmentType) missing.push('평형')
+  if (form.areas.length === 0) missing.push('적용 부위')
+  if (form.requiredCategories.length === 0) missing.push('필수 위생기구 유형')
+  step.value = 1
+  toast.error(`다음 항목을 선택하세요: ${missing.join(', ')}`)
+}
+
+// '다음' 버튼: 활성 유지, 클릭 시 현재 스텝 검증 → 통과 시에만 진행
+function goNext() {
+  if (step.value === 0 && !validStep1.value) return warnStep1()
+  if (step.value === 1 && !validStep2.value) return warnStep2()
+  next()
+}
+
+// 저장/제출 실패 시 부족한 스텝으로 이동 + 안내
+function warnSubmit() {
+  if (!validStep1.value) return warnStep1()
+  if (!validStep2.value) return warnStep2()
+  if (lines.length === 0) {
+    step.value = 2
+    return toast.error('제안 항목을 최소 1개 이상 추가하세요.')
+  }
+  if (missingRequired.value.length > 0) {
+    step.value = 2
+    return toast.error(`미충족 유형: ${missingRequired.value.join(', ')}`)
+  }
+}
+
 /* 임시저장 최소 충족 검증 */
 const canDraft = computed(() => {
   // 임시저장은 정말 최소만: 예) 현장명만 있으면 OK
@@ -932,7 +999,9 @@ function buildPayload() {
 /* ====== 제안서 임시 저장 ====== */
 async function saveDraft () {
   if (!canDraft.value) {
-    alert('현장명은 최소로 입력해야 임시저장할 수 있어요.')
+    toast.error('현장명을 입력해야 임시저장할 수 있어요.')
+    step.value = 0
+    nextTick(() => projectNameRef.value?.focus())
     return
   }
 
@@ -966,7 +1035,7 @@ async function saveDraft () {
 /* ====== 제안서 저장 ====== */
 async function submit() {
   if (!canSubmit.value) {
-    alert('필수 항목/필수 유형 충족 후 제출할 수 있어요.')
+    warnSubmit()
     return
   }
 
