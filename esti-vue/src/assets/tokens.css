@@ -1,4 +1,10 @@
 /* esti 디자인 토큰 — 단일 출처. 하드코딩 값 발견 시 이 파일로 흡수한다. */
 :root {
   --esti-header-height: 56px;
+
+  /* 목록/스크롤 영역 높이 — 매직넘버 흡수(M-1). 값 자체는 기존과 동일하게 유지하고
+     화면들이 이 토큰을 참조하도록 수렴. (창 높이 반응형 calc 전환은 레이아웃 재구성 필요 → 후속) */
+  --esti-catalog-scroll-height: 480px;   /* 카탈로그 목록 스크롤 (구 520/480 중복 → 480 통일) */
+  --esti-proposal-scroll-height: 670px;  /* 제안서 카탈로그/제안 항목 목록 스크롤 */
+  --esti-list-card-height: 64vh;         /* 제안서 목록 카드 높이 */
 }
