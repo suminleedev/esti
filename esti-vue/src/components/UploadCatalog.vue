@@ -5,6 +5,7 @@ import axios from 'axios'
 
 import { usePagination } from "@/composables/usePagination"
 import Pagination from "@/components/Pagination.vue";
+import EmptyState from "@/components/common/EmptyState.vue"
 import { useToast } from "@/composables/useToast"
 import { useConfirm } from "@/composables/useConfirm"
 
@@ -435,14 +436,10 @@ onMounted(() => {
                   </td>
                 </template>
               </tr>
-              <tr v-if="loading && vendorCatalogs.length === 0">
-                <td colspan="11" class="text-center text-muted py-4">
-                  <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                  불러오는 중...
+              <tr v-if="vendorCatalogs.length === 0">
+                <td colspan="11" class="p-0">
+                  <EmptyState :loading="loading" icon="bi-box-seam" message="등록된 제품이 없습니다" />
                 </td>
-              </tr>
-              <tr v-else-if="!loading && vendorCatalogs.length === 0">
-                <td colspan="11" class="text-center text-muted py-4">등록된 제품이 없습니다</td>
               </tr>
               </tbody>
             </table>
