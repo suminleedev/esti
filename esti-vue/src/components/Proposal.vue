@@ -109,9 +109,20 @@
       </li>
     </ul>
 
-    <!-- 하단 상세 영역 읽기 모드 반투명 오버레이 적용-->
+    <!-- 읽기 전용 안내 배너 -->
+    <div
+      v-if="!isNew && !isEditMode"
+      class="alert alert-secondary d-flex align-items-center py-2 small mb-3"
+      role="status"
+    >
+      <i class="bi bi-lock-fill me-2"></i>
+      <span v-if="isDraft">읽기 전용입니다. 수정하려면 상단 <strong>[수정]</strong> 버튼을 누르세요.</span>
+      <span v-else>읽기 전용 제안서입니다. 수정하려면 상단 <strong>[복사]</strong>로 새 초안을 만드세요.</span>
+    </div>
+
+    <!-- 하단 상세 영역: 읽기 모드에서는 fieldset disabled로 실제 비활성화(키보드 우회 불가) -->
     <div class="detail-content-wrapper">
-      <div class="detail-content" :class="{ 'view-only': !isEditMode }">
+      <fieldset class="detail-content border-0 p-0 m-0" :disabled="!isEditMode">
         <!-- STEP 1: 기본 정보 -->
         <div v-if="step === 0" class="card p-3">
           <h5 class="mb-3">현장 기본 정보</h5>
@@ -463,11 +474,8 @@
             </div>
           </div>
         </div> <!-- /STEP 3 -->
-
-        <!-- 클릭 이벤트 차단 레이어 설정 -->
-        <div v-if="!isEditMode" class="detail-overlay"></div>
-      </div>
-    </div><!-- 하단 상세 영역 읽기 모드 반투명 오버레이 적용 끝 -->
+      </fieldset>
+    </div><!-- 하단 상세 영역 끝 -->
   </div>
 </template>
 
@@ -1215,19 +1223,12 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* 읽기 모드 반투명 오버레이 */
-.detail-content-wrapper {   /* 오버레이 기준 위치 */
-  position: relative;
-}
-.detail-content.view-only { /* 화면 불투명도 */
-  opacity: 0.85;
-}
-.detail-overlay {           /* 클릭 이벤트 막기 */
-  position: absolute; /* 오버레이를 위에 */
-  inset: 0; /* 부모 영역 전체 덮기 */
-  background: rgba(255, 255, 255, 0.15);
-  z-index: 10; /* overlay를 위에 배치 */
-  /*cursor: not-allowed; // 클릭 불가 표시 */
+/* fieldset을 레이아웃 컨테이너로만 사용(기본 테두리/여백 제거) */
+.detail-content {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-inline-size: auto; /* fieldset 기본 min-width 제거로 flex/grid 레이아웃 유지 */
 }
 
 /* 제품 상세 이미지 표시 */
