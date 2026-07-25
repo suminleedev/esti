@@ -327,7 +327,7 @@ onMounted(() => {
 <style scoped>
 /* 화면에 맞게 높이 조절 */
 .list-card {
-  height: 64vh;           /* 또는 600px 같은 고정값 */
+  height: var(--esti-list-card-height);
   display: flex;
   flex-direction: column;
 }

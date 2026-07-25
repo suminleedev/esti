@@ -22,7 +22,7 @@
         <!-- 임시저장/작성 완료/발송 확정 -->
         <button
           v-if="isEditMode && (isNew || isDraft)"
-          class="btn btn-success btn-sm"
+          class="btn btn-outline-secondary btn-sm"
           @click="saveDraft">임시저장</button>
         <button
           v-if="(isNew || isDraft) && isEditMode"
@@ -44,7 +44,7 @@
           class="btn btn-outline-secondary btn-sm"
           @click="copyToDraft">복사</button>
         <!-- 목록 -->
-        <button class="btn btn-outline-success btn-sm" @click="goList">
+        <button class="btn btn-outline-secondary btn-sm" @click="goList">
           목록
         </button>
       </div>
@@ -222,7 +222,7 @@
           </div>
 
           <div class="text-end mt-3">
-            <button class="btn btn-secondary me-2" @click="prev">이전</button>
+            <button class="btn btn-outline-secondary me-2" @click="prev">이전</button>
             <button class="btn btn-primary" @click="goNext">다음</button>
           </div>
         </div><!-- /STEP 2 -->
@@ -236,7 +236,7 @@
                 <strong>제품 카탈로그</strong>
                 <input v-model="search" class="form-control form-control-sm" placeholder="검색 (이름/모델/브랜드/규격)" />
               </div>
-              <ul class="list-group list-group-flush overflow-auto" style="max-height:670px">
+              <ul class="list-group list-group-flush overflow-auto" style="max-height: var(--esti-proposal-scroll-height)">
                 <li v-if="items.length === 0">
                   <EmptyState icon="bi-box-seam" message="등록된 제품이 없습니다.">
                     <template #cta>
@@ -375,7 +375,7 @@
                   아직 항목이 없습니다.
                 </div>
 
-                <div v-else class="flex-grow-1 overflow-auto" style="max-height:670px;">
+                <div v-else class="flex-grow-1 overflow-auto" style="max-height: var(--esti-proposal-scroll-height);">
                   <table class="table table-sm table-bordered mb-0 align-middle">
                     <thead class="table-light">
                     <tr>
@@ -464,9 +464,9 @@
                   </span>
                 </div>
                 <div>
-                  <button class="btn btn-secondary btn-sm me-2" @click="prev">이전</button>
+                  <button class="btn btn-outline-secondary btn-sm me-2" @click="prev">이전</button>
                   <button
-                    class="btn btn-success btn-sm"
+                    class="btn btn-primary btn-sm"
                     v-if="isEditMode && (isNew || isDraft)"
                     @click="submit"
                   >

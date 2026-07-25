@@ -469,8 +469,9 @@ onMounted(() => {
 <style scoped>
 /** 테이블 내 스크롤 영역 **/
 .table-scroll {
-  max-height: 520px;   /* 원하는 높이로 조절 */
+  max-height: var(--esti-catalog-scroll-height);
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 /* 헤더 고정(선택) */
@@ -478,13 +479,6 @@ onMounted(() => {
   position: sticky;
   top: 0;
   z-index: 1;
-}
-
-/** 컬럼 너비 고정 */
-.table-scroll{
-  max-height: 480px;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
 }
 
 .table-scroll table{
