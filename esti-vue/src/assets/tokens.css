@@ -2,9 +2,11 @@
 :root {
   --esti-header-height: 56px;
 
-  /* 목록/스크롤 영역 높이 — 매직넘버 흡수(M-1). 값 자체는 기존과 동일하게 유지하고
-     화면들이 이 토큰을 참조하도록 수렴. (창 높이 반응형 calc 전환은 레이아웃 재구성 필요 → 후속) */
-  --esti-catalog-scroll-height: 480px;   /* 카탈로그 목록 스크롤 (구 520/480 중복 → 480 통일) */
-  --esti-proposal-scroll-height: 670px;  /* 제안서 카탈로그/제안 항목 목록 스크롤 */
-  --esti-list-card-height: 64vh;         /* 제안서 목록 카드 높이 */
+  /* 목록/스크롤 영역 높이 (M-1 매직넘버 흡수 + 창 높이 반응형).
+     max(기준값, calc(100vh - offset)): 작은 화면에선 기준값을 지켜 회귀를 막고,
+     큰 화면에선 뷰포트에 맞춰 늘어난다. offset은 기준 뷰포트(≈768px)에서
+     기준값과 교차하도록 튜닝(카탈로그 768-480=288 / 제안서 768-670=98). */
+  --esti-catalog-scroll-height: max(480px, calc(100vh - 288px));   /* 카탈로그 목록 스크롤 */
+  --esti-proposal-scroll-height: max(670px, calc(100vh - 98px));   /* 제안서 카탈로그/제안 항목 목록 스크롤 */
+  --esti-list-card-height: 64vh;                                   /* 제안서 목록 카드 높이(이미 뷰포트 반응형) */
 }
