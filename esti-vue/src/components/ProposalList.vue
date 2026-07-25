@@ -26,7 +26,7 @@
               v-model="filters.keyword"
               type="text"
               class="form-control form-control-sm"
-              placeholder="예) 아메리칸스탠다드, 이누스, 홍길동"
+              placeholder="예) 신안 XX아파트, 홍길동"
             />
           </div>
           <div class="col-md-3">
@@ -52,11 +52,8 @@
             </select>
           </div>
           <div class="col-md-2 text-end">
-            <button class="btn btn-outline-secondary btn-sm me-2" @click="resetFilters">
+            <button class="btn btn-outline-secondary btn-sm" @click="resetFilters">
               초기화
-            </button>
-            <button class="btn btn-outline-primary btn-sm" @click="reload">
-              새로고침
             </button>
           </div>
         </div>
@@ -66,14 +63,14 @@
     <!-- List -->
     <div class="card list-card">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <span>제안서 {{ filteredProposals.length }}건</span>
+        <span>제안서 {{ totalElements }}건</span>
         <small class="text-muted">클릭하면 상세 페이지로 이동합니다.</small>
       </div>
       <div class="card-body p-0">
         <div v-if="loading" class="p-3 text-center text-muted small">
           로딩 중...
         </div>
-        <div v-else-if="filteredProposals.length === 0" class="p-3 text-center text-muted small">
+        <div v-else-if="proposals.length === 0" class="p-3 text-center text-muted small">
           검색 조건에 해당하는 제안서가 없습니다.
         </div>
         <div v-else class="table-responsive">
@@ -94,7 +91,7 @@
             </thead>
             <tbody>
             <tr
-              v-for="p in filteredProposals"
+              v-for="p in proposals"
               :key="p.id"
               @click="goDetail(p)"
               style="cursor: pointer"
@@ -176,16 +173,20 @@
 </template>
 
 <script setup>
-import {ref, computed, onMounted, watch} from 'vue'
+import {ref, onMounted, watch} from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 
 import { usePagination } from "@/composables/usePagination"
+import { useToast } from "@/composables/useToast"
+import { useConfirm } from "@/composables/useConfirm"
 import Pagination from "@/components/Pagination.vue";
 import StatusBadge from "@/components/common/StatusBadge.vue";
 import { PROPOSAL_STATUS, APARTMENT_TYPES } from "@/constants/labels";
 
 const router = useRouter()
+const toast = useToast()
+const { confirm } = useConfirm()
 
 const loading = ref(false)
 const proposals = ref([])
@@ -225,17 +226,13 @@ async function loadProposals () {
     page.value = res.data?.number ?? page.value // 서버 보정 반영
   } catch (e) {
     console.error('제안서 목록 조회 실패', e)
-    alert('제안서 목록 조회 중 오류가 발생했습니다.')
+    toast.error('제안서 목록 조회 중 오류가 발생했습니다.')
     proposals.value = []
     totalPages.value = 0
     totalElements.value = 0
   } finally {
     loading.value = false
   }
-}
-
-function reload () {
-  loadProposals()
 }
 
 function resetFilters () {
@@ -249,37 +246,27 @@ function resetFilters () {
   loadProposals()
 }
 
-// 필터 바뀌면 0페이지로 리셋하고 재조회
-watch(filters, () => {
-  resetToFirst()
-  loadProposals()
-}, { deep: true })
+// 셀렉트 필터(평형·템플릿·상태)는 즉시 서버 재조회
+watch(
+  () => [filters.value.apartmentType, filters.value.templateFilter, filters.value.status],
+  () => {
+    resetToFirst()
+    loadProposals()
+  }
+)
 
-
-// 필터링 로직
-const filteredProposals = computed(() => {
-  const kw = filters.value.keyword.trim().toLowerCase()
-  const apt = filters.value.apartmentType
-  const tf = filters.value.templateFilter
-
-  return proposals.value.filter(p => {
-    // 키워드 필터: 현장명 + 담당자
-    if (kw) {
-      const target =
-        ((p.projectName || '') + ' ' + (p.manager || '')).toLowerCase()
-      if (!target.includes(kw)) return false
-    }
-
-    // 평형 필터
-    if (apt && p.apartmentType !== apt) return false
-
-    // 템플릿 기반 여부 필터
-    if (tf === 'templated' && !p.templateId) return false
-    if (tf === 'manual' && p.templateId) return false
-
-    return true
-  })
-})
+// 검색어는 300ms 디바운스 후 서버 재조회
+let keywordTimer = null
+watch(
+  () => filters.value.keyword,
+  () => {
+    if (keywordTimer) clearTimeout(keywordTimer)
+    keywordTimer = setTimeout(() => {
+      resetToFirst()
+      loadProposals()
+    }, 300)
+  }
+)
 
 // 상세 페이지 이동
 function goDetail (p) {
@@ -288,15 +275,20 @@ function goDetail (p) {
 
 // 삭제
 async function onDelete (p) {
-  if (!confirm(`제안서 #${p.id} [${p.projectName}] 를 삭제하시겠습니까?`)) return
+  const ok = await confirm({
+    title: '제안서 삭제',
+    message: `제안서 #${p.id} [${p.projectName}] 를 삭제할까요?`,
+    confirmLabel: '삭제',
+  })
+  if (!ok) return
 
   try {
     await axios.delete(`/api/proposals/${p.id}`)
     await loadProposals() // 현재 페이지 재조회
-    proposals.value = proposals.value.filter(x => x.id !== p.id)
+    toast.success('삭제되었습니다')
   } catch (e) {
     console.error('제안서 삭제 실패', e)
-    alert('제안서 삭제 중 오류가 발생했습니다.')
+    toast.error('제안서 삭제 중 오류가 발생했습니다.')
   }
 }
 
@@ -321,7 +313,7 @@ async function printProposal(id) {
     window.URL.revokeObjectURL(url)
   } catch (e) {
     console.error(e)
-    alert('엑셀 출력 중 오류가 발생했습니다.')
+    toast.error('엑셀 출력 중 오류가 발생했습니다.')
   }
 
 }
