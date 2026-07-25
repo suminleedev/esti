@@ -23,10 +23,10 @@ public class ProposalTemplateLine extends BaseEntity {
     @JoinColumn(name = "template_id", nullable = false)
     private ProposalTemplate template;
 
-    // 카탈로그 FK
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "product_id", nullable = false)
-    private ProductCatalog product;
+    // 카탈로그 상품 id (VendorProduct 기준) — ProposalLine과 동일한 역정규화 스냅샷 방식.
+    // 폐기 예정 ProductCatalog FK를 제거하고 평범한 Long 컬럼으로 보관한다.
+    @Column(name = "product_id")
+    private Long productId;
 
     // ===== 상품 스냅샷 =====
     @Column(length = 500)
