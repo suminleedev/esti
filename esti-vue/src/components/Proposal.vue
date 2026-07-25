@@ -487,11 +487,15 @@ import noImg from '@/assets/no-image.png'
 import { BASE_URL } from '@/config/api'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
+import { usePrompt } from '@/composables/usePrompt'
 import { APARTMENT_TYPES, AREAS, CATEGORIES } from '@/constants/labels'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const { confirm } = useConfirm()
+const { promptInput } = usePrompt()
 
 /* ====== STEP1 필드 refs (검증 실패 시 포커스 이동용) ====== */
 const projectNameRef = ref(null)
@@ -897,10 +901,10 @@ async function onLoadTemplate () {
 
     // UX: 바로 Step 2 또는 3으로 이동해도 좋음
     step.value = 2
-    alert('템플릿을 불러왔습니다.')
+    toast.success('템플릿을 불러왔습니다.')
   } catch (e) {
     console.error('템플릿 불러오기 실패', e)
-    alert('템플릿을 불러오지 못했습니다.')
+    toast.error('템플릿을 불러오지 못했습니다.')
   }
 }
 
@@ -938,16 +942,21 @@ function buildTemplatePayload(templateName) {
 async function onSaveTemplate () {
   // 최소한의 유효성 체크 (원하면 더 강화 가능)
   if (!validStep1.value || !validStep2.value) {
-    alert('먼저 기본 정보와 적용 부위/필수 유형을 모두 입력하세요.')
+    toast.error('먼저 기본 정보와 적용 부위/필수 유형을 모두 입력하세요.')
     return
   }
   if (lines.length === 0) {
-    alert('제안 항목이 없습니다. 최소 1개 이상 추가 후 저장하세요.')
+    toast.error('제안 항목이 없습니다. 최소 1개 이상 추가 후 저장하세요.')
     return
   }
 
   const nameDefault = form.projectName || `${form.apartmentType} 기본 구성`
-  const templateName = window.prompt('템플릿 이름을 입력하세요.', nameDefault)
+  const templateName = await promptInput({
+    title: '템플릿 저장',
+    label: '템플릿 이름',
+    placeholder: '예) 84㎡ 기본 구성',
+    defaultValue: nameDefault,
+  })
   if (!templateName) return
 
   const payload = buildTemplatePayload(templateName)
@@ -955,10 +964,10 @@ async function onSaveTemplate () {
   try {
     await axios.post('/api/proposal-templates', payload)
     await fetchTemplates()
-    alert('템플릿이 저장되었습니다.')
+    toast.success('템플릿이 저장되었습니다.')
   } catch (e) {
     console.error('템플릿 저장 실패', e)
-    alert('템플릿 저장 중 오류가 발생했습니다.')
+    toast.error('템플릿 저장 중 오류가 발생했습니다.')
   }
 }
 
@@ -1019,7 +1028,7 @@ async function saveDraft () {
     if (isNew.value) {
       // 초안 신규 생성
       const res = await axios.post('/api/proposals/drafts', payload)
-      alert(`임시저장되었습니다. (ID: ${res.data.id})`)
+      toast.success(`임시저장되었습니다. (ID: ${res.data.id})`)
 
       // 같은 컴포넌트 재사용될 수 있어서 replace 추천
       await router.replace({ name: 'proposal-detail', params: { id: res.data.id } })
@@ -1030,12 +1039,12 @@ async function saveDraft () {
     } else {
       // 이미 id가 있으면 초안 업데이트(백엔드에 맞게 PUT/PATCH)
       await axios.put(`/api/proposals/${proposalId.value}/draft`, payload)
-      alert('임시저장되었습니다.')
+      toast.success('임시저장되었습니다.')
       proposalStatus.value = 'DRAFT'
     }
   } catch (e) {
     console.error('임시저장 실패', e)
-    alert('임시저장 중 오류가 발생했습니다.')
+    toast.error('임시저장 중 오류가 발생했습니다.')
   }
 }
 
@@ -1053,7 +1062,7 @@ async function submit() {
     if (isNew.value) {
       // 신규: 생성 + 저장
       const res = await axios.post('/api/proposals/submit', payload)
-      alert(`제안서가 저장되었습니다. (ID: ${res.data.id})`)
+      toast.success(`제안서가 저장되었습니다. (ID: ${res.data.id})`)
       await router.replace({ name: 'proposal-detail', params: { id: res.data.id } })
       proposalStatus.value = res.data.status || 'SUBMITTED'
       isEditMode.value = false
@@ -1062,26 +1071,31 @@ async function submit() {
     // 기존: id 기반 제출
     const res = await axios.post(`/api/proposals/${proposalId.value}/submit`, payload)
 
-    alert('저장되었습니다.')
+    toast.success('저장되었습니다.')
     proposalStatus.value = res.data?.status || 'SUBMITTED'
     isEditMode.value = false
   } catch (e) {
     console.error('제안서 저장 실패', e)
-    alert('제안서 저장 중 오류가 발생했습니다.')
+    toast.error('제안서 저장 중 오류가 발생했습니다.')
   }
 }
 
 /* ====== 제안서 발송 확정  ====== */
 async function sendFinal() {
-  if (!confirm('전송 확정하면 최종본이 되어 수정할 수 없습니다. 진행할까요?')) return
+  const ok = await confirm({
+    title: '발송 확정',
+    message: `제안서 #${proposalId.value} [${form.projectName}] 를 발송 확정할까요? 확정하면 최종본이 되어 수정할 수 없습니다.`,
+    confirmLabel: '발송 확정',
+  })
+  if (!ok) return
 
   try {
     await axios.post(`/api/proposals/${proposalId.value}/send`)
-    alert('전송 확정되었습니다.')
+    toast.success('발송 확정되었습니다.')
     proposalStatus.value = 'SENT'
   } catch (e) {
     console.error('전송 확정 실패', e)
-    alert('전송 확정 실패')
+    toast.error('발송 확정에 실패했습니다.')
   }
 }
 
@@ -1090,31 +1104,36 @@ async function copyToDraft() {
   try {
     const res = await axios.post(`/api/proposals/${proposalId.value}/copy`)
     const newId = res.data.id
-    alert(`복사본이 생성되었습니다. (ID: ${newId})`)
+    toast.success(`복사본이 생성되었습니다. (ID: ${newId})`)
     await router.push({ name: 'proposal-detail', params: { id: newId } })
     proposalStatus.value = 'DRAFT'
     isEditMode.value = true
   } catch (e) {
     console.error('복사 실패', e)
-    alert('복사 실패')
+    toast.error('복사에 실패했습니다.')
   }
 }
 
 /* ====== 제안서 삭제 ====== */
 async function deleteProposal() {
   if (!canDelete.value) {
-    alert('전송 완료된 최종 제안서는 삭제할 수 없습니다.')
+    toast.error('전송 완료된 최종 제안서는 삭제할 수 없습니다.')
     return
   }
-  if (!confirm('정말 삭제하시겠습니까?')) return
+  const ok = await confirm({
+    title: '제안서 삭제',
+    message: `제안서 #${proposalId.value} [${form.projectName}] 를 삭제할까요?`,
+    confirmLabel: '삭제',
+  })
+  if (!ok) return
 
   try {
     await axios.delete(`/api/proposals/${proposalId.value}`)
-    alert('삭제되었습니다.')
+    toast.success('삭제되었습니다.')
     router.push({ name: 'proposal-list' })
   } catch (e) {
     console.error('제안서 삭제 실패', e)
-    alert('제안서 삭제 중 문제가 발생했습니다.')
+    toast.error('제안서 삭제 중 문제가 발생했습니다.')
   }
 }
 
@@ -1172,7 +1191,7 @@ async function loadProposal(id) {
     proposalStatus.value = p.status || 'DRAFT'
   } catch (e) {
     console.error('제안서 불러오기 실패', e)
-    alert('제안서를 불러오지 못했습니다.')
+    toast.error('제안서를 불러오지 못했습니다.')
   }
 }
 
