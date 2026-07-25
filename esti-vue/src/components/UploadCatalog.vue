@@ -27,6 +27,7 @@ const vendorUploading = ref(false)
 const vendorProgress = ref(0)
 const vendorMessage = ref('')
 const vendorError = ref('')
+const vendorSummary = ref(null) // 업로드 완료 요약 { total, raw } — G-최소(총계 배지)
 
 /** 파일 유효성 검사 */
 function onVendorFileChange(e) {
@@ -93,7 +94,13 @@ async function startProgressPolling(jobId) {
           return
         }
 
-        vendorMessage.value = data.message || '업로드/반영 완료'
+        // 완료 요약 배지(G-최소): 기존 완료 메시지에서 총계(N건)를 뽑아 정돈 표시
+        const totalMatch = String(data.message || '').match(/(\d[\d,]*)\s*건/)
+        vendorSummary.value = {
+          total: totalMatch ? totalMatch[1] : null,
+          raw: data.message || '업로드/반영 완료',
+        }
+        vendorMessage.value = ''
         vendorProgress.value = 100
 
         // 1초 정도 완료 상태 보여주고 UI 종료
@@ -121,6 +128,7 @@ async function startProgressPolling(jobId) {
 async function uploadVendorExcel() {
   vendorError.value = ''
   vendorMessage.value = ''
+  vendorSummary.value = null
 
   if (!vendorFile.value) {
     vendorError.value = '업로드할 공급사 엑셀 파일을 선택하세요.'
@@ -259,6 +267,7 @@ watch(uploadVendorCode, async () => {
   vendorProgress.value = 0
   vendorMessage.value = ''
   vendorError.value = ''
+  vendorSummary.value = null
 })
 
 // 컴포넌트 unmount 시 타이머 정리
@@ -330,6 +339,19 @@ onMounted(() => {
           <p v-if="vendorError" class="mt-2 text-danger small">
             {{ vendorError }}
           </p>
+          <!-- 업로드 완료 요약 (G-최소: 총계 배지) -->
+          <div
+            v-if="vendorSummary"
+            class="mt-2 alert alert-success d-flex align-items-center gap-2 py-2 mb-0"
+            role="status"
+          >
+            <i class="bi bi-check-circle-fill"></i>
+            <span>카탈로그 반영 완료</span>
+            <span v-if="vendorSummary.total" class="badge text-bg-success">
+              총 {{ vendorSummary.total }}건
+            </span>
+            <span v-else class="small text-muted">{{ vendorSummary.raw }}</span>
+          </div>
         </div>
 
 
