@@ -90,8 +90,8 @@
       </div>
     </div>
 
-    <!-- Step Nav -->
-    <ul class="nav nav-pills mb-3">
+    <!-- Step Nav (편집/신규 모드에서만 노출 — 읽기 모드는 요약 뷰) -->
+    <ul v-if="isNew || isEditMode" class="nav nav-pills mb-3">
       <li class="nav-item" v-for="(s, i) in steps" :key="i">
         <button class="nav-link" :class="{ active: step === i }" @click="go(i)">
           <i
@@ -120,8 +120,75 @@
       <span v-else>읽기 전용 제안서입니다. 수정하려면 상단 <strong>[복사]</strong>로 새 초안을 만드세요.</span>
     </div>
 
+    <!-- 읽기 모드: 요약 뷰 (현장 정보 + 제안 품목 + 합계). 상세 확인 시 STEP 이동 불필요 -->
+    <div v-if="!isNew && !isEditMode" class="proposal-summary">
+      <!-- 현장 정보 요약 -->
+      <div class="card mb-3">
+        <div class="card-header"><strong>현장 정보</strong></div>
+        <div class="card-body">
+          <dl class="row mb-0">
+            <dt class="col-sm-2">현장명</dt><dd class="col-sm-4">{{ form.projectName || '-' }}</dd>
+            <dt class="col-sm-2">담당자</dt><dd class="col-sm-4">{{ form.manager || '-' }}</dd>
+            <dt class="col-sm-2">평형</dt><dd class="col-sm-4">{{ form.apartmentType || '-' }}</dd>
+            <dt class="col-sm-2">세대수</dt><dd class="col-sm-4">{{ form.households ?? '-' }}</dd>
+            <dt class="col-sm-2">작성일</dt><dd class="col-sm-4">{{ date(form.date) }}</dd>
+            <dt class="col-sm-2">적용 부위</dt><dd class="col-sm-4">{{ form.areas.length ? form.areas.join(', ') : '-' }}</dd>
+            <dt class="col-sm-2">비고</dt><dd class="col-sm-10">{{ form.note || '-' }}</dd>
+          </dl>
+        </div>
+      </div>
+
+      <!-- 제안 품목 + 합계 -->
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <strong>제안 품목</strong>
+          <small class="text-muted">총 {{ lines.length }}건</small>
+        </div>
+        <div class="card-body p-0">
+          <EmptyState
+            v-if="lines.length === 0"
+            icon="bi-box-seam"
+            message="담긴 품목이 없습니다."
+          />
+          <div v-else class="table-responsive">
+            <table class="table table-sm mb-0 align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>유형</th>
+                  <th>품목</th>
+                  <th>부위</th>
+                  <th class="text-end">수량</th>
+                  <th class="text-end">마진</th>
+                  <th class="text-end">금액</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="r in lines" :key="r.uid">
+                  <td>{{ r.category }}</td>
+                  <td>
+                    {{ r.vendorItemName }}
+                    <div class="small text-muted">{{ r.mainItemCode }} · {{ r.vendorName }}</div>
+                  </td>
+                  <td>{{ r.area }}</td>
+                  <td class="text-end">{{ number(r.qty) }}</td>
+                  <td class="text-end">{{ getAppliedMarginRate(r) }}%</td>
+                  <td class="text-end">{{ won(r.finalAmount) }}</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr class="table-light fw-bold">
+                  <td colspan="5" class="text-end">합계</td>
+                  <td class="text-end">{{ won(grandTotal) }}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 하단 상세 영역: 읽기 모드에서는 fieldset disabled로 실제 비활성화(키보드 우회 불가) -->
-    <div class="detail-content-wrapper">
+    <div v-if="isNew || isEditMode" class="detail-content-wrapper">
       <fieldset class="detail-content border-0 p-0 m-0" :disabled="!isEditMode">
         <!-- STEP 1: 기본 정보 -->
         <div v-if="step === 0" class="card p-3">
@@ -190,8 +257,8 @@
                   <div class="row">
                     <div class="col-6" v-for="area in AREAS" :key="area">
                       <div class="form-check">
-                        <input class="form-check-input" type="checkbox" :value="area" v-model="form.areas" />
-                        <label class="form-check-label">{{ area }}</label>
+                        <input class="form-check-input" type="checkbox" :id="`chk-area-${area}`" :value="area" v-model="form.areas" />
+                        <label class="form-check-label" :for="`chk-area-${area}`">{{ area }}</label>
                       </div>
                     </div>
                   </div>
@@ -210,8 +277,8 @@
                   <div class="row">
                     <div class="col-12" v-for="cat in CATEGORIES" :key="cat">
                       <div class="form-check">
-                        <input class="form-check-input" type="checkbox" :value="cat" v-model="form.requiredCategories" />
-                        <label class="form-check-label">{{ cat }}</label>
+                        <input class="form-check-input" type="checkbox" :id="`chk-cat-${cat}`" :value="cat" v-model="form.requiredCategories" />
+                        <label class="form-check-label" :for="`chk-cat-${cat}`">{{ cat }}</label>
                       </div>
                     </div>
                   </div>
@@ -254,12 +321,18 @@
                   :key="item.vendorItemPriceId"
                   class="list-group-item d-flex align-items-center"
                   @click="selectCandidate(item)"
+                  @keydown.enter="selectCandidate(item)"
+                  @keydown.space.prevent="selectCandidate(item)"
+                  role="button"
+                  tabindex="0"
+                  :aria-label="`${item.productName} 선택`"
                   style="cursor:pointer"
                 >
                   <img
                     :src="item.imageUrl ? `${BASE_URL}${item.imageUrl}` : noImg"
                     class="me-3 rounded"
                     style="width:50px;height:50px;object-fit:contain"
+                    :alt="`${item.productName} 제품 이미지`"
                     @error="onImgErr($event)"
                   />
                   <div class="flex-grow-1">
@@ -267,9 +340,9 @@
                     <small class="text-muted">{{ item.mainItemCode }} · {{ item.vendorName}}</small>
                     <div class="small text-muted">{{ item.specs }}</div> <!-- 규격 -->
                   </div>
-                  <div class="text-end small text-muted">
-                    <!-- 제안서는 가격 표시 안 하거나 옵션으로 -->
-                    <span class="badge bg-light text-dark">참고가</span>
+                  <div class="text-end small flex-shrink-0">
+                    <div class="text-muted">참고가</div>
+                    <div class="fw-semibold">{{ item.unitPrice != null ? won(item.unitPrice) : '-' }}</div>
                   </div>
                 </li>
               </ul>
@@ -284,6 +357,7 @@
                   <img
                     :src="candidate.imageUrl ? `${BASE_URL}${candidate.imageUrl}` : noImg"
                     class="rounded candidate-img"
+                    :alt="candidate.productName ? `${candidate.productName} 제품 이미지` : '제품 이미지 없음'"
                     @error="onImgErr($event)"
                   />
                 </div>
@@ -295,7 +369,7 @@
                   <dl class="row mb-0 small">
                     <dt class="col-4">브랜드</dt><dd class="col-8">{{ candidate.vendorName || '-' }}</dd>
                     <dt class="col-4">규격</dt><dd class="col-8">{{ candidate.specs || '-' }}</dd>
-                    <dt class="col-4">원가</dt><dd class="col-8">{{ candidate.vendorProductId ? toNumber(candidate.unitPrice).toLocaleString() : '-' }}</dd>
+                    <dt class="col-4">원가</dt><dd class="col-8">{{ candidate.vendorProductId ? number(candidate.unitPrice) : '-' }}</dd>
                     <dt class="col-4">설명</dt><dd class="col-8">{{ candidate.description || '-' }}</dd>
                     <dt class="col-4">비고</dt><dd class="col-8">{{ candidate.remark || '-' }}</dd>
                   </dl>
@@ -379,30 +453,21 @@
                   <table class="table table-sm table-bordered mb-0 align-middle">
                     <thead class="table-light">
                     <tr>
-                      <th>유형</th>
                       <th>품목</th>
-                      <th>부위</th>
-                      <th style="width:70px">수량</th>
-                      <th style="width:120px">마진</th>
-                      <th style="width:55px"></th>
+                      <th style="width:64px">수량</th>
+                      <th style="width:116px">마진</th>
+                      <th style="width:96px" class="text-end">금액</th>
+                      <th style="width:48px"></th>
                     </tr>
                     </thead>
                     <tbody>
                     <tr v-for="(r, idx) in lines" :key="r.uid">
-                      <td>{{ r.category }}</td>
-
                       <td>
                         {{ r.vendorItemName }}
                         <div class="small text-muted">{{ r.mainItemCode }} · {{ r.vendorName }}</div>
-                        <div class="small text-muted">
-                          원가 {{ toNumber(r.catalogUnitPrice).toLocaleString() }}원
-                        </div>
-                        <div class="small fw-semibold text-primary">
-                          최종 {{ toNumber(r.finalAmount).toLocaleString() }}원
-                        </div>
+                        <div class="small text-muted">{{ r.category }} · {{ r.area }}</div>
+                        <div class="small text-muted">원가 {{ won(r.catalogUnitPrice) }}</div>
                       </td>
-
-                      <td>{{ r.area }}</td>
 
                       <td>
                         <input
@@ -447,13 +512,23 @@
                         </button>
                       </td>
 
+                      <td class="text-end fw-semibold text-primary text-nowrap">{{ won(r.finalAmount) }}</td>
+
                       <td>
-                        <button class="btn btn-sm btn-outline-danger" @click="removeLine(idx)">삭제</button>
+                        <button class="btn btn-sm btn-outline-danger" @click="removeLine(idx)" aria-label="항목 삭제" title="삭제">
+                          <i class="bi bi-trash"></i>
+                        </button>
                       </td>
                     </tr>
                     </tbody>
                   </table>
                 </div>
+              </div>
+
+              <!-- 합계 고정 표시 (스크롤 영역 밖 — 항상 노출) -->
+              <div class="d-flex justify-content-between align-items-center px-3 py-2 border-top bg-body-tertiary">
+                <span class="fw-semibold">합계 <small class="text-muted">({{ lines.length }}건)</small></span>
+                <span class="fw-bold fs-6">{{ won(grandTotal) }}</span>
               </div>
 
               <div class="card-footer d-flex justify-content-between align-items-center">
@@ -486,8 +561,9 @@
 import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
-import noImg from '@/assets/no-image.png'
+import noImg from '@/assets/no-image.svg'
 import { BASE_URL } from '@/config/api'
+import { won, number, date } from '@/utils/format'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { useToast } from '@/composables/useToast'
@@ -657,6 +733,11 @@ function getAppliedMarginRate(line) {
   }
   return toNumber(form.globalMarginRate)
 }
+
+/* 제안 품목 합계 금액 (요약 뷰 + 편집 STEP3에서 공유) */
+const grandTotal = computed(() =>
+  lines.reduce((sum, l) => sum + toNumber(l.finalAmount), 0)
+)
 
 function recalculateLine(line) {
   const base = toNumber(line.catalogUnitPrice)
@@ -1252,6 +1333,13 @@ onMounted(() => {
   padding: 0;
   margin: 0;
   min-inline-size: auto; /* fieldset 기본 min-width 제거로 flex/grid 레이아웃 유지 */
+}
+
+/* 키보드 포커스 가시화 (H-9 접근성) */
+.list-group-item[role="button"]:focus-visible {
+  outline: 2px solid var(--bs-primary);
+  outline-offset: -2px;
+  z-index: 1;
 }
 
 /* 제품 상세 이미지 표시 */

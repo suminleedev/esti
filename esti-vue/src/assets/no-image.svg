@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="이미지 없음">
+  <rect width="120" height="120" fill="#f1f3f5"/>
+  <rect x="28" y="32" width="64" height="50" rx="5" fill="none" stroke="#adb5bd" stroke-width="4"/>
+  <circle cx="46" cy="50" r="5" fill="#adb5bd"/>
+  <path d="M35 76 L54 57 L66 69 L76 59 L88 71" fill="none" stroke="#adb5bd" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+  <text x="60" y="103" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#868e96" text-anchor="middle">이미지 없음</text>
+</svg>
