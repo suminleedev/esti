@@ -340,9 +340,9 @@
                     <small class="text-muted">{{ item.mainItemCode }} · {{ item.vendorName}}</small>
                     <div class="small text-muted">{{ item.specs }}</div> <!-- 규격 -->
                   </div>
-                  <div class="text-end small text-muted">
-                    <!-- 제안서는 가격 표시 안 하거나 옵션으로 -->
-                    <span class="badge bg-light text-dark">참고가</span>
+                  <div class="text-end small flex-shrink-0">
+                    <div class="text-muted">참고가</div>
+                    <div class="fw-semibold">{{ item.unitPrice != null ? won(item.unitPrice) : '-' }}</div>
                   </div>
                 </li>
               </ul>
@@ -453,30 +453,21 @@
                   <table class="table table-sm table-bordered mb-0 align-middle">
                     <thead class="table-light">
                     <tr>
-                      <th>유형</th>
                       <th>품목</th>
-                      <th>부위</th>
-                      <th style="width:70px">수량</th>
-                      <th style="width:120px">마진</th>
-                      <th style="width:55px"></th>
+                      <th style="width:64px">수량</th>
+                      <th style="width:116px">마진</th>
+                      <th style="width:96px" class="text-end">금액</th>
+                      <th style="width:48px"></th>
                     </tr>
                     </thead>
                     <tbody>
                     <tr v-for="(r, idx) in lines" :key="r.uid">
-                      <td>{{ r.category }}</td>
-
                       <td>
                         {{ r.vendorItemName }}
                         <div class="small text-muted">{{ r.mainItemCode }} · {{ r.vendorName }}</div>
-                        <div class="small text-muted">
-                          원가 {{ won(r.catalogUnitPrice) }}
-                        </div>
-                        <div class="small fw-semibold text-primary">
-                          최종 {{ won(r.finalAmount) }}
-                        </div>
+                        <div class="small text-muted">{{ r.category }} · {{ r.area }}</div>
+                        <div class="small text-muted">원가 {{ won(r.catalogUnitPrice) }}</div>
                       </td>
-
-                      <td>{{ r.area }}</td>
 
                       <td>
                         <input
@@ -521,13 +512,23 @@
                         </button>
                       </td>
 
+                      <td class="text-end fw-semibold text-primary text-nowrap">{{ won(r.finalAmount) }}</td>
+
                       <td>
-                        <button class="btn btn-sm btn-outline-danger" @click="removeLine(idx)">삭제</button>
+                        <button class="btn btn-sm btn-outline-danger" @click="removeLine(idx)" aria-label="항목 삭제" title="삭제">
+                          <i class="bi bi-trash"></i>
+                        </button>
                       </td>
                     </tr>
                     </tbody>
                   </table>
                 </div>
+              </div>
+
+              <!-- 합계 고정 표시 (스크롤 영역 밖 — 항상 노출) -->
+              <div class="d-flex justify-content-between align-items-center px-3 py-2 border-top bg-body-tertiary">
+                <span class="fw-semibold">합계 <small class="text-muted">({{ lines.length }}건)</small></span>
+                <span class="fw-bold fs-6">{{ won(grandTotal) }}</span>
               </div>
 
               <div class="card-footer d-flex justify-content-between align-items-center">
