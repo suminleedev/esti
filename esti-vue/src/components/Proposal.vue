@@ -90,8 +90,8 @@
       </div>
     </div>
 
-    <!-- Step Nav -->
-    <ul class="nav nav-pills mb-3">
+    <!-- Step Nav (편집/신규 모드에서만 노출 — 읽기 모드는 요약 뷰) -->
+    <ul v-if="isNew || isEditMode" class="nav nav-pills mb-3">
       <li class="nav-item" v-for="(s, i) in steps" :key="i">
         <button class="nav-link" :class="{ active: step === i }" @click="go(i)">
           <i
@@ -120,8 +120,75 @@
       <span v-else>읽기 전용 제안서입니다. 수정하려면 상단 <strong>[복사]</strong>로 새 초안을 만드세요.</span>
     </div>
 
+    <!-- 읽기 모드: 요약 뷰 (현장 정보 + 제안 품목 + 합계). 상세 확인 시 STEP 이동 불필요 -->
+    <div v-if="!isNew && !isEditMode" class="proposal-summary">
+      <!-- 현장 정보 요약 -->
+      <div class="card mb-3">
+        <div class="card-header"><strong>현장 정보</strong></div>
+        <div class="card-body">
+          <dl class="row mb-0">
+            <dt class="col-sm-2">현장명</dt><dd class="col-sm-4">{{ form.projectName || '-' }}</dd>
+            <dt class="col-sm-2">담당자</dt><dd class="col-sm-4">{{ form.manager || '-' }}</dd>
+            <dt class="col-sm-2">평형</dt><dd class="col-sm-4">{{ form.apartmentType || '-' }}</dd>
+            <dt class="col-sm-2">세대수</dt><dd class="col-sm-4">{{ form.households ?? '-' }}</dd>
+            <dt class="col-sm-2">작성일</dt><dd class="col-sm-4">{{ date(form.date) }}</dd>
+            <dt class="col-sm-2">적용 부위</dt><dd class="col-sm-4">{{ form.areas.length ? form.areas.join(', ') : '-' }}</dd>
+            <dt class="col-sm-2">비고</dt><dd class="col-sm-10">{{ form.note || '-' }}</dd>
+          </dl>
+        </div>
+      </div>
+
+      <!-- 제안 품목 + 합계 -->
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <strong>제안 품목</strong>
+          <small class="text-muted">총 {{ lines.length }}건</small>
+        </div>
+        <div class="card-body p-0">
+          <EmptyState
+            v-if="lines.length === 0"
+            icon="bi-box-seam"
+            message="담긴 품목이 없습니다."
+          />
+          <div v-else class="table-responsive">
+            <table class="table table-sm mb-0 align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>유형</th>
+                  <th>품목</th>
+                  <th>부위</th>
+                  <th class="text-end">수량</th>
+                  <th class="text-end">마진</th>
+                  <th class="text-end">금액</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="r in lines" :key="r.uid">
+                  <td>{{ r.category }}</td>
+                  <td>
+                    {{ r.vendorItemName }}
+                    <div class="small text-muted">{{ r.mainItemCode }} · {{ r.vendorName }}</div>
+                  </td>
+                  <td>{{ r.area }}</td>
+                  <td class="text-end">{{ number(r.qty) }}</td>
+                  <td class="text-end">{{ getAppliedMarginRate(r) }}%</td>
+                  <td class="text-end">{{ won(r.finalAmount) }}</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr class="table-light fw-bold">
+                  <td colspan="5" class="text-end">합계</td>
+                  <td class="text-end">{{ won(grandTotal) }}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 하단 상세 영역: 읽기 모드에서는 fieldset disabled로 실제 비활성화(키보드 우회 불가) -->
-    <div class="detail-content-wrapper">
+    <div v-if="isNew || isEditMode" class="detail-content-wrapper">
       <fieldset class="detail-content border-0 p-0 m-0" :disabled="!isEditMode">
         <!-- STEP 1: 기본 정보 -->
         <div v-if="step === 0" class="card p-3">
@@ -495,7 +562,7 @@ import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import noImg from '@/assets/no-image.svg'
 import { BASE_URL } from '@/config/api'
-import { won, number } from '@/utils/format'
+import { won, number, date } from '@/utils/format'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { useToast } from '@/composables/useToast'
@@ -665,6 +732,11 @@ function getAppliedMarginRate(line) {
   }
   return toNumber(form.globalMarginRate)
 }
+
+/* 제안 품목 합계 금액 (요약 뷰 + 편집 STEP3에서 공유) */
+const grandTotal = computed(() =>
+  lines.reduce((sum, l) => sum + toNumber(l.finalAmount), 0)
+)
 
 function recalculateLine(line) {
   const base = toNumber(line.catalogUnitPrice)
