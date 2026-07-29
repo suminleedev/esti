@@ -28,12 +28,14 @@
 
 <!-- 하단 요약 -->
 <div class="text-center text-muted small mt-2" v-if="totalElements > 0">
-{{ totalElements.toLocaleString() }}건 중
-{{ (page * size + 1).toLocaleString() }} -
-{{ Math.min((page + 1) * size, totalElements).toLocaleString() }} 표시
+{{ number(totalElements) }}건 중
+{{ number(page * size + 1) }} -
+{{ number(Math.min((page + 1) * size, totalElements)) }} 표시
 </div>
 </template>
 <script setup>
+import { number } from "@/utils/format";
+
 defineProps({
   size: Number,
   page: Number,

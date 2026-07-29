@@ -106,7 +106,7 @@
               <td>{{ p.apartmentType || '-' }}</td>
               <td>{{ p.households ?? '-' }}</td>
               <td>{{ p.manager || '-' }}</td>
-              <td>{{ p.date || '-' }}</td>
+              <td>{{ date(p.date) }}</td>
               <td>
                   <span
                     v-if="p.templateId"
@@ -177,6 +177,7 @@ import {ref, onMounted, watch} from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 
+import { date } from "@/utils/format"
 import { usePagination } from "@/composables/usePagination"
 import { useToast } from "@/composables/useToast"
 import { useConfirm } from "@/composables/useConfirm"
