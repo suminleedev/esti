@@ -329,6 +329,10 @@ onMounted(() => {
                 class="progress-bar"
                 role="progressbar"
                 :style="{ width: vendorProgress + '%' }"
+                :aria-valuenow="vendorProgress"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-label="카탈로그 업로드 진행률"
               >
                 {{ vendorProgress }}%
               </div>
@@ -453,7 +457,7 @@ onMounted(() => {
                       <img
                         v-if="p.imageUrl"
                         :src="`${BASE_URL}${p.imageUrl}`"
-                        alt="상품 이미지"
+                        :alt="`${p.productName} 제품 이미지`"
                         class="product-img"
                       />
                     </div>
