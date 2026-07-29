@@ -295,7 +295,7 @@
                   <dl class="row mb-0 small">
                     <dt class="col-4">브랜드</dt><dd class="col-8">{{ candidate.vendorName || '-' }}</dd>
                     <dt class="col-4">규격</dt><dd class="col-8">{{ candidate.specs || '-' }}</dd>
-                    <dt class="col-4">원가</dt><dd class="col-8">{{ candidate.vendorProductId ? toNumber(candidate.unitPrice).toLocaleString() : '-' }}</dd>
+                    <dt class="col-4">원가</dt><dd class="col-8">{{ candidate.vendorProductId ? number(candidate.unitPrice) : '-' }}</dd>
                     <dt class="col-4">설명</dt><dd class="col-8">{{ candidate.description || '-' }}</dd>
                     <dt class="col-4">비고</dt><dd class="col-8">{{ candidate.remark || '-' }}</dd>
                   </dl>
@@ -395,10 +395,10 @@
                         {{ r.vendorItemName }}
                         <div class="small text-muted">{{ r.mainItemCode }} · {{ r.vendorName }}</div>
                         <div class="small text-muted">
-                          원가 {{ toNumber(r.catalogUnitPrice).toLocaleString() }}원
+                          원가 {{ won(r.catalogUnitPrice) }}
                         </div>
                         <div class="small fw-semibold text-primary">
-                          최종 {{ toNumber(r.finalAmount).toLocaleString() }}원
+                          최종 {{ won(r.finalAmount) }}
                         </div>
                       </td>
 
@@ -486,8 +486,9 @@
 import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
-import noImg from '@/assets/no-image.png'
+import noImg from '@/assets/no-image.svg'
 import { BASE_URL } from '@/config/api'
+import { won, number } from '@/utils/format'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { useToast } from '@/composables/useToast'
