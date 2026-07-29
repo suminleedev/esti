@@ -21,8 +21,9 @@
       <div class="card-body">
         <div class="row g-2 align-items-end">
           <div class="col-md-4">
-            <label class="form-label small mb-1">검색어 (현장명/담당자)</label>
+            <label class="form-label small mb-1" for="filter-keyword">검색어 (현장명/담당자)</label>
             <input
+              id="filter-keyword"
               v-model="filters.keyword"
               type="text"
               class="form-control form-control-sm"
@@ -30,23 +31,23 @@
             />
           </div>
           <div class="col-md-3">
-            <label class="form-label small mb-1">평형</label>
-            <select v-model="filters.apartmentType" class="form-select form-select-sm">
+            <label class="form-label small mb-1" for="filter-apartmentType">평형</label>
+            <select id="filter-apartmentType" v-model="filters.apartmentType" class="form-select form-select-sm">
               <option value="">전체</option>
               <option v-for="t in APARTMENT_TYPES" :key="t" :value="t">{{ t }}</option>
             </select>
           </div>
           <div class="col-md-3">
-            <label class="form-label small mb-1">템플릿 기반 여부</label>
-            <select v-model="filters.templateFilter" class="form-select form-select-sm">
+            <label class="form-label small mb-1" for="filter-templateFilter">템플릿 기반 여부</label>
+            <select id="filter-templateFilter" v-model="filters.templateFilter" class="form-select form-select-sm">
               <option value="">전체</option>
               <option value="templated">템플릿 기반</option>
               <option value="manual">직접 작성</option>
             </select>
           </div>
           <div class="col-md-3">
-            <label class="form-label small mb-1">상태</label>
-            <select v-model="filters.status" class="form-select form-select-sm">
+            <label class="form-label small mb-1" for="filter-status">상태</label>
+            <select id="filter-status" v-model="filters.status" class="form-select form-select-sm">
               <option value="">전체</option>
               <option v-for="(v, k) in PROPOSAL_STATUS" :key="k" :value="k">{{ v.label }}</option>
             </select>
@@ -94,6 +95,11 @@
               v-for="p in proposals"
               :key="p.id"
               @click="goDetail(p)"
+              @keydown.enter="goDetail(p)"
+              @keydown.space.prevent="goDetail(p)"
+              role="button"
+              tabindex="0"
+              :aria-label="`제안서 #${p.id} ${p.projectName} 상세 열기`"
               style="cursor: pointer"
             >
               <td class="text-muted small">#{{ p.id }}</td>
@@ -110,13 +116,13 @@
               <td>
                   <span
                     v-if="p.templateId"
-                    class="badge bg-light text-success border"
+                    class="badge bg-success-subtle text-success-emphasis border"
                   >
                     템플릿 기반
                   </span>
                 <span
                   v-else
-                  class="badge bg-light text-secondary border"
+                  class="badge bg-secondary-subtle text-secondary-emphasis border"
                 >
                     직접 작성
                   </span>
@@ -349,6 +355,12 @@ onMounted(() => {
 
 .table th, td{
   text-align: center;
+}
+
+/* 키보드 포커스 가시화 (H-9 접근성) */
+tr[role="button"]:focus-visible {
+  outline: 2px solid var(--bs-primary);
+  outline-offset: -2px;
 }
 </style>
 

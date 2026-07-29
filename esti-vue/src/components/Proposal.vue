@@ -190,8 +190,8 @@
                   <div class="row">
                     <div class="col-6" v-for="area in AREAS" :key="area">
                       <div class="form-check">
-                        <input class="form-check-input" type="checkbox" :value="area" v-model="form.areas" />
-                        <label class="form-check-label">{{ area }}</label>
+                        <input class="form-check-input" type="checkbox" :id="`chk-area-${area}`" :value="area" v-model="form.areas" />
+                        <label class="form-check-label" :for="`chk-area-${area}`">{{ area }}</label>
                       </div>
                     </div>
                   </div>
@@ -210,8 +210,8 @@
                   <div class="row">
                     <div class="col-12" v-for="cat in CATEGORIES" :key="cat">
                       <div class="form-check">
-                        <input class="form-check-input" type="checkbox" :value="cat" v-model="form.requiredCategories" />
-                        <label class="form-check-label">{{ cat }}</label>
+                        <input class="form-check-input" type="checkbox" :id="`chk-cat-${cat}`" :value="cat" v-model="form.requiredCategories" />
+                        <label class="form-check-label" :for="`chk-cat-${cat}`">{{ cat }}</label>
                       </div>
                     </div>
                   </div>
@@ -254,12 +254,18 @@
                   :key="item.vendorItemPriceId"
                   class="list-group-item d-flex align-items-center"
                   @click="selectCandidate(item)"
+                  @keydown.enter="selectCandidate(item)"
+                  @keydown.space.prevent="selectCandidate(item)"
+                  role="button"
+                  tabindex="0"
+                  :aria-label="`${item.productName} 선택`"
                   style="cursor:pointer"
                 >
                   <img
                     :src="item.imageUrl ? `${BASE_URL}${item.imageUrl}` : noImg"
                     class="me-3 rounded"
                     style="width:50px;height:50px;object-fit:contain"
+                    :alt="`${item.productName} 제품 이미지`"
                     @error="onImgErr($event)"
                   />
                   <div class="flex-grow-1">
@@ -284,6 +290,7 @@
                   <img
                     :src="candidate.imageUrl ? `${BASE_URL}${candidate.imageUrl}` : noImg"
                     class="rounded candidate-img"
+                    :alt="candidate.productName ? `${candidate.productName} 제품 이미지` : '제품 이미지 없음'"
                     @error="onImgErr($event)"
                   />
                 </div>
@@ -1253,6 +1260,13 @@ onMounted(() => {
   padding: 0;
   margin: 0;
   min-inline-size: auto; /* fieldset 기본 min-width 제거로 flex/grid 레이아웃 유지 */
+}
+
+/* 키보드 포커스 가시화 (H-9 접근성) */
+.list-group-item[role="button"]:focus-visible {
+  outline: 2px solid var(--bs-primary);
+  outline-offset: -2px;
+  z-index: 1;
 }
 
 /* 제품 상세 이미지 표시 */
