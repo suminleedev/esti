@@ -158,23 +158,23 @@
           </div>
         </div>
       </div>
-    </div>
 
-    <div class="card-footer">
-      <!-- Pagination -->
-      <Pagination
-        :page="page"
-        :size="size"
-        :totalPages="totalPages"
-        :pageNumbers="pageNumbers"
-        :blockSize="blockSize"
-        @go="goToPage"
-        @first="firstPage"
-        @last="lastPage"
-        @prevBlock="prevBlock"
-        @nextBlock="nextBlock"
-      />
+      <div class="card-footer">
+        <!-- Pagination -->
+        <Pagination
+          :page="page"
+          :size="size"
+          :totalPages="totalPages"
+          :pageNumbers="pageNumbers"
+          :blockSize="blockSize"
+          @go="goToPage"
+          @first="firstPage"
+          @last="lastPage"
+          @prevBlock="prevBlock"
+          @nextBlock="nextBlock"
+        />
       </div>
+    </div>
   </div>
 </template>
 
