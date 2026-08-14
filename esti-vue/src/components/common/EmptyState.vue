@@ -12,12 +12,13 @@ defineProps({
 <template>
   <div class="text-center text-muted py-4">
     <template v-if="loading">
-      <span
-        class="spinner-border spinner-border-sm me-2"
-        role="status"
-        aria-hidden="true"
-      ></span>
-      {{ loadingText }}
+      <span role="status">
+        <span
+          class="spinner-border spinner-border-sm me-2"
+          aria-hidden="true"
+        ></span>
+        {{ loadingText }}
+      </span>
     </template>
     <template v-else>
       <i class="bi d-block mb-2 empty-icon" :class="icon"></i>
