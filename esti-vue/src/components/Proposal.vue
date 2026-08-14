@@ -238,11 +238,11 @@
               <div class="card h-100">
                 <div class="card-header"><strong>평형 확인</strong></div>
                 <div class="card-body">
-                  <select v-model="form.apartmentType" class="form-select">
-                    <option value="">선택하세요</option>
-                    <option v-for="t in APARTMENT_TYPES" :key="t" :value="t">{{ t }}</option>
-                  </select>
-                  <div class="form-text mt-2">STEP 1에서 선택한 값과 동일하게 유지됩니다.</div>
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="fs-5 fw-semibold">{{ form.apartmentType || '-' }}</span>
+                    <i class="bi bi-lock-fill text-muted small" aria-hidden="true" title="읽기 전용"></i>
+                  </div>
+                  <div class="form-text mt-2">STEP 1에서 선택한 값입니다. 변경하려면 STEP 1로 이동하세요.</div>
                 </div>
               </div>
             </div>
