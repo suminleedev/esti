@@ -21,7 +21,7 @@ public class VendorCatalogQueryService {
     // 제안서 작성 화면 : 전체 리스트
     @Transactional(readOnly = true)
     public List<VendorCatalogView> getVendorCatalogAll() {
-        return vendorItemPriceRepository.findAll().stream()
+        return vendorItemPriceRepository.findAllForCatalogView().stream()
                 .map(VendorCatalogView::from)
                 .sorted(Comparator
                         .comparing(VendorCatalogView::categoryLarge, Comparator.nullsLast(String::compareTo))
