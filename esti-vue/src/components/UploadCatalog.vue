@@ -283,122 +283,132 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="container my-5">
-    <div class="card shadow-sm">
+  <div class="container py-4">
+    <!-- Topbar -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h2 class="mb-1">카탈로그 관리</h2>
+        <div class="text-muted small">
+          공급사 단가표를 업로드하고 제품 카탈로그를 조회·관리합니다.
+        </div>
+      </div>
+    </div>
+
+    <!-- 공급사 단가표 엑셀 업로드 -->
+    <div class="card mb-3">
+      <div class="card-header"><strong>공급사 단가표 엑셀 업로드</strong></div>
       <div class="card-body">
-        <h2 class="card-title h4 mb-4">제품 카탈로그 엑셀 업로드</h2>
-
-        <!-- 공급사 단가표 엑셀 업로드 -->
-        <div class="mt-4 p-3 border rounded bg-light">
-          <h5 class="mb-3">공급사 단가표 엑셀 업로드</h5>
-
-          <div class="row g-2 align-items-end">
-            <div class="col-md-3">
-              <label class="form-label">공급사 선택</label>
-              <select v-model="uploadVendorCode" class="form-select">
-                <option value="A">아메리칸스탠다드</option>
-                <option value="B">이누스</option>
-              </select>
-            </div>
-
-            <div class="col-md-5">
-              <label class="form-label">엑셀 파일 (.xlsx, .xls)</label>
-              <input
-                type="file"
-                class="form-control"
-                accept=".xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                @change="onVendorFileChange"
-              />
-            </div>
-
-            <div class="col-md-4 d-grid">
-              <button
-                class="btn btn-outline-primary"
-                :disabled="!vendorFile || vendorUploading"
-                @click="uploadVendorExcel"
-              >
-                {{ vendorUploading ? '공급사 엑셀 업로드 중...' : '공급사 단가표 업로드' }}
-              </button>
-            </div>
+        <div class="row g-2 align-items-end">
+          <div class="col-md-3">
+            <label class="form-label small mb-1" for="upload-vendorCode">공급사 선택</label>
+            <select id="upload-vendorCode" v-model="uploadVendorCode" class="form-select form-select-sm">
+              <option value="A">아메리칸스탠다드</option>
+              <option value="B">이누스</option>
+            </select>
           </div>
 
-          <!-- 진행률 -->
-          <div v-if="vendorJobId" class="mt-2">
-            <div class="progress">
-              <div
-                class="progress-bar"
-                role="progressbar"
-                :style="{ width: vendorProgress + '%' }"
-                :aria-valuenow="vendorProgress"
-                aria-valuemin="0"
-                aria-valuemax="100"
-                aria-label="카탈로그 업로드 진행률"
-              >
-                {{ vendorProgress }}%
-              </div>
-            </div>
+          <div class="col-md-5">
+            <label class="form-label small mb-1" for="upload-file">엑셀 파일 (.xlsx, .xls)</label>
+            <input
+              id="upload-file"
+              type="file"
+              class="form-control form-control-sm"
+              accept=".xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              @change="onVendorFileChange"
+            />
           </div>
-          <!-- 메시지 -->
-          <p v-if="vendorMessage" class="mt-2 text-success small">
-            {{ vendorMessage }}
-          </p>
-          <p v-if="vendorError" class="mt-2 text-danger small">
-            {{ vendorError }}
-          </p>
-          <!-- 업로드 완료 요약 (G-최소: 총계 배지) -->
-          <div
-            v-if="vendorSummary"
-            class="mt-2 alert alert-success d-flex align-items-center gap-2 py-2 mb-0"
-            role="status"
-          >
-            <i class="bi bi-check-circle-fill"></i>
-            <span>카탈로그 반영 완료</span>
-            <span v-if="vendorSummary.total" class="badge text-bg-success">
-              총 {{ vendorSummary.total }}건
-            </span>
-            <span v-if="vendorSummary.created !== null" class="badge text-bg-primary">
-              신규 {{ vendorSummary.created }}
-            </span>
-            <span v-if="vendorSummary.updated !== null" class="badge text-bg-secondary">
-              갱신 {{ vendorSummary.updated }}
-            </span>
-            <span v-if="!vendorSummary.total" class="small text-muted">{{ vendorSummary.raw }}</span>
+
+          <div class="col-md-4 d-grid">
+            <button
+              class="btn btn-outline-primary btn-sm"
+              :disabled="!vendorFile || vendorUploading"
+              @click="uploadVendorExcel"
+            >
+              {{ vendorUploading ? '공급사 엑셀 업로드 중...' : '공급사 단가표 업로드' }}
+            </button>
           </div>
         </div>
 
-
-
-        <!-- 카탈로그 목록 -->
-        <div class="mt-4">
-          <div class="d-flex justify-content-between align-items-center">
-            <!-- 왼쪽 -->
-            <h5 class="mb-0">카탈로그 목록</h5>
-            <!-- 오른쪽 -->
-            <div class="d-flex align-items-center gap-3">
-              <!-- 공급사 필터 -->
-              <div class="d-flex align-items-center gap-2">
-              <small class="text-muted">공급사</small>
-                <select v-model="filterVendorCode" class="form-select w-auto">
-                  <option value="">전체</option>
-                  <option value="A">아메리칸스탠다드</option>
-                  <option value="B">이누스</option>
-                </select>
-              </div>
-              <!-- 총 건수 -->
-              <small class="text-muted">총 {{ totalElements.toLocaleString() }}건</small>
-              <!-- 페이지 사이즈 -->
-              <select v-model.number="size" class="form-select form-select-sm" style="width: 90px"
-                      @change="page = 0; loadVendorCatalog()">
-                <option :value="10">10</option>
-                <option :value="20">20</option>
-                <option :value="50">50</option>
-                <option :value="100">100</option>
-              </select>
+        <!-- 진행률 -->
+        <div v-if="vendorJobId" class="mt-2">
+          <div class="progress">
+            <div
+              class="progress-bar"
+              role="progressbar"
+              :style="{ width: vendorProgress + '%' }"
+              :aria-valuenow="vendorProgress"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-label="카탈로그 업로드 진행률"
+            >
+              {{ vendorProgress }}%
             </div>
           </div>
+        </div>
+        <!-- 메시지 -->
+        <p v-if="vendorMessage" class="mt-2 mb-0 text-success small">
+          {{ vendorMessage }}
+        </p>
+        <p v-if="vendorError" class="mt-2 mb-0 text-danger small">
+          {{ vendorError }}
+        </p>
+        <!-- 업로드 완료 요약 (G-최소: 총계 배지) -->
+        <div
+          v-if="vendorSummary"
+          class="mt-2 alert alert-success d-flex align-items-center gap-2 py-2 mb-0"
+          role="status"
+        >
+          <i class="bi bi-check-circle-fill"></i>
+          <span>카탈로그 반영 완료</span>
+          <span v-if="vendorSummary.total" class="badge text-bg-success">
+            총 {{ vendorSummary.total }}건
+          </span>
+          <span v-if="vendorSummary.created !== null" class="badge text-bg-primary">
+            신규 {{ vendorSummary.created }}
+          </span>
+          <span v-if="vendorSummary.updated !== null" class="badge text-bg-secondary">
+            갱신 {{ vendorSummary.updated }}
+          </span>
+          <span v-if="!vendorSummary.total" class="small text-muted">{{ vendorSummary.raw }}</span>
+        </div>
+      </div>
+    </div>
 
-          <div class="table-scroll mt-2"><!-- 테이블 내부 스크롤 -->
-            <table class="table table-striped table-bordered mt-2 align-middle">
+    <!-- 카탈로그 목록 -->
+    <div class="card list-card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>카탈로그 {{ totalElements.toLocaleString() }}건</span>
+        <div class="d-flex align-items-center gap-3">
+          <!-- 공급사 필터 -->
+          <div class="d-flex align-items-center gap-2">
+            <label class="text-muted small mb-0" for="filter-vendorCode">공급사</label>
+            <select id="filter-vendorCode" v-model="filterVendorCode" class="form-select form-select-sm w-auto">
+              <option value="">전체</option>
+              <option value="A">아메리칸스탠다드</option>
+              <option value="B">이누스</option>
+            </select>
+          </div>
+          <!-- 페이지 사이즈 -->
+          <select v-model.number="size" class="form-select form-select-sm" style="width: 90px"
+                  aria-label="페이지당 표시 건수"
+                  @change="page = 0; loadVendorCatalog()">
+            <option :value="10">10</option>
+            <option :value="20">20</option>
+            <option :value="50">50</option>
+            <option :value="100">100</option>
+          </select>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <EmptyState
+          v-if="loading || vendorCatalogs.length === 0"
+          :loading="loading"
+          icon="bi-box-seam"
+          message="등록된 제품이 없습니다"
+        />
+        <div v-else class="table-responsive">
+          <div class="table-scroll">
+            <table class="table table-sm table-striped table-bordered mb-0 align-middle">
               <thead class="table-light">
               <tr class="text-center">
                 <th style="width:3%">#</th>
@@ -420,21 +430,21 @@ onMounted(() => {
                 <template v-if="editingProduct && editingProduct.vendorItemPriceId === p.vendorItemPriceId">
                   <!-- 수정 모드 -->
                   <td>{{ idx + 1 }}</td>
-                  <td><input v-model="editingProduct.categoryLarge" class="form-control" /></td>
-                  <td><input v-model="editingProduct.categorySmall" class="form-control" /></td>
-                  <td><input v-model="editingProduct.productName" class="form-control" /></td>
-                  <td><input v-model="editingProduct.mainItemCode" class="form-control" /></td>
+                  <td><input v-model="editingProduct.categoryLarge" class="form-control form-control-sm" /></td>
+                  <td><input v-model="editingProduct.categorySmall" class="form-control form-control-sm" /></td>
+                  <td><input v-model="editingProduct.productName" class="form-control form-control-sm" /></td>
+                  <td><input v-model="editingProduct.mainItemCode" class="form-control form-control-sm" /></td>
                   <td>{{ editingProduct.vendorName }}</td><!-- 브랜드는 공급사 공통 정보라 행 단위 수정 불가 -->
-                  <td><input v-model="editingProduct.remark" class="form-control" /></td>
+                  <td><input v-model="editingProduct.remark" class="form-control form-control-sm" /></td>
                   <td>
                     <input
                       v-model="editingProduct.unitPrice"
                       type="number"
-                      class="form-control text-end"
+                      class="form-control form-control-sm text-end"
                     />
                   </td>
-                  <td><input v-model="editingProduct.description" class="form-control" /></td>
-                  <td><input v-model="editingProduct.imageUrl" class="form-control" /></td>
+                  <td><input v-model="editingProduct.description" class="form-control form-control-sm" /></td>
+                  <td><input v-model="editingProduct.imageUrl" class="form-control form-control-sm" /></td>
                   <td class="d-flex justify-content-center align-items-center gap-1">
                     <button class="btn btn-success btn-sm" @click="saveEdit" title="저장" aria-label="저장"><i class="bi bi-check-lg"></i></button>
                     <button class="btn btn-secondary btn-sm" @click="cancelEdit" title="취소" aria-label="취소"><i class="bi bi-x-lg"></i></button>
@@ -470,61 +480,74 @@ onMounted(() => {
                   </td>
                 </template>
               </tr>
-              <tr v-if="vendorCatalogs.length === 0">
-                <td colspan="11" class="p-0">
-                  <EmptyState :loading="loading" icon="bi-box-seam" message="등록된 제품이 없습니다" />
-                </td>
-              </tr>
               </tbody>
             </table>
           </div>
-
-          <!-- Pagination -->
-          <Pagination
-            :page="page"
-            :size="size"
-            :totalPages="totalPages"
-            :totalElements="totalElements"
-            :pageNumbers="pageNumbers"
-            :blockSize="blockSize"
-            @go="goToPage"
-            @first="firstPage"
-            @last="lastPage"
-            @prevBlock="prevBlock"
-            @nextBlock="nextBlock"
-          />
-
         </div>
+      </div>
+
+      <div class="card-footer">
+        <!-- Pagination -->
+        <Pagination
+          :page="page"
+          :size="size"
+          :totalPages="totalPages"
+          :pageNumbers="pageNumbers"
+          :blockSize="blockSize"
+          @go="goToPage"
+          @first="firstPage"
+          @last="lastPage"
+          @prevBlock="prevBlock"
+          @nextBlock="nextBlock"
+        />
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+/* 화면에 맞게 높이 조절 (제안서 목록과 동일한 list-card 구조) */
+.list-card {
+  height: var(--esti-catalog-list-card-height);
+  display: flex;
+  flex-direction: column;
+}
+
+/* 카드 body가 남는 높이를 전부 차지해야 .table-scroll의 flex:1이 먹는다 */
+.list-card .card-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.list-card .table-responsive {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /** 테이블 내 스크롤 영역 **/
 .table-scroll {
-  max-height: var(--esti-catalog-scroll-height);
-  overflow-y: auto;
+  flex: 1;                /* 남는 공간 전부 */
+  overflow-y: auto;       /* 세로 스크롤 */
+  overflow-x: auto;       /* 가로 스크롤(필요시) */
   scrollbar-gutter: stable;
 }
 
-/* 헤더 고정(선택) */
+/* 테이블 헤더 고정 */
 .table-scroll thead th {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
+  background: var(--bs-table-bg);
 }
 
+/* 컬럼 11개라 폭 고정이 필요 */
 .table-scroll table{
   width: 100%;
   table-layout: fixed;
-}
-
-.table-scroll thead th{
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  background: #f8f9fa;
 }
 
 .table td,
