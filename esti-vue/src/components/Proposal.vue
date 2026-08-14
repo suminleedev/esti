@@ -329,10 +329,12 @@
                   style="cursor:pointer"
                 >
                   <img
-                    :src="item.imageUrl ? `${BASE_URL}${item.imageUrl}` : noImg"
+                    :src="productImage(item.imageUrl)"
                     class="me-3 rounded"
                     style="width:50px;height:50px;object-fit:contain"
                     :alt="`${item.productName} 제품 이미지`"
+                    loading="lazy"
+                    decoding="async"
                     @error="onImgErr($event)"
                   />
                   <div class="flex-grow-1">
@@ -355,7 +357,7 @@
               <div class="card-body d-flex flex-column">
                 <div class="text-center mb-3 img-box">
                   <img
-                    :src="candidate.imageUrl ? `${BASE_URL}${candidate.imageUrl}` : noImg"
+                    :src="productImage(candidate.imageUrl)"
                     class="rounded candidate-img"
                     :alt="candidate.productName ? `${candidate.productName} 제품 이미지` : '제품 이미지 없음'"
                     @error="onImgErr($event)"
@@ -562,7 +564,7 @@ import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import noImg from '@/assets/no-image.svg'
-import { BASE_URL } from '@/config/api'
+import { productImage } from '@/utils/image'
 import { won, number, date } from '@/utils/format'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
