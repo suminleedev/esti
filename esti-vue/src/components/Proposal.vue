@@ -459,6 +459,7 @@
                       <th style="width:64px">수량</th>
                       <th style="width:116px">마진</th>
                       <th style="width:96px" class="text-end">금액</th>
+                      <th style="width:40px"></th>
                       <th style="width:48px"></th>
                     </tr>
                     </thead>
@@ -515,6 +516,31 @@
                       </td>
 
                       <td class="text-end fw-semibold text-primary text-nowrap">{{ won(r.finalAmount) }}</td>
+
+                      <td>
+                        <div class="btn-group-vertical btn-group-sm w-100" role="group" aria-label="항목 순서 이동">
+                          <button
+                            class="btn btn-outline-secondary py-0"
+                            type="button"
+                            :disabled="idx === 0"
+                            @click="moveLine(idx, -1)"
+                            aria-label="위로 이동"
+                            title="위로"
+                          >
+                            <i class="bi bi-chevron-up"></i>
+                          </button>
+                          <button
+                            class="btn btn-outline-secondary py-0"
+                            type="button"
+                            :disabled="idx === lines.length - 1"
+                            @click="moveLine(idx, 1)"
+                            aria-label="아래로 이동"
+                            title="아래로"
+                          >
+                            <i class="bi bi-chevron-down"></i>
+                          </button>
+                        </div>
+                      </td>
 
                       <td>
                         <button class="btn btn-sm btn-outline-danger" @click="removeLine(idx)" aria-label="항목 삭제" title="삭제">
@@ -826,6 +852,15 @@ function addLine() {
 
 function removeLine(idx) {
   lines.splice(idx, 1)
+}
+
+/* 표시 순서 변경. buildPayload()가 lines 배열 순서를 그대로 보내고
+   서버가 그 인덱스를 sortOrder로 저장하므로 배열만 재정렬하면 된다. */
+function moveLine(idx, delta) {
+  const target = idx + delta
+  if (target < 0 || target >= lines.length) return
+  const [moved] = lines.splice(idx, 1)
+  lines.splice(target, 0, moved)
 }
 
 function enableManualMargin(row) {
