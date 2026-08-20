@@ -31,7 +31,7 @@ public class ProposalExcelService {
             throw new IllegalStateException("발송완료 상태의 제안서만 출력할 수 있습니다.");
         }
 
-        List<ProposalLine> lines = proposalLineRepository.findByProposalId(proposalId);
+        List<ProposalLine> lines = proposalLineRepository.findByProposalIdOrderBySortOrderAscIdAsc(proposalId);
 
         try (Workbook workbook = new XSSFWorkbook();
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
