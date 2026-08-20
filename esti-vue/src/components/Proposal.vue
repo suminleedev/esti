@@ -650,22 +650,66 @@ const form = reactive({
 const search = ref('')
 const items = ref([]) // /catalog/list 결과
 
+/* 카테고리 연관검색어 사전 (A-3)
+   검색어(키)를 카탈로그 categoryLarge/categorySmall 의 표제어(값)로 확장한다.
+   값은 부분일치로 비교하므로 '수전'처럼 접미어만 적어도
+   세면수전·주방수전·샤워수전·수전금구·수전부속이 모두 걸린다.
+
+   표제어는 DB의 실제 categoryLarge 값 기준이다:
+     양변기 · 소변기 · 세면기 · 비데 · 수채 · 욕조 · 샤워수전 · 세면수전 ·
+     주방수전 · 수전금구 · 수전부속 · 악세사리 · 갈라시아 · 기타
+
+   ⚠ 이 사전은 constants/labels.js 로 옮기지 않는다(Track C 소유).
+     공용화는 Phase 5 머지 후 별도로 판단한다. */
+const CATEGORY_SYNONYMS = {
+  변기: ['양변기', '소변기'],
+  좌변기: ['양변기'],
+  세면대: ['세면기'],
+  세면볼: ['세면기'],
+  샤워기: ['샤워수전'],
+  해바라기: ['샤워수전'],
+  수도: ['수전'],
+  수전: ['수전'],
+  싱크: ['주방수전'],
+  씽크: ['주방수전'],
+  악세서리: ['악세사리'],
+  액세사리: ['악세사리'],
+  액세서리: ['악세사리'],
+  소품: ['악세사리'],
+}
+
 const filteredItems = computed(() => {
   const q = search.value.trim().toLowerCase()
   if (!q) return items.value
-  return items.value.filter((i) =>
-    [
+
+  // 검색어가 사전에 걸리면 대응 카테고리 표제어도 후보로 삼는다
+  const categoryTerms = CATEGORY_SYNONYMS[q] ?? []
+
+  return items.value.filter((i) => {
+    const hit = [
       i.productName,
       i.vendorName,
       i.vendorItemName,
       i.mainItemCode,
       i.oldItemCode,
       i.remark,
-      i.specs
+      i.specs,
+      i.categoryLarge, // 카테고리 자체도 검색 대상 ('변기' → 양변기·소변기가 직접 걸린다)
+      i.categorySmall
     ]
       .filter(Boolean)
       .some((f) => String(f).toLowerCase().includes(q))
-  )
+
+    if (hit) return true
+    if (categoryTerms.length === 0) return false
+
+    // 연관검색어 확장: 이름에 그 글자가 없어도 카테고리가 맞으면 포함
+    const categories = [i.categoryLarge, i.categorySmall]
+      .filter(Boolean)
+      .map((c) => String(c).toLowerCase())
+
+    return categoryTerms.some((term) => categories.some((c) => c.includes(term)))
+  })
 })
 
 /* ====== 상세 선택 + 입력 ====== */
