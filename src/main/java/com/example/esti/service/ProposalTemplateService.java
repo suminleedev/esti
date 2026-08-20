@@ -31,6 +31,7 @@ public class ProposalTemplateService {
         template.setApartmentType(req.getApartmentType());
         template.setAreasJson(mapper.writeValueAsString(req.getAreas()));
         template.setRequiredCategoriesJson(mapper.writeValueAsString(req.getRequiredCategories()));
+        template.setGlobalMarginRate(req.getGlobalMarginRate());
         templateRepo.save(template);
 
         // Lines 저장
@@ -61,6 +62,7 @@ public class ProposalTemplateService {
         res.setId(t.getId());
         res.setTemplateName(t.getTemplateName());
         res.setApartmentType(t.getApartmentType());
+        res.setGlobalMarginRate(t.getGlobalMarginRate());
 
         try {
             res.setAreas(Arrays.asList(mapper.readValue(t.getAreasJson(), String[].class)));
@@ -116,6 +118,7 @@ public class ProposalTemplateService {
         template.setApartmentType(req.getApartmentType());
         template.setAreasJson(mapper.writeValueAsString(req.getAreas()));
         template.setRequiredCategoriesJson(mapper.writeValueAsString(req.getRequiredCategories()));
+        template.setGlobalMarginRate(req.getGlobalMarginRate());
         templateRepo.save(template);
 
         // 기존 라인 삭제 후 재생성
