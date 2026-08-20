@@ -1,72 +1,40 @@
 package com.example.esti.service;
 
-import com.example.esti.entity.Vendor;
-import com.example.esti.entity.VendorItemPrice;
-import com.example.esti.entity.VendorProduct;
-import com.example.esti.entity.VendorProductRelation;
-import com.example.esti.crawler.common.ImageDownloadService;
-import com.example.esti.excel.ExcelImageExtractor;
-import com.example.esti.excel.ExcelImageExtractor.ExtractedImage;
-import com.example.esti.excel.VendorExcelParser;
-import com.example.esti.excel.VendorExcelParserFactory;
-import com.example.esti.excel.VendorParsedItem;
-import com.example.esti.excel.VendorProductSet;
 import com.example.esti.progress.ImportProgressStore;
-import com.example.esti.repository.VendorItemPriceRepository;
-import com.example.esti.repository.VendorProductRelationRepository;
-import com.example.esti.repository.VendorProductRepository;
-import com.example.esti.repository.VendorRepository;
+import com.example.esti.service.VendorCatalogImporter.ImportResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
 
+/**
+ * 카탈로그 엑셀 업로드의 <b>비동기 오케스트레이션</b> — 진행률 표시와 임시파일 정리를 담당한다.
+ *
+ * <p>실제 적재(파싱 + DB upsert)는 {@link VendorCatalogImporter}가 자신의 트랜잭션 안에서 수행한다.
+ * 여기서 {@code @Transactional}을 붙이면 안 된다(B-1): 아래 try/catch가 트랜잭션 경계 <b>안에서</b>
+ * 예외를 삼켜 롤백 마킹이 되지 않고 부분 적재분이 커밋됐던 것이 원래 버그다.
+ * 지금은 예외가 트랜잭션(=importer 프록시 호출)을 빠져나온 <b>뒤에</b> 잡히므로 롤백이 끝난 상태다.
+ */
 @Service
 @RequiredArgsConstructor
 public class CatalogImportAsyncService {
 
-    private static final String ITEM_TYPE_SET = "SET";
-    private static final String ITEM_TYPE_PART = "PART";
-
-    private final VendorExcelParserFactory parserFactory;
-    private final VendorRepository vendorRepository;
-    private final VendorProductRepository vendorProductRepository;
-    private final VendorItemPriceRepository vendorItemPriceRepository;
-    private final VendorProductRelationRepository vendorProductRelationRepository;
+    private final VendorCatalogImporter importer;
     private final ImportProgressStore progressStore;
-    private final ExcelImageExtractor imageExtractor;
-    private final ImageDownloadService imageDownloadService;
-
-    private static String resolveVendorName(String vendorCode) {
-        return switch (vendorCode) {
-            case "A" -> "아메리칸스탠다드";
-            case "B" -> "이누스";
-            default -> vendorCode + "사";
-        };
-    }
-
-    /** 적재 결과 요약 — 총 세트 수와 대표품목 신규/갱신 수. */
-    public record ImportResult(int total, int created, int updated) {}
-
-    /** upsertVendorProduct 결과 — 저장된 제품과 신규 생성 여부. */
-    private record UpsertResult(VendorProduct product, boolean created) {}
 
     @Async
-    @Transactional
     public void importVendorCatalogAsync(String jobId, String vendorCode, Path savedPath) {
         try {
             progressStore.update(jobId, 30, "엑셀 파싱 중...");
-            ImportResult result = importVendorCatalog(vendorCode, savedPath, jobId);
+            // 프록시 경유 호출 — 트랜잭션이 이 호출 안에서 열리고 닫힌다.
+            ImportResult result = importer.importVendorCatalog(vendorCode, savedPath, jobId);
             String message = "완료! (총 " + result.total() + "건, 신규 "
                     + result.created() + " · 갱신 " + result.updated() + ")";
             progressStore.done(jobId, message, result.created(), result.updated());
         } catch (Exception e) {
+            // 여기 도달했을 때 적재분은 이미 롤백된 상태다(부분 적재 없음).
             progressStore.fail(jobId, "실패: " + e.getClass().getSimpleName() + " - " + e.getMessage());
         } finally {
             try { Files.deleteIfExists(savedPath); } catch (Exception ignore) {}
@@ -74,265 +42,12 @@ public class CatalogImportAsyncService {
     }
 
     /**
-     * 동기 적재 — 파싱 + DB upsert. 진행률 갱신/파일 정리는 하지 않는다(재사용·테스트용).
-     * 재호출 시 코드 기준 upsert로 멱등(중복 행 없음).
+     * 동기 적재 — 진행률 갱신/파일 정리는 하지 않는다(재사용·테스트용).
+     * 실패 시 예외를 그대로 던지며 해당 실행분은 전부 롤백된다.
      *
      * @return 적재한 세트(VendorProductSet) 수
      */
-    @Transactional
     public int importVendorCatalog(String vendorCode, Path savedPath) {
-        return importVendorCatalog(vendorCode, savedPath, null).total();
-    }
-
-    private ImportResult importVendorCatalog(String vendorCode, Path savedPath, String jobId) {
-        // 1) vendor 조회/생성
-        Vendor vendor = vendorRepository.findByVendorCode(vendorCode)
-                .orElseGet(() -> {
-                    Vendor v = new Vendor();
-                    v.setVendorCode(vendorCode);
-                    v.setVendorName(resolveVendorName(vendorCode));
-                    return vendorRepository.save(v);
-                });
-
-        // 2) 파싱 (대표품목 + 부속 묶음)
-        VendorExcelParser parser = parserFactory.getParser(vendorCode);
-        List<VendorProductSet> sets = parser.parseSets(savedPath);
-
-        // 2-1) 임베디드 이미지 추출 (시트 → 행 → 이미지). 없으면 빈 맵 (D15)
-        Map<String, Map<Integer, ExtractedImage>> images = imageExtractor.extract(savedPath);
-
-        int total = Math.max(sets.size(), 1);
-        if (jobId != null) progressStore.update(jobId, 35, "DB 저장 시작");
-
-        int done = 0;
-        int created = 0;
-        int updated = 0;
-        for (VendorProductSet set : sets) {
-            boolean mainCreated = saveSet(vendor, set, images);
-            // 대표품목(세트) 단위 집계 — main 있는 세트만 카운트(빈 세트는 saveSet에서 null 처리)
-            if (set.main() != null) {
-                if (mainCreated) created++; else updated++;
-            }
-            done++;
-
-            if (jobId != null) {
-                int percent = 35 + (int) Math.floor(done * 64.0 / total);
-                if (percent > 99) percent = 99;
-                if (done % 10 == 0 || done == total) {
-                    progressStore.update(jobId, percent, "DB 저장 중...");
-                }
-            }
-        }
-        return new ImportResult(sets.size(), created, updated);
-    }
-
-    /**
-     * VendorProductSet 한 건을 대표품목 + 부속 + 관계 + 가격으로 적재.
-     * @return 대표품목이 신규 생성됐으면 true(기존 갱신이면 false). 빈 세트(main 없음)는 false.
-     */
-    private boolean saveSet(Vendor vendor, VendorProductSet set,
-                            Map<String, Map<Integer, ExtractedImage>> images) {
-        VendorParsedItem mainItem = set.main();
-        if (mainItem == null) return false;
-
-        // 대표품목
-        UpsertResult mainRes = upsertVendorProduct(
-                vendor, mainItem.productCode(), mainItem.productName(),
-                set.categoryLarge(), set.categorySmall(), ITEM_TYPE_SET, mainItem.description(), mainItem.specs());
-        VendorProduct mainProduct = mainRes.product();
-
-        // 임베디드 이미지 연결 (D15) — 대표품목 행에 앵커된 그림
-        applyImage(mainProduct, set, images);
-
-        // 대표품목 가격: 세트가 우선, 없으면 본품 단가
-        BigDecimal mainPrice = set.setPrice() != null ? set.setPrice() : mainItem.unitPrice();
-        String mainRemark = mainItem.remark();
-        if (set.needsReview()) {
-            mainRemark = appendRemark(mainRemark, "검수필요");
-        }
-        // 대표품목 가격은 price_basis별로 분리 보존 — 같은 품번이 시트마다 다른 가격일 때 충돌 방지.
-        // priceBasis 기본값=categoryLarge(하위호환). 수전금구 3-시트처럼 대분류를 통합(=수전금구)하고
-        // 가격만 시트별로 나눌 때는 파서가 priceBasis를 시트명으로 지정한다(§10 S2·S3).
-        upsertPrice(vendor, mainProduct, mainItem, mainPrice, mainRemark, ITEM_TYPE_SET, set.priceBasis());
-
-        // 부속품 + 관계
-        for (VendorParsedItem part : set.parts()) {
-            // 부속 전용 소분류가 있으면 그것으로(§10 S4: 국산/OEM 출처). 없으면 세트 소분류.
-            String partCategorySmall = part.categorySmall() != null ? part.categorySmall() : set.categorySmall();
-            VendorProduct partProduct = upsertVendorProduct(
-                    vendor, part.productCode(), part.productName(),
-                    set.categoryLarge(), partCategorySmall, ITEM_TYPE_PART, part.description(), part.specs()).product();
-
-            // 공유 부속 단가는 코드당 1건 유지(D13) → priceBasis=null
-            upsertPrice(vendor, partProduct, part, part.unitPrice(), part.remark(), ITEM_TYPE_PART, null);
-            upsertRelation(mainProduct, partProduct, part.relationType());
-        }
-        return mainRes.created();
-    }
-
-    /** 대표품목 행에 앵커된 임베디드 이미지를 저장하고 imageUrl을 연결(D15). 없으면 무시. */
-    private void applyImage(VendorProduct mainProduct, VendorProductSet set,
-                            Map<String, Map<Integer, ExtractedImage>> images) {
-        if (set.imageKey() == null || images == null || images.isEmpty()) return;
-
-        // 이미지 맵은 시트명 키(ExcelImageExtractor). 대분류를 시트명에서 분리·정제하는 시트(비데/기타·갈라시아 등)도
-        // set.sheetName()으로 원본 시트명을 보존하므로 categoryLarge와 무관하게 시트명 기준으로 조회한다(§13 sheetName 분리).
-        Map<Integer, ExtractedImage> byRow = images.get(set.sheetName());
-        if (byRow == null) return;
-
-        int row;
-        try { row = Integer.parseInt(set.imageKey()); }
-        catch (NumberFormatException e) { return; }
-
-        ExtractedImage img = byRow.get(row);
-        if (img == null || img.data() == null || img.data().length == 0) return;
-
-        try {
-            String hint = (mainProduct.getVendor().getVendorCode() + "_"
-                    + (mainProduct.getProductCode() != null ? mainProduct.getProductCode() : "row" + row));
-            ImageDownloadService.DownloadResult res = imageDownloadService.saveBytes(img.data(), hint, img.ext());
-            mainProduct.setImageUrl(res.relativePath());
-            vendorProductRepository.save(mainProduct);
-        } catch (Exception e) {
-            // 이미지 실패는 적재 전체를 막지 않는다(경고만)
-            // (로깅은 상위 경고 로그 정책에 따름)
-        }
-    }
-
-    private UpsertResult upsertVendorProduct(Vendor vendor, String productCode, String productName,
-                                             String categoryLarge, String categorySmall, String itemType,
-                                             String description, String specs) {
-        VendorProduct product = null;
-
-        // 1) 코드(품번)가 있으면 코드로만 식별 — 공급사 범위 내.
-        //    (이름이 같은 부속(예: "시트","도기")이 코드만 다른 경우 2)로 넘어가면 한 행으로 잘못 병합되므로
-        //     코드가 있으면 이름 fallback을 타지 않는다.)
-        if (productCode != null) {
-            product = vendorProductRepository.findByVendorAndProductCode(vendor, productCode).orElse(null);
-        }
-        // 2) 코드가 아예 없는 항목(A사 신품번 없음 등)만 이름 + 대/소분류로 멱등 매칭
-        else if (productName != null && categoryLarge != null && categorySmall != null) {
-            product = vendorProductRepository
-                    .findAllByProductNameAndCategoryLargeAndCategorySmall(productName, categoryLarge, categorySmall)
-                    .stream()
-                    .filter(p -> p.getVendor() != null
-                            && vendor.getVendorCode().equals(p.getVendor().getVendorCode()))
-                    .findFirst()
-                    .orElse(null);
-        }
-
-        // 3) 신규
-        boolean created = false;
-        if (product == null) {
-            product = new VendorProduct();
-            product.setProductCode(productCode);
-            created = true;
-        }
-
-        product.setVendor(vendor);
-        product.setProductName(productName);
-        product.setCategoryLarge(categoryLarge);
-        product.setCategorySmall(categorySmall);
-        product.setItemType(itemType);
-        if (description != null && !description.isBlank()) product.setDescription(description);
-        if (specs != null && !specs.isBlank()) product.setSpecs(specs);
-
-        // A사 masterCode/detailCode 분리 (신품번 '-' 기준)
-        if ("A".equals(vendor.getVendorCode()) && productCode != null) {
-            String[] codes = productCode.split("-", 2);
-            product.setMasterCode(codes[0].trim());
-            product.setDetailCode(codes.length > 1 && !codes[1].isBlank() ? codes[1].trim() : null);
-        }
-        // B사 masterCode/detailCode 분리 (대표품번_부속코드 '_' 기준). 대표품목은 detail 없음.
-        else if ("B".equals(vendor.getVendorCode()) && productCode != null) {
-            int u = productCode.indexOf('_');
-            if (u > 0) {
-                product.setMasterCode(productCode.substring(0, u).trim());
-                String detail = productCode.substring(u + 1).trim();
-                product.setDetailCode(detail.isBlank() ? null : detail);
-            } else {
-                product.setMasterCode(productCode);
-                product.setDetailCode(null);
-            }
-        }
-
-        if (isBlank(product.getProductCode()) && productCode != null) {
-            product.setProductCode(productCode);
-        }
-
-        return new UpsertResult(vendorProductRepository.save(product), created);
-    }
-
-    /**
-     * 가격 upsert. {@code priceBasis}(출처 시트)가 있으면 (vendor,product,proposalCode,basis) 기준으로
-     * 분리 저장 — 같은 품번이 시트별로 다른 가격(대표품목)일 때 충돌 방지. basis=null이면 코드당 1건(D13).
-     */
-    private void upsertPrice(Vendor vendor, VendorProduct product, VendorParsedItem item,
-                            BigDecimal price, String remark, String priceType, String priceBasis) {
-        String proposalCode = item.productCode();
-
-        VendorItemPrice vip;
-        if (proposalCode != null && priceBasis != null) {
-            vip = vendorItemPriceRepository
-                    .findByVendorAndVendorProductAndProposalItemCodeAndPriceBasis(vendor, product, proposalCode, priceBasis)
-                    .orElse(null);
-        } else if (proposalCode != null) {
-            vip = vendorItemPriceRepository
-                    .findByVendorAndVendorProductAndProposalItemCodeAndPriceBasisIsNull(vendor, product, proposalCode)
-                    .orElse(null);
-        } else {
-            // 신품번 없는 항목: product 기준으로 기존 가격 재사용(멱등)
-            vip = vendorItemPriceRepository.findFirstByVendorAndVendorProduct(vendor, product).orElse(null);
-        }
-
-        if (vip == null) {
-            vip = new VendorItemPrice();
-            vip.setVendor(vendor);
-            vip.setVendorProduct(product);
-            vip.setProposalItemCode(proposalCode);
-        }
-
-        vip.setMainItemCode(item.productCode());
-        vip.setSubItemCode(item.subItemCode());
-        vip.setOldItemCode(item.oldItemCode());
-        vip.setVendorItemName(item.productName());
-        vip.setRemark(remark);
-        vip.setUnitPrice(price != null ? price : BigDecimal.ZERO);
-        vip.setPriceType(priceType);
-        vip.setPriceBasis(priceBasis);
-        vip.setCurrency("KRW");
-
-        vendorItemPriceRepository.save(vip);
-    }
-
-    private void upsertRelation(VendorProduct source, VendorProduct target, String relationType) {
-        if (source.getId() != null && source.getId().equals(target.getId())) return; // 자기 참조 방지
-
-        String rel = (relationType != null && !relationType.isBlank())
-                ? relationType
-                : VendorParsedItem.RELATION_ACCESSORY;
-        if (rel.length() > 50) rel = rel.substring(0, 50); // relation_type 컬럼 길이 방어
-
-        boolean exists = vendorProductRelationRepository
-                .findBySourceProductAndTargetProductAndRelationType(source, target, rel)
-                .isPresent();
-        if (exists) return;
-
-        vendorProductRelationRepository.save(
-                VendorProductRelation.builder()
-                        .sourceProduct(source)
-                        .targetProduct(target)
-                        .relationType(rel)
-                        .build()
-        );
-    }
-
-    private String appendRemark(String remark, String tag) {
-        if (remark == null || remark.isBlank()) return tag;
-        return remark + " | " + tag;
-    }
-
-    private boolean isBlank(String s) {
-        return s == null || s.trim().isEmpty();
+        return importer.importVendorCatalog(vendorCode, savedPath, null).total();
     }
 }
