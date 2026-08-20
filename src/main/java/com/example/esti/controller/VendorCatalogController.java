@@ -2,6 +2,7 @@ package com.example.esti.controller;
 
 import com.example.esti.dto.VendorCatalogUpdateRequest;
 import com.example.esti.dto.VendorCatalogView;
+import com.example.esti.dto.VendorProductPartView;
 import com.example.esti.progress.ImportProgress;
 import com.example.esti.progress.ImportProgressStore;
 import com.example.esti.service.CatalogImportAsyncService;
@@ -128,6 +129,23 @@ public class VendorCatalogController {
         return ResponseEntity.ok(
                 vendorCatalogQueryService.getVendorCatalogPageAll(pageable)
         );
+    }
+
+    /**
+     * 카탈로그 행(가격 라인)의 부속 구성 조회 (B-2 드릴다운)
+     * GET /api/vendor-catalog/{vendorItemPriceId}/parts
+     *
+     * <p>목록에 부속을 미리 실으면 행마다 관계 조회가 나가므로(N+1), 화면에서 행을 펼친 시점에만 부른다.
+     * 부속이 없으면 200 + 빈 배열, 가격 라인 자체가 없으면 404 — 화면이 "부속 없음"과 "조회 실패"를
+     * 구분해 표시해야 한다.
+     */
+    @GetMapping("/{vendorItemPriceId}/parts")
+    public ResponseEntity<List<VendorProductPartView>> getVendorCatalogParts(
+            @PathVariable Long vendorItemPriceId
+    ) {
+        return vendorCatalogQueryService.getParts(vendorItemPriceId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     /**
