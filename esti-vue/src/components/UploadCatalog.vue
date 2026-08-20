@@ -187,6 +187,13 @@ async function uploadVendorExcel() {
  */
 const vendorCatalogs = ref([])
 const loading = ref(false)
+
+// 부속 구성 드릴다운 상태 (B-2) — 사용은 아래 toggleParts/fetchParts
+const expandedRowId = ref(null)   // 펼쳐진 행의 vendorItemPriceId. 한 번에 한 행만 연다.
+const partsCache = ref({})        // vendorItemPriceId → 부속 배열 (같은 행 재조회 방지)
+const partsLoadingId = ref(null)
+const partsErrorId = ref(null)
+
 async function loadVendorCatalog() {
   loading.value = true
   try {
@@ -197,6 +204,11 @@ async function loadVendorCatalog() {
         sort: 'id,desc', // 서버 엔티티 필드 기준. (DTO의 catalogId로 sort하면 안 먹을 수 있음)
       }
     })
+    // 목록이 바뀌면 펼친 행과 부속 캐시를 버린다(수정·삭제 후 낡은 구성이 남지 않도록)
+    expandedRowId.value = null
+    partsCache.value = {}
+    partsErrorId.value = null
+
     vendorCatalogs.value = res.data?.content ?? []
     totalPages.value = res.data?.totalPages ?? 0
     totalElements.value = res.data?.totalElements ?? 0
@@ -253,6 +265,47 @@ async function deleteProduct(p) {
   } catch (e) {
     toast.error('삭제 실패: ' + (e?.response?.data?.message || e?.message || ''))
   }
+}
+
+/**
+ * 부속 구성 드릴다운 (B-2)
+ * 단가 셀을 누르면 해당 행 아래에 부속 목록을 펼친다.
+ * 목록을 그릴 때 미리 불러오면 행 수만큼 조회가 나가므로(N+1), 펼친 시점에만 요청한다.
+ */
+async function toggleParts(p) {
+  const id = p.vendorItemPriceId
+  if (expandedRowId.value === id) {
+    expandedRowId.value = null
+    return
+  }
+  expandedRowId.value = id
+  if (partsCache.value[id]) return
+
+  await fetchParts(id)
+}
+
+async function fetchParts(id) {
+  partsLoadingId.value = id
+  partsErrorId.value = null
+  try {
+    const res = await axios.get(`/api/vendor-catalog/${id}/parts`)
+    // 빈 배열 = 부속 없음(정상). 조회 실패와 구분해야 하므로 캐시에 넣는다.
+    partsCache.value = { ...partsCache.value, [id]: res.data ?? [] }
+  } catch (e) {
+    console.error('부속 구성 조회 실패', e)
+    partsErrorId.value = id
+  } finally {
+    partsLoadingId.value = null
+  }
+}
+
+function partsOf(id) {
+  return partsCache.value[id] ?? []
+}
+
+/** 부속 단가 합 — 세트가와 맞는지 화면에서 바로 대조하기 위한 값. */
+function partsSum(id) {
+  return partsOf(id).reduce((sum, part) => sum + (Number(part.unitPrice) || 0), 0)
 }
 
 // 공급사 바꾸면 0페이지부터 다시 조회
@@ -426,7 +479,8 @@ onMounted(() => {
               </tr>
               </thead>
               <tbody>
-              <tr v-for="(p, idx) in vendorCatalogs" :key="p.vendorItemPriceId">
+              <template v-for="(p, idx) in vendorCatalogs" :key="p.vendorItemPriceId">
+              <tr>
                 <template v-if="editingProduct && editingProduct.vendorItemPriceId === p.vendorItemPriceId">
                   <!-- 수정 모드 -->
                   <td>{{ idx + 1 }}</td>
@@ -459,7 +513,23 @@ onMounted(() => {
                   <td>{{ p.mainItemCode }}</td>
                   <td>{{ p.vendorName }}</td>
                   <td>{{ p.remark }}</td>
-                  <td class="text-end">{{ p.unitPrice?.toLocaleString() }}</td>
+                  <!-- 단가 셀 = 부속 구성 펼치기 트리거 (B-2) -->
+                  <td class="p-0">
+                    <button
+                      type="button"
+                      class="btn btn-link btn-sm w-100 d-flex justify-content-end align-items-center gap-1 px-2 parts-toggle"
+                      :aria-expanded="expandedRowId === p.vendorItemPriceId ? 'true' : 'false'"
+                      :title="`${p.productName} 부속 구성 보기`"
+                      @click="toggleParts(p)"
+                    >
+                      <span>{{ p.unitPrice?.toLocaleString() }}</span>
+                      <i
+                        class="bi"
+                        :class="expandedRowId === p.vendorItemPriceId ? 'bi-chevron-up' : 'bi-chevron-down'"
+                        aria-hidden="true"
+                      ></i>
+                    </button>
+                  </td>
 <!--                  <td>{{ p.oldItemCode }}</td>-->
                   <td>{{ p.description }}</td>
                   <td style="padding:1px;">
@@ -480,6 +550,65 @@ onMounted(() => {
                   </td>
                 </template>
               </tr>
+
+              <!-- 부속 구성 (B-2) — 단가 셀을 누른 행 아래에만 펼친다 -->
+              <tr v-if="expandedRowId === p.vendorItemPriceId" class="parts-row">
+                <td colspan="11">
+                  <div v-if="partsLoadingId === p.vendorItemPriceId" class="text-muted small py-2">
+                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    부속 구성을 불러오는 중...
+                  </div>
+
+                  <div v-else-if="partsErrorId === p.vendorItemPriceId" class="text-danger small py-2">
+                    부속 구성을 불러오지 못했습니다.
+                    <button class="btn btn-outline-danger btn-sm ms-2" @click="fetchParts(p.vendorItemPriceId)">
+                      다시 시도
+                    </button>
+                  </div>
+
+                  <div v-else-if="partsOf(p.vendorItemPriceId).length === 0" class="text-muted small py-2">
+                    부속 없음 — 단일 품목입니다.
+                  </div>
+
+                  <div v-else class="parts-panel">
+                    <table class="table table-sm table-borderless mb-0 parts-table">
+                      <thead>
+                      <tr class="text-muted small">
+                        <th style="width:18%">구분</th>
+                        <th style="width:22%">품번</th>
+                        <th>부속명</th>
+                        <th style="width:16%" class="text-end">단가</th>
+                      </tr>
+                      </thead>
+                      <tbody>
+                      <tr v-for="part in partsOf(p.vendorItemPriceId)" :key="part.vendorProductId">
+                        <td><span class="badge text-bg-light">{{ part.relationType }}</span></td>
+                        <td>{{ part.productCode ?? '-' }}</td>
+                        <td>{{ part.productName }}</td>
+                        <td class="text-end">
+                          {{ part.unitPrice != null ? Number(part.unitPrice).toLocaleString() : '-' }}
+                        </td>
+                      </tr>
+                      </tbody>
+                      <tfoot>
+                      <tr class="border-top">
+                        <td colspan="2" class="fw-semibold">부속 합계</td>
+                        <td class="text-muted small">
+                          세트가 {{ p.unitPrice?.toLocaleString() }}
+                          <span
+                            v-if="Number(p.unitPrice) !== partsSum(p.vendorItemPriceId)"
+                            class="badge text-bg-warning ms-1"
+                          >차이 {{ (partsSum(p.vendorItemPriceId) - Number(p.unitPrice)).toLocaleString() }}</span>
+                          <span v-else class="badge text-bg-success ms-1">일치</span>
+                        </td>
+                        <td class="text-end fw-semibold">{{ partsSum(p.vendorItemPriceId).toLocaleString() }}</td>
+                      </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </td>
+              </tr>
+              </template>
               </tbody>
             </table>
           </div>
@@ -555,6 +684,39 @@ onMounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 단가 셀 = 부속 펼치기 버튼. 셀 텍스트처럼 보이되 누를 수 있다는 것만 표시한다 */
+.parts-toggle {
+  text-decoration: none;
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.parts-toggle:hover {
+  text-decoration: underline;
+}
+
+/* 부속 구성 펼침 행 — 상위 테이블의 nowrap/ellipsis·고정 레이아웃을 이 행에서만 푼다 */
+.parts-row > td {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  background: var(--bs-tertiary-bg);
+  padding: 0.25rem 0.75rem;
+}
+
+.parts-table {
+  table-layout: auto;
+  background: transparent;
+}
+
+.parts-table td,
+.parts-table th {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  background: transparent;
 }
 
 /* 이미지 영역 가운데 정렬 조정 */
