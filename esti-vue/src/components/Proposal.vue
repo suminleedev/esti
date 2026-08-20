@@ -748,7 +748,10 @@ function recalculateLine(line) {
     ? toNumber(line.marginRate)
     : toNumber(form.globalMarginRate)
 
-  const calculatedUnitPrice = Math.round(base * (1 + rate / 100))
+  // 서버(ProposalService.calculateUnitPrice)와 동일한 결과가 나오도록
+  // base * (1 + rate/100) 대신 (base * (100 + rate)) / 100 로 계산한다.
+  // 전자는 1.15 같은 값이 2진 부동소수로 정확히 표현되지 않아 .5 경계에서 1원 어긋난다.
+  const calculatedUnitPrice = Math.round((base * (100 + rate)) / 100)
 
   line.unitPrice = calculatedUnitPrice
   line.finalAmount = calculatedUnitPrice * toNumber(line.qty)
