@@ -75,5 +75,9 @@ public class ProposalLine extends BaseEntity {
 
     @Column(length = 200)
     private String note;
+
+    /** 제안서 내 표시 순서(0-based). 기존 행은 null이며 조회 시 id 순으로 폴백된다. */
+    @Column(name = "sort_order")
+    private Integer sortOrder;
 }
 

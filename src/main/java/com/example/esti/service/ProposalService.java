@@ -192,7 +192,8 @@ public class ProposalService {
         proposalRepo.save(p);
 
         // lines 복사
-        List<ProposalLine> srcLines = lineRepo.findByProposalId(id);
+        int copyOrder = 0;
+        List<ProposalLine> srcLines = lineRepo.findByProposalIdOrderBySortOrderAscIdAsc(id);
         for (ProposalLine l : srcLines) {
             ProposalLine nl = new ProposalLine();
             nl.setProposal(p);
@@ -217,6 +218,8 @@ public class ProposalService {
             nl.setCategory(l.getCategory());
             nl.setQty(l.getQty());
             nl.setNote(l.getNote());
+            // 원본이 legacy(sortOrder=null)여도 조회 순서(=id 순)대로 번호를 새로 매긴다
+            nl.setSortOrder(copyOrder++);
             lineRepo.save(nl);
         }
 
@@ -248,9 +251,13 @@ public class ProposalService {
 
         if (req.getLines() == null || req.getLines().isEmpty()) return;
 
+        // 요청 배열의 순서가 곧 표시 순서다. 인덱스를 sortOrder(0-based)로 저장한다.
+        int sortOrder = 0;
+
         for (ProposalRequest.Line lineReq : req.getLines()) {
             ProposalLine line = new ProposalLine();
             line.setProposal(p);
+            line.setSortOrder(sortOrder++);
 
             line.setProductId(lineReq.getProductId());
             line.setProductName(lineReq.getProductName());
@@ -356,7 +363,7 @@ public class ProposalService {
             res.setRequiredCategories(List.of());
         }
 
-        List<ProposalLine> lines = lineRepo.findByProposalId(id);
+        List<ProposalLine> lines = lineRepo.findByProposalIdOrderBySortOrderAscIdAsc(id);
 
         res.setLines(lines.stream().map(l -> {
             ProposalResponse.Line o = new ProposalResponse.Line();
@@ -383,6 +390,7 @@ public class ProposalService {
             o.setCategory(l.getCategory());
             o.setQty(l.getQty());
             o.setNote(l.getNote());
+            o.setSortOrder(l.getSortOrder());
             return o;
         }).collect(Collectors.toList()));
 

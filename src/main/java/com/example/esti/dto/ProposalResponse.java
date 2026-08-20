@@ -53,6 +53,8 @@ public class ProposalResponse {
         private String category;
         private Integer qty;
         private String note;
+
+        private Integer sortOrder;   // 제안서 내 표시 순서(0-based)
     }
 }
 
