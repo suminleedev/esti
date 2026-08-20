@@ -54,7 +54,7 @@ public class ProposalExcelService {
             Row headerRow = sheet.createRow(rowIdx++);
             String[] headers = {
                     "No", "공간", "카테고리", "제품명", "업체코드", "업체명", "업체품명",
-                    "메인품목코드", "구품목코드", "카탈로그단가", "마진율", "최종단가",
+                    "메인품목코드", "구품목코드", "최종단가",
                     "수량", "금액", "비고", "이미지URL"
             };
 
@@ -81,33 +81,33 @@ public class ProposalExcelService {
                 createCell(row, 7, nvl(line.getMainItemCode()), textStyle);
                 createCell(row, 8, nvl(line.getOldItemCode()), textStyle);
 
-                createCell(row, 9, defaultBigDecimal(line.getCatalogUnitPrice()).doubleValue(), numberStyle);
-                createCell(row, 10, defaultBigDecimal(line.getMarginRate()).doubleValue(), numberStyle);
-                createCell(row, 11, defaultBigDecimal(line.getUnitPrice()).doubleValue(), numberStyle);
+                // 사입단가(catalogUnitPrice)·마진율(marginRate)은 고객 발송용 출력에서 제외한다.
+                // 화면(제안서 상세)에서는 계속 보이며, 엑셀에만 제안단가(unitPrice)를 싣는다.
+                createCell(row, 9, defaultBigDecimal(line.getUnitPrice()).doubleValue(), numberStyle);
 
-                createCell(row, 12, line.getQty() != null ? line.getQty() : 0, numberStyle);
+                createCell(row, 10, line.getQty() != null ? line.getQty() : 0, numberStyle);
 
                 BigDecimal amount = line.getAmount() != null
                         ? line.getAmount()
                         : calculateAmount(line.getUnitPrice(), line.getQty());
 
-                createCell(row, 13, amount.doubleValue(), numberStyle);
+                createCell(row, 11, amount.doubleValue(), numberStyle);
                 // 내부 비고(카탈로그 remark: 단종/검수필요 등)는 출력하지 않는다 — 고객용 비고는 사용자 입력 note만.
-                createCell(row, 14, nvl(line.getNote()), textStyle);
-                createCell(row, 15, nvl(line.getImageUrl()), textStyle);
+                createCell(row, 12, nvl(line.getNote()), textStyle);
+                createCell(row, 13, nvl(line.getImageUrl()), textStyle);
 
                 totalAmount = totalAmount.add(amount);
             }
 
             // ===== 합계 =====
             Row totalRow = sheet.createRow(rowIdx);
-            createCell(totalRow, 12, "합계", headerStyle);
-            createCell(totalRow, 13, totalAmount.doubleValue(), numberStyle);
+            createCell(totalRow, 10, "합계", headerStyle);
+            createCell(totalRow, 11, totalAmount.doubleValue(), numberStyle);
 
             // 컬럼 너비
             int[] widths = {
                     3000, 5000, 5000, 8000, 5000, 6000, 7000,
-                    5000, 5000, 4500, 4000, 4500,
+                    5000, 5000, 4500,
                     3000, 5000, 7000, 10000
             };
 
