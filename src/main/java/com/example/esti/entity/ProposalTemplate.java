@@ -5,6 +5,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
+
 @Entity
 @Table(name = "proposal_template", schema = "APP")
 @Getter
@@ -27,4 +29,8 @@ public class ProposalTemplate extends BaseEntity {
 
     @Column(length = 1000)
     private String requiredCategoriesJson;
+
+    /** 일괄 마진율(%). 값이 없는 기존 템플릿은 null이고, 프론트에서 10% 폴백한다. */
+    @Column(precision = 5, scale = 2)
+    private BigDecimal globalMarginRate;
 }
