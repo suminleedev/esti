@@ -17,6 +17,7 @@ public record VendorCatalogView(
         String vendorItemName,   // 공급사 기준 대표 품목명
         String remark,           // 비고 (VendorItemPrice.remark)
         BigDecimal unitPrice,    // 공급사 세트 단가
+        String priceBasis,       // 가격 기준(출처 시트). 수전금구처럼 같은 품번이 시트별로 다른 가격일 때 어느 시트 값인지 (F-1)
         String imageUrl,         // VendorProduct.imageUrl
         String description,      // VendorProduct.description (원본 품번/부가 설명. 예: 수전부속 원본 B열)
         String specs             // VendorProduct.specs (규격. 비고 분류 정책(C-2)의 규격성 비고 + 향후 크롤링 규격)
@@ -35,6 +36,7 @@ public record VendorCatalogView(
                 vip.getVendorItemName(),
                 vip.getRemark(),
                 vip.getUnitPrice(),
+                vip.getPriceBasis(),
                 vip.getVendorProduct().getImageUrl(),
                 vip.getVendorProduct().getDescription(),
                 vip.getVendorProduct().getSpecs()
