@@ -82,6 +82,24 @@
         </button>
 
         <button
+          class="btn btn-outline-secondary btn-sm"
+          :disabled="!selectedTemplateId"
+          @click="onRenameTemplate"
+          title="선택한 템플릿 이름 변경"
+        >
+          이름 변경
+        </button>
+
+        <button
+          class="btn btn-outline-danger btn-sm"
+          :disabled="!selectedTemplateId"
+          @click="onDeleteTemplate"
+          title="선택한 템플릿 삭제"
+        >
+          삭제
+        </button>
+
+        <button
           class="btn btn-outline-primary btn-sm"
           @click="onSaveTemplate"
         >
@@ -459,6 +477,7 @@
                       <th style="width:64px">수량</th>
                       <th style="width:116px">마진</th>
                       <th style="width:96px" class="text-end">금액</th>
+                      <th style="width:40px"></th>
                       <th style="width:48px"></th>
                     </tr>
                     </thead>
@@ -515,6 +534,31 @@
                       </td>
 
                       <td class="text-end fw-semibold text-primary text-nowrap">{{ won(r.finalAmount) }}</td>
+
+                      <td>
+                        <div class="btn-group-vertical btn-group-sm w-100" role="group" aria-label="항목 순서 이동">
+                          <button
+                            class="btn btn-outline-secondary py-0"
+                            type="button"
+                            :disabled="idx === 0"
+                            @click="moveLine(idx, -1)"
+                            aria-label="위로 이동"
+                            title="위로"
+                          >
+                            <i class="bi bi-chevron-up"></i>
+                          </button>
+                          <button
+                            class="btn btn-outline-secondary py-0"
+                            type="button"
+                            :disabled="idx === lines.length - 1"
+                            @click="moveLine(idx, 1)"
+                            aria-label="아래로 이동"
+                            title="아래로"
+                          >
+                            <i class="bi bi-chevron-down"></i>
+                          </button>
+                        </div>
+                      </td>
 
                       <td>
                         <button class="btn btn-sm btn-outline-danger" @click="removeLine(idx)" aria-label="항목 삭제" title="삭제">
@@ -624,22 +668,66 @@ const form = reactive({
 const search = ref('')
 const items = ref([]) // /catalog/list 결과
 
+/* 카테고리 연관검색어 사전 (A-3)
+   검색어(키)를 카탈로그 categoryLarge/categorySmall 의 표제어(값)로 확장한다.
+   값은 부분일치로 비교하므로 '수전'처럼 접미어만 적어도
+   세면수전·주방수전·샤워수전·수전금구·수전부속이 모두 걸린다.
+
+   표제어는 DB의 실제 categoryLarge 값 기준이다:
+     양변기 · 소변기 · 세면기 · 비데 · 수채 · 욕조 · 샤워수전 · 세면수전 ·
+     주방수전 · 수전금구 · 수전부속 · 악세사리 · 갈라시아 · 기타
+
+   ⚠ 이 사전은 constants/labels.js 로 옮기지 않는다(Track C 소유).
+     공용화는 Phase 5 머지 후 별도로 판단한다. */
+const CATEGORY_SYNONYMS = {
+  변기: ['양변기', '소변기'],
+  좌변기: ['양변기'],
+  세면대: ['세면기'],
+  세면볼: ['세면기'],
+  샤워기: ['샤워수전'],
+  해바라기: ['샤워수전'],
+  수도: ['수전'],
+  수전: ['수전'],
+  싱크: ['주방수전'],
+  씽크: ['주방수전'],
+  악세서리: ['악세사리'],
+  액세사리: ['악세사리'],
+  액세서리: ['악세사리'],
+  소품: ['악세사리'],
+}
+
 const filteredItems = computed(() => {
   const q = search.value.trim().toLowerCase()
   if (!q) return items.value
-  return items.value.filter((i) =>
-    [
+
+  // 검색어가 사전에 걸리면 대응 카테고리 표제어도 후보로 삼는다
+  const categoryTerms = CATEGORY_SYNONYMS[q] ?? []
+
+  return items.value.filter((i) => {
+    const hit = [
       i.productName,
       i.vendorName,
       i.vendorItemName,
       i.mainItemCode,
       i.oldItemCode,
       i.remark,
-      i.specs
+      i.specs,
+      i.categoryLarge, // 카테고리 자체도 검색 대상 ('변기' → 양변기·소변기가 직접 걸린다)
+      i.categorySmall
     ]
       .filter(Boolean)
       .some((f) => String(f).toLowerCase().includes(q))
-  )
+
+    if (hit) return true
+    if (categoryTerms.length === 0) return false
+
+    // 연관검색어 확장: 이름에 그 글자가 없어도 카테고리가 맞으면 포함
+    const categories = [i.categoryLarge, i.categorySmall]
+      .filter(Boolean)
+      .map((c) => String(c).toLowerCase())
+
+    return categoryTerms.some((term) => categories.some((c) => c.includes(term)))
+  })
 })
 
 /* ====== 상세 선택 + 입력 ====== */
@@ -748,7 +836,10 @@ function recalculateLine(line) {
     ? toNumber(line.marginRate)
     : toNumber(form.globalMarginRate)
 
-  const calculatedUnitPrice = Math.round(base * (1 + rate / 100))
+  // 서버(ProposalService.calculateUnitPrice)와 동일한 결과가 나오도록
+  // base * (1 + rate/100) 대신 (base * (100 + rate)) / 100 로 계산한다.
+  // 전자는 1.15 같은 값이 2진 부동소수로 정확히 표현되지 않아 .5 경계에서 1원 어긋난다.
+  const calculatedUnitPrice = Math.round((base * (100 + rate)) / 100)
 
   line.unitPrice = calculatedUnitPrice
   line.finalAmount = calculatedUnitPrice * toNumber(line.qty)
@@ -823,6 +914,15 @@ function addLine() {
 
 function removeLine(idx) {
   lines.splice(idx, 1)
+}
+
+/* 표시 순서 변경. buildPayload()가 lines 배열 순서를 그대로 보내고
+   서버가 그 인덱스를 sortOrder로 저장하므로 배열만 재정렬하면 된다. */
+function moveLine(idx, delta) {
+  const target = idx + delta
+  if (target < 0 || target >= lines.length) return
+  const [moved] = lines.splice(idx, 1)
+  lines.splice(target, 0, moved)
 }
 
 function enableManualMargin(row) {
@@ -1055,6 +1155,85 @@ async function onSaveTemplate () {
   } catch (e) {
     console.error('템플릿 저장 실패', e)
     toast.error('템플릿 저장 중 오류가 발생했습니다.')
+  }
+}
+
+/* ====== 템플릿 이름 변경 (A-4) ======
+   PUT /api/proposal-templates/{id} 는 본문 전체를 덮어쓰고 라인도 삭제 후 재생성한다.
+   (ProposalTemplateService.update 참고) 따라서 이름만 바꾸려면
+   상세를 먼저 읽어 그대로 되돌려주고 templateName만 교체해야 한다. */
+async function onRenameTemplate() {
+  if (!selectedTemplateId.value) return
+
+  const current = templates.value.find((t) => String(t.id) === String(selectedTemplateId.value))
+
+  const templateName = await promptInput({
+    title: '템플릿 이름 변경',
+    label: '템플릿 이름',
+    placeholder: '예) 84㎡ 기본 구성',
+    defaultValue: current?.templateName ?? '',
+  })
+  if (!templateName) return
+  if (templateName === current?.templateName) return
+
+  try {
+    // 기존 본문을 그대로 유지하기 위해 상세를 먼저 읽는다
+    const { data: t } = await axios.get(`/api/proposal-templates/${selectedTemplateId.value}`)
+
+    await axios.put(`/api/proposal-templates/${selectedTemplateId.value}`, {
+      templateName,
+      apartmentType: t.apartmentType,
+      areas: t.areas || [],
+      requiredCategories: t.requiredCategories || [],
+      lines: (t.lines || []).map((l) => ({
+        id: l.id,
+        productId: l.productId,
+        specs: l.specs,
+        description: l.description,
+        imageUrl: l.imageUrl,
+        vendorCode: l.vendorCode,
+        vendorName: l.vendorName,
+        vendorItemName: l.vendorItemName,
+        mainItemCode: l.mainItemCode,
+        oldItemCode: l.oldItemCode,
+        unitPrice: l.unitPrice,
+        remark: l.remark,
+        area: l.area,
+        category: l.category,
+        defaultQty: l.defaultQty,
+        note: l.note,
+      })),
+    })
+
+    await fetchTemplates()
+    toast.success('템플릿 이름을 변경했습니다.')
+  } catch (e) {
+    console.error('템플릿 이름 변경 실패', e)
+    toast.error('템플릿 이름 변경 중 오류가 발생했습니다.')
+  }
+}
+
+/* ====== 템플릿 삭제 (A-4) ====== */
+async function onDeleteTemplate() {
+  if (!selectedTemplateId.value) return
+
+  const current = templates.value.find((t) => String(t.id) === String(selectedTemplateId.value))
+
+  const ok = await confirm({
+    title: '템플릿 삭제',
+    message: `템플릿 [${current?.templateName ?? selectedTemplateId.value}] 를 삭제할까요? 되돌릴 수 없습니다.`,
+    confirmLabel: '삭제',
+  })
+  if (!ok) return
+
+  try {
+    await axios.delete(`/api/proposal-templates/${selectedTemplateId.value}`)
+    selectedTemplateId.value = ''
+    await fetchTemplates()
+    toast.success('템플릿이 삭제되었습니다.')
+  } catch (e) {
+    console.error('템플릿 삭제 실패', e)
+    toast.error('템플릿 삭제 중 오류가 발생했습니다.')
   }
 }
 

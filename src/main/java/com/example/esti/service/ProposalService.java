@@ -36,6 +36,9 @@ public class ProposalService {
     private final ProposalTemplateRepository templateRepo;
     private final ObjectMapper mapper;
 
+    /** 마진율 백분율 계산용 상수 */
+    private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
+
 //    /* CREATE */
 //    public ProposalResponse create(ProposalRequest req) throws Exception {
 //        Proposal p = new Proposal();
@@ -189,7 +192,8 @@ public class ProposalService {
         proposalRepo.save(p);
 
         // lines 복사
-        List<ProposalLine> srcLines = lineRepo.findByProposalId(id);
+        int copyOrder = 0;
+        List<ProposalLine> srcLines = lineRepo.findByProposalIdOrderBySortOrderAscIdAsc(id);
         for (ProposalLine l : srcLines) {
             ProposalLine nl = new ProposalLine();
             nl.setProposal(p);
@@ -214,6 +218,8 @@ public class ProposalService {
             nl.setCategory(l.getCategory());
             nl.setQty(l.getQty());
             nl.setNote(l.getNote());
+            // 원본이 legacy(sortOrder=null)여도 조회 순서(=id 순)대로 번호를 새로 매긴다
+            nl.setSortOrder(copyOrder++);
             lineRepo.save(nl);
         }
 
@@ -245,9 +251,13 @@ public class ProposalService {
 
         if (req.getLines() == null || req.getLines().isEmpty()) return;
 
+        // 요청 배열의 순서가 곧 표시 순서다. 인덱스를 sortOrder(0-based)로 저장한다.
+        int sortOrder = 0;
+
         for (ProposalRequest.Line lineReq : req.getLines()) {
             ProposalLine line = new ProposalLine();
             line.setProposal(p);
+            line.setSortOrder(sortOrder++);
 
             line.setProductId(lineReq.getProductId());
             line.setProductName(lineReq.getProductName());
@@ -261,10 +271,16 @@ public class ProposalService {
             line.setManualMargin(
                     lineReq.getManualMargin() != null ? lineReq.getManualMargin() : false
             );                                                       // 마진율 수동 설정 여부
-            line.setMarginRate(lineReq.getMarginRate());             // 마진율
-            line.setUnitPrice(lineReq.getUnitPrice());               // 최종 제안 단가
-//            line.setAmount(calculateAmount(lineReq.getUnitPrice(), lineReq.getQty())); // 총금액
-            line.setAmount(lineReq.getAmount()); // 총금액
+
+            // 단가·금액은 클라이언트 값을 신뢰하지 않고 서버에서 재계산한다.
+            // 적용 마진율: manualMargin이면 라인 개별 마진율, 아니면 제안서 일괄 마진율.
+            BigDecimal appliedRate = resolveMarginRate(line.getManualMargin(),
+                    lineReq.getMarginRate(), req.getGlobalMarginRate());
+            BigDecimal unitPrice = calculateUnitPrice(lineReq.getCatalogUnitPrice(), appliedRate);
+
+            line.setMarginRate(appliedRate);                         // 적용 마진율
+            line.setUnitPrice(unitPrice);                            // 최종 제안 단가
+            line.setAmount(calculateAmount(unitPrice, lineReq.getQty())); // 총금액
 
             line.setRemark(lineReq.getRemark());
             line.setImageUrl(lineReq.getImageUrl());
@@ -277,6 +293,26 @@ public class ProposalService {
             lineRepo.save(line);
         }
     }
+    /** 적용 마진율 결정
+     *  manualMargin=true 이면 라인 개별 마진율, 아니면 제안서 일괄 마진율.
+     *  둘 다 없으면 0%로 본다(프론트 toNumber(null)=0 과 동일).
+     */
+    private BigDecimal resolveMarginRate(Boolean manualMargin, BigDecimal lineRate, BigDecimal globalRate) {
+        BigDecimal rate = Boolean.TRUE.equals(manualMargin) ? lineRate : globalRate;
+        return rate != null ? rate : BigDecimal.ZERO;
+    }
+
+    /** 제안 단가 계산: 카탈로그 단가 x (1 + 마진율/100)
+     *  원 단위 반올림(HALF_UP). 프론트 Proposal.vue recalculateLine() 과 동일 정책.
+     */
+    private BigDecimal calculateUnitPrice(BigDecimal catalogUnitPrice, BigDecimal marginRate) {
+        BigDecimal base = catalogUnitPrice != null ? catalogUnitPrice : BigDecimal.ZERO;
+        BigDecimal rate = marginRate != null ? marginRate : BigDecimal.ZERO;
+
+        return base.multiply(HUNDRED.add(rate))
+                .divide(HUNDRED, 0, RoundingMode.HALF_UP);
+    }
+
     /** 금액 계산
      *  두 자리수 반올림
      */
@@ -327,7 +363,7 @@ public class ProposalService {
             res.setRequiredCategories(List.of());
         }
 
-        List<ProposalLine> lines = lineRepo.findByProposalId(id);
+        List<ProposalLine> lines = lineRepo.findByProposalIdOrderBySortOrderAscIdAsc(id);
 
         res.setLines(lines.stream().map(l -> {
             ProposalResponse.Line o = new ProposalResponse.Line();
@@ -354,6 +390,7 @@ public class ProposalService {
             o.setCategory(l.getCategory());
             o.setQty(l.getQty());
             o.setNote(l.getNote());
+            o.setSortOrder(l.getSortOrder());
             return o;
         }).collect(Collectors.toList()));
 
