@@ -522,7 +522,11 @@ onMounted(() => {
                       :title="`${p.productName} 부속 구성 보기`"
                       @click="toggleParts(p)"
                     >
-                      <span>{{ p.unitPrice?.toLocaleString() }}</span>
+                      <span class="d-inline-flex flex-column align-items-end lh-sm">
+                        <span>{{ p.unitPrice?.toLocaleString() }}</span>
+                        <!-- 기준가 후보(F-1): 같은 품번이 시트별로 다른 가격일 때 어느 시트 값인지 -->
+                        <span v-if="p.priceBasis" class="text-muted fw-normal price-basis">{{ p.priceBasis }}</span>
+                      </span>
                       <i
                         class="bi"
                         :class="expandedRowId === p.vendorItemPriceId ? 'bi-chevron-up' : 'bi-chevron-down'"
@@ -695,6 +699,12 @@ onMounted(() => {
 
 .parts-toggle:hover {
   text-decoration: underline;
+}
+
+/* 기준가 후보(F-1) — 단가 아래 보조 표기. 밑줄 hover는 단가에만 걸리게 둔다 */
+.price-basis {
+  font-size: 0.7rem;
+  text-decoration: none;
 }
 
 /* 부속 구성 펼침 행 — 상위 테이블의 nowrap/ellipsis·고정 레이아웃을 이 행에서만 푼다 */
