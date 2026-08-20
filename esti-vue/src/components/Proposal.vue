@@ -82,6 +82,24 @@
         </button>
 
         <button
+          class="btn btn-outline-secondary btn-sm"
+          :disabled="!selectedTemplateId"
+          @click="onRenameTemplate"
+          title="선택한 템플릿 이름 변경"
+        >
+          이름 변경
+        </button>
+
+        <button
+          class="btn btn-outline-danger btn-sm"
+          :disabled="!selectedTemplateId"
+          @click="onDeleteTemplate"
+          title="선택한 템플릿 삭제"
+        >
+          삭제
+        </button>
+
+        <button
           class="btn btn-outline-primary btn-sm"
           @click="onSaveTemplate"
         >
@@ -1137,6 +1155,85 @@ async function onSaveTemplate () {
   } catch (e) {
     console.error('템플릿 저장 실패', e)
     toast.error('템플릿 저장 중 오류가 발생했습니다.')
+  }
+}
+
+/* ====== 템플릿 이름 변경 (A-4) ======
+   PUT /api/proposal-templates/{id} 는 본문 전체를 덮어쓰고 라인도 삭제 후 재생성한다.
+   (ProposalTemplateService.update 참고) 따라서 이름만 바꾸려면
+   상세를 먼저 읽어 그대로 되돌려주고 templateName만 교체해야 한다. */
+async function onRenameTemplate() {
+  if (!selectedTemplateId.value) return
+
+  const current = templates.value.find((t) => String(t.id) === String(selectedTemplateId.value))
+
+  const templateName = await promptInput({
+    title: '템플릿 이름 변경',
+    label: '템플릿 이름',
+    placeholder: '예) 84㎡ 기본 구성',
+    defaultValue: current?.templateName ?? '',
+  })
+  if (!templateName) return
+  if (templateName === current?.templateName) return
+
+  try {
+    // 기존 본문을 그대로 유지하기 위해 상세를 먼저 읽는다
+    const { data: t } = await axios.get(`/api/proposal-templates/${selectedTemplateId.value}`)
+
+    await axios.put(`/api/proposal-templates/${selectedTemplateId.value}`, {
+      templateName,
+      apartmentType: t.apartmentType,
+      areas: t.areas || [],
+      requiredCategories: t.requiredCategories || [],
+      lines: (t.lines || []).map((l) => ({
+        id: l.id,
+        productId: l.productId,
+        specs: l.specs,
+        description: l.description,
+        imageUrl: l.imageUrl,
+        vendorCode: l.vendorCode,
+        vendorName: l.vendorName,
+        vendorItemName: l.vendorItemName,
+        mainItemCode: l.mainItemCode,
+        oldItemCode: l.oldItemCode,
+        unitPrice: l.unitPrice,
+        remark: l.remark,
+        area: l.area,
+        category: l.category,
+        defaultQty: l.defaultQty,
+        note: l.note,
+      })),
+    })
+
+    await fetchTemplates()
+    toast.success('템플릿 이름을 변경했습니다.')
+  } catch (e) {
+    console.error('템플릿 이름 변경 실패', e)
+    toast.error('템플릿 이름 변경 중 오류가 발생했습니다.')
+  }
+}
+
+/* ====== 템플릿 삭제 (A-4) ====== */
+async function onDeleteTemplate() {
+  if (!selectedTemplateId.value) return
+
+  const current = templates.value.find((t) => String(t.id) === String(selectedTemplateId.value))
+
+  const ok = await confirm({
+    title: '템플릿 삭제',
+    message: `템플릿 [${current?.templateName ?? selectedTemplateId.value}] 를 삭제할까요? 되돌릴 수 없습니다.`,
+    confirmLabel: '삭제',
+  })
+  if (!ok) return
+
+  try {
+    await axios.delete(`/api/proposal-templates/${selectedTemplateId.value}`)
+    selectedTemplateId.value = ''
+    await fetchTemplates()
+    toast.success('템플릿이 삭제되었습니다.')
+  } catch (e) {
+    console.error('템플릿 삭제 실패', e)
+    toast.error('템플릿 삭제 중 오류가 발생했습니다.')
   }
 }
 
