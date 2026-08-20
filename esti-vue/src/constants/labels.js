@@ -7,7 +7,7 @@ export const PROPOSAL_STATUS = {
   SENT: { label: '발송완료', badgeClass: 'bg-success' },
 }
 
-export const APARTMENT_TYPES = ['24평', '32평', '40평', '48평', '59㎡', '74㎡', '84㎡']
+export const APARTMENT_TYPES = ['59㎡', '74㎡', '84㎡']
 
 export const AREAS = ['욕실1', '욕실2', '욕실 공통', '주방', '세탁실', '다용도실']
 
