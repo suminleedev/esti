@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -56,12 +57,16 @@ public class VendorBExcelParser implements VendorExcelParser {
             FormulaEvaluator ev = wb.getCreationHelper().createFormulaEvaluator();
             DataFormatter fmt = new DataFormatter();
 
+            // 조합행(P7) 부속 단가 해석용 전산코드 인덱스. 조합행에는 세트가만 있고 구성 부속의 단가는
+            // 다른 행(부속 단가표 D/E열, 수전 부속(세트) C/F열)에 있어, 시트 순회 전에 미리 모아둔다.
+            Map<String, BigDecimal> fittingPrices = buildFittingCodePriceIndex(wb, fmt, ev);
+
             List<VendorProductSet> result = new ArrayList<>();
             for (int i = 0; i < wb.getNumberOfSheets(); i++) {
                 Sheet sheet = wb.getSheetAt(i);
                 if (sheet == null) continue;
                 String name = sheet.getSheetName();
-                Ctx ctx = new Ctx(sheet, fmt, ev, name);
+                Ctx ctx = new Ctx(sheet, fmt, ev, name, fittingPrices);
 
                 switch (family(name)) {
                     case TOILET     -> parseToiletSheet(ctx, result);
@@ -1162,6 +1167,44 @@ public class VendorBExcelParser implements VendorExcelParser {
     //   - 하단 "니쁠" 서브테이블(C=제품코드, D=단가, E=규격)은 품번이 없어 제품코드를 코드로(P8).
     // ============================================================
 
+    /**
+     * 수전부속 시트에서 (전산코드 → 단가)를 모은다 — 조합행(P7) 부속 단가 해석용.
+     *
+     * <p>조합행은 C열에 구성 전산코드만 "+"로 나열하고 F열에는 세트가만 적는다. 구성 부속의 단가는
+     * 같은 시트의 단품 행이나 `부속 단가표` 시트에 따로 있어, 그 둘을 미리 훑어 인덱스로 만든다.
+     *
+     * <p>`부속 단가표`를 나중에 넣어 충돌 시 그쪽이 이긴다 — 부속 카탈로그의 단일 출처이기 때문이다(D13).
+     * 예: `43u9310n`(스프레이건 단품)은 부속 단가표에만 4,500으로 있고, 같은 품번 `U9310`은
+     * 수전 부속(세트)에서 행거를 포함한 세트가 5,000이라 세트 시트 값을 쓰면 안 된다.
+     */
+    private Map<String, BigDecimal> buildFittingCodePriceIndex(Workbook wb, DataFormatter fmt, FormulaEvaluator ev) {
+        Map<String, BigDecimal> idx = new HashMap<>();
+        // 수전 부속(세트) C=제품코드 F=단가 → 부속 단가표 D=전산코드 E=단가 순으로 넣어 뒤가 앞을 덮게 한다.
+        collectFittingPrices(wb, fmt, ev, idx, Family.FITTING_SET, 2, 5);
+        collectFittingPrices(wb, fmt, ev, idx, Family.FITTING_PRICE, 3, 4);
+        return idx;
+    }
+
+    private void collectFittingPrices(Workbook wb, DataFormatter fmt, FormulaEvaluator ev,
+                                      Map<String, BigDecimal> idx, Family target, int codeCol, int priceCol) {
+        for (int i = 0; i < wb.getNumberOfSheets(); i++) {
+            Sheet sheet = wb.getSheetAt(i);
+            if (sheet == null || family(sheet.getSheetName()) != target) continue;
+            Ctx c = new Ctx(sheet, fmt, ev, sheet.getSheetName(), Map.of());
+            for (int r = 0; r <= sheet.getLastRowNum(); r++) {
+                String raw = str(c, r, codeCol);
+                if (raw == null || raw.contains("+")) continue;   // 조합행 자신은 인덱스에 넣지 않는다
+                String code = normalizeCode(raw);
+                if (code == null || !FITTING_CODE.matcher(code).matches()) continue; // '소계' 등 비코드 셀 제외
+                BigDecimal price = dec(c, r, priceCol);
+                if (price != null) idx.put(code.toLowerCase(), price);
+            }
+        }
+    }
+
+    /** 전산코드 형태 — 영숫자로 시작하고 영숫자·점·하이픈만. 한글 라벨('소계','니쁠')을 걸러낸다. */
+    private static final Pattern FITTING_CODE = Pattern.compile("^[0-9A-Za-z][0-9A-Za-z.\\-]*$");
+
     private void parseFittingSetSheet(Ctx c, List<VendorProductSet> out) {
         int headerRow = findRow(c, r -> {
             String a = noSpace(str(c, r, 0));
@@ -1280,7 +1323,13 @@ public class VendorBExcelParser implements VendorExcelParser {
         }
     }
 
-    /** 제품코드 '+' 조합행(U9310 건+행거, U9510~U9550) → main=품번, 부속={품번}_{전산코드}·단가 없음(P7). */
+    /**
+     * 제품코드 '+' 조합행(U9310 건+행거, U9510~U9550) → main=품번, 부속={품번}_{전산코드}(P7).
+     *
+     * <p>부속 단가는 조합행에 없어 전산코드 인덱스에서 찾는다(P5F-5 후속 ②). 종전에는 0으로 두었는데,
+     * 그러면 부속 합계가 0이 되어 화면 대조가 성립하지 않았다. 인덱스에 없는 구성(한글 '니쁠' 등)은
+     * 여전히 0이다 — 전산코드가 없어 매칭할 근거가 없다.
+     */
     private void emitFittingComboSet(List<VendorProductSet> out, Ctx c, String group, FtMember m) {
         String token = normalizeCode(firstToken(m.bRaw()));
         String pn = (token != null && token.matches("^[A-Za-z].*[A-Za-z0-9]$")) ? fittingPartNo(token) : null;
@@ -1292,7 +1341,7 @@ public class VendorBExcelParser implements VendorExcelParser {
             String pcode = pc[0] != null ? pc[0].toLowerCase() : pc[1]; // '니쁠' 같은 비코드 구성도 보존
             if (pcode == null) continue;
             parts.add(new VendorParsedItem(partCode(pn, pcode), orDefault(pc[1], pcode), null, null,
-                    VendorParsedItem.RELATION_ACCESSORY, BigDecimal.ZERO, null));
+                    VendorParsedItem.RELATION_ACCESSORY, nz(c.fittingPrices().get(pcode)), null));
         }
         String bClean = stripSpace(m.bRaw());
         String name = orDefault(join(group, bClean), pn);
@@ -1585,5 +1634,9 @@ public class VendorBExcelParser implements VendorExcelParser {
     }
 
     /** 시트 1개 파싱 컨텍스트(POI 객체 묶음). */
-    private record Ctx(Sheet sheet, DataFormatter fmt, FormulaEvaluator ev, String sheetName) {}
+    /**
+     * @param fittingPrices 수전부속 전산코드(소문자) → 단가. 조합행(P7)에서만 쓴다. 다른 패밀리는 참조하지 않는다.
+     */
+    private record Ctx(Sheet sheet, DataFormatter fmt, FormulaEvaluator ev, String sheetName,
+                       Map<String, BigDecimal> fittingPrices) {}
 }
