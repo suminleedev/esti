@@ -8,6 +8,7 @@ import Pagination from "@/components/Pagination.vue";
 import EmptyState from "@/components/common/EmptyState.vue"
 import { useToast } from "@/composables/useToast"
 import { useConfirm } from "@/composables/useConfirm"
+import { partsSumStatus, sumParts, PARTS_SUM_BADGE_CLASS } from "@/utils/partsSum"
 
 const toast = useToast()
 const { confirm } = useConfirm()
@@ -305,7 +306,16 @@ function partsOf(id) {
 
 /** 부속 단가 합 — 세트가와 맞는지 화면에서 바로 대조하기 위한 값. */
 function partsSum(id) {
-  return partsOf(id).reduce((sum, part) => sum + (Number(part.unitPrice) || 0), 0)
+  return sumParts(partsOf(id))
+}
+
+/**
+ * 세트가 ↔ 부속 합계 판정 (P5F-5 후속 ①).
+ * 단순 차액이 아니라 사유별로 나눈다 — 구조상 합계가 성립하지 않는 건이 300건이라
+ * 전부 경고로 내면 실제 오류가 그 안에 묻힌다.
+ */
+function partsStatus(p) {
+  return partsSumStatus(p.unitPrice, partsOf(p.vendorItemPriceId), p.productName)
 }
 
 // 공급사 바꾸면 0페이지부터 다시 조회
@@ -599,11 +609,21 @@ onMounted(() => {
                         <td colspan="2" class="fw-semibold">부속 합계</td>
                         <td class="text-muted small">
                           세트가 {{ p.unitPrice?.toLocaleString() }}
-                          <span
-                            v-if="Number(p.unitPrice) !== partsSum(p.vendorItemPriceId)"
-                            class="badge text-bg-warning ms-1"
-                          >차이 {{ (partsSum(p.vendorItemPriceId) - Number(p.unitPrice)).toLocaleString() }}</span>
-                          <span v-else class="badge text-bg-success ms-1">일치</span>
+                          <template v-if="partsStatus(p)">
+                            <span
+                              class="badge ms-1"
+                              :class="PARTS_SUM_BADGE_CLASS[partsStatus(p).level]"
+                              :title="partsStatus(p).detail"
+                            >{{ partsStatus(p).label }}</span>
+                            <!-- 비교 불가 사유는 차액 자체가 의미 없으므로 사유만 보여준다 -->
+                            <span
+                              v-if="partsStatus(p).level === 'error' && partsStatus(p).code !== 'AMOUNT_MISMATCH'"
+                              class="ms-1"
+                            >차이 {{ partsStatus(p).diff.toLocaleString() }}</span>
+                            <div v-if="partsStatus(p).detail" class="parts-status-detail">
+                              {{ partsStatus(p).detail }}
+                            </div>
+                          </template>
                         </td>
                         <td class="text-end fw-semibold">{{ partsSum(p.vendorItemPriceId).toLocaleString() }}</td>
                       </tr>
@@ -719,6 +739,14 @@ onMounted(() => {
 .parts-table {
   table-layout: auto;
   background: transparent;
+}
+
+/* 판정 사유 — 배지만으로는 왜 비교 불가인지 알 수 없어 한 줄 덧붙인다 */
+.parts-status-detail {
+  font-size: 0.7rem;
+  line-height: 1.3;
+  margin-top: 0.15rem;
+  opacity: 0.85;
 }
 
 .parts-table td,
