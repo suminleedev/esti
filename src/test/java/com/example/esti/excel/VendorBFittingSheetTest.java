@@ -133,6 +133,55 @@ class VendorBFittingSheetTest {
     }
 
     @Test
+    void 조합행_부속단가는_전산코드로_해석된다() {
+        List<VendorProductSet> sets = parseFixture();
+
+        // 조합행에는 세트가만 있다. 구성 단가는 단품 행·부속 단가표에서 전산코드로 찾아온다(후속 ②).
+        // U9510 20,000 = 43u9023c 10,000 + 43ds1500 5,000 + 43u9310n 4,500 + 43u0630 500
+        VendorProductSet u9510 = one(sets, "U9510", SET_BASIS);
+        assertEquals(0, new BigDecimal("10000").compareTo(part(u9510, "U9510_43u9023c").unitPrice()));
+        assertEquals(0, new BigDecimal("5000").compareTo(part(u9510, "U9510_43ds1500").unitPrice()));
+        assertEquals(0, new BigDecimal("500").compareTo(part(u9510, "U9510_43u0630").unitPrice()));
+        // 43u9310n은 부속 단가표에만 있다(4,500). 같은 품번 U9310이 세트 시트에서는 행거 포함 5,000이라
+        // 세트 시트 값을 쓰면 안 된다 — 부속 단가표가 이겨야 한다.
+        assertEquals(0, new BigDecimal("4500").compareTo(part(u9510, "U9510_43u9310n").unitPrice()));
+        assertEquals(0, new BigDecimal("20000").compareTo(partsSum(u9510)), "부속 합 = 세트가");
+
+        // 나머지 완전 해석 건: 부속 합이 세트가와 1원 단위까지 맞는다.
+        assertEquals(0, new BigDecimal("16000").compareTo(partsSum(one(sets, "U9520", SET_BASIS))));
+        assertEquals(0, new BigDecimal("21500").compareTo(partsSum(one(sets, "U9540", SET_BASIS))));
+        assertEquals(0, new BigDecimal("5000").compareTo(partsSum(one(sets, "U9310", SET_BASIS))));
+        assertEquals(0, new BigDecimal("4000").compareTo(partsSum(one(sets, "U9320", SET_BASIS))));
+    }
+
+    /**
+     * 원본에 자기 단가 행이 없는 구성은 0으로 남는다 — 파서가 아니라 데이터의 한계다.
+     * `43u9340n`·`43u0631`·`43u9360n`·`43u0660`은 조합 셀 안에만 등장하고 단품 행이 없다.
+     */
+    @Test
+    void 조합행_원본에_단가없는_구성은_0으로_남는다() {
+        List<VendorProductSet> sets = parseFixture();
+
+        // 구성이 둘 다 미상 → 부속 합 0 (세트가 3,000·4,000은 그대로 유지)
+        assertEquals(0, BigDecimal.ZERO.compareTo(partsSum(one(sets, "U9360", SET_BASIS))));
+        assertEquals(0, BigDecimal.ZERO.compareTo(partsSum(one(sets, "U9340", SET_BASIS))));
+
+        // 일부만 미상 → 해석된 것만 더해진다.
+        // U9530: 9,000 + 5,000 + 3,500 + 500 = 18,000 (한글 '니쁠' 2,000 미상)
+        VendorProductSet u9530 = one(sets, "U9530", SET_BASIS);
+        assertEquals(0, BigDecimal.ZERO.compareTo(part(u9530, "U9530_니쁠").unitPrice()));
+        assertEquals(0, new BigDecimal("18000").compareTo(partsSum(u9530)));
+        // U9550: 5,000 + 8,000 = 13,000 (건·행거 3,000 미상)
+        assertEquals(0, new BigDecimal("13000").compareTo(partsSum(one(sets, "U9550", SET_BASIS))));
+    }
+
+    private BigDecimal partsSum(VendorProductSet set) {
+        return set.parts().stream()
+                .map(p -> p.unitPrice() == null ? BigDecimal.ZERO : p.unitPrice())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    @Test
     void 세트시트_단품_품번정규화와_제품코드폴백() {
         List<VendorProductSet> sets = parseFixture();
         // OEM 하이픈·소문자 품번 정규화(P9): U-9110150a → U9110150A
