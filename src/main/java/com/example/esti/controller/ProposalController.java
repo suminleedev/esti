@@ -2,7 +2,12 @@ package com.example.esti.controller;
 
 import com.example.esti.dto.ProposalRequest;
 import com.example.esti.dto.ProposalResponse;
+import com.example.esti.dto.QuoteTargetView;
+import com.example.esti.output.QuoteTarget;
 import com.example.esti.service.ProposalExcelService;
+import org.springframework.http.ContentDisposition;
+
+import java.nio.charset.StandardCharsets;
 import com.example.esti.service.ProposalService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -110,19 +115,47 @@ public class ProposalController {
     }
 
     /**
-     * 제안서 엑셀 출력
-     * */
-    @GetMapping("/{id}/export-excel")
-    public ResponseEntity<byte[]> exportProposalExcel(@PathVariable Long id) {
-        byte[] excel = excelService.exportProposal(id);
-
-        String fileName = "proposal_" + id + ".xlsx";
-
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
-                .contentType(MediaType.parseMediaType(
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
-                .body(excel);
+     * 제안서(고객 제출용) 엑셀 — 카드 그리드. 사입가·마진이 없다.
+     */
+    @GetMapping("/{id}/export/proposal")
+    public ResponseEntity<byte[]> exportProposal(@PathVariable Long id) {
+        return xlsx(excelService.exportProposal(id));
     }
 
+    /**
+     * 견적서(내부 검토용) 엑셀 — 표 + 4단 집계. <b>사입가·마진이 들어 있다.</b>
+     *
+     * @param kind          {@code MAIN}(본세대) / {@code ANNEX}(부속동·상가 합본)
+     * @param apartmentType 본세대일 때의 평형. 비우면 본세대 전부
+     */
+    @GetMapping("/{id}/export/quote")
+    public ResponseEntity<byte[]> exportQuote(@PathVariable Long id,
+                                              @RequestParam(defaultValue = "MAIN") String kind,
+                                              @RequestParam(required = false) String apartmentType) {
+        QuoteTarget target = "ANNEX".equalsIgnoreCase(kind)
+                ? QuoteTarget.annex()
+                : QuoteTarget.main(apartmentType);
+        return xlsx(excelService.exportQuote(id, target));
+    }
+
+    /** 이 제안서에서 뽑을 수 있는 견적서 대상 목록 (평형별 본세대 + 부속동·상가 합본). */
+    @GetMapping("/{id}/export/quote-targets")
+    public List<QuoteTargetView> quoteTargets(@PathVariable Long id) {
+        return excelService.listQuoteTargets(id);
+    }
+
+    /**
+     * 파일명에 한글이 들어가므로 {@link ContentDisposition}으로 RFC 5987 인코딩까지 맡긴다 —
+     * 헤더에 직접 문자열을 넣으면 브라우저마다 깨진다.
+     */
+    private ResponseEntity<byte[]> xlsx(ProposalExcelService.ExcelDownload download) {
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment()
+                                .filename(download.fileName(), StandardCharsets.UTF_8)
+                                .build().toString())
+                .contentType(MediaType.parseMediaType(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(download.content());
+    }
 }

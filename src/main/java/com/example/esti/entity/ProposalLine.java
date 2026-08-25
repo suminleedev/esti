@@ -112,8 +112,12 @@ public class ProposalLine extends BaseEntity {
      * 선택사항(유상옵션) 여부 — 제안서 카드 그리드의 <b>3열 배치 기준</b>이다.
      * 샘플은 비고에 `유상옵션`이라 적어 두었으나, 표시 문구가 레이아웃을 좌우하면 문구를 바꾸는 순간
      * 배치가 깨지므로 별도 필드로 받는다.
+     *
+     * <p>컬럼은 <b>nullable</b>이다 — Derby가 기존 행이 있는 테이블에 {@code NOT NULL} 컬럼을
+     * DEFAULT 없이 추가하지 못해 {@code ddl-auto=update}가 조용히 건너뛴다.
+     * 구 데이터는 null이며 읽는 쪽에서 false로 본다({@code sortOrder}와 같은 방침).
      */
-    @Column(name = "is_optional", nullable = false)
+    @Column(name = "is_optional")
     private Boolean optional = false;
 }
 
