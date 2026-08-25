@@ -52,11 +52,20 @@ class ProposalCardLayoutTest {
     }
 
     @Test
-    @DisplayName("4열 — 악세사리. 옵션 표시보다 우선한다")
+    @DisplayName("4열 — 악세사리")
     void 악세사리는_4열() {
         assertThat(ProposalCardLayout.columnOf(line("욕실1", "악세사리", false))).isEqualTo(3);
-        // 유상옵션인 악세사리도 4열에 남는다 — 열의 성격(제품 종류)을 유지하기 위한 우선순위다
-        assertThat(ProposalCardLayout.columnOf(line("욕실1", "악세사리", true))).isEqualTo(3);
+        assertThat(ProposalCardLayout.columnOf(line("주방", "악세사리", false))).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("유상옵션은 예외 없이 3열이다 — 유형·부위가 무엇이든 앞선다")
+    void 옵션이_최우선() {
+        // 악세사리는 실제로 유상옵션이 되지 않지만(2026-08-25 사용자 확인),
+        // 옵션 판정이 가장 앞에 있어 "유상옵션은 3열"이 예외 없이 성립함을 못으로 박는다.
+        assertThat(ProposalCardLayout.columnOf(line("욕실1", "악세사리", true))).isEqualTo(2);
+        assertThat(ProposalCardLayout.columnOf(line("욕실1", "양변기", true))).isEqualTo(2);
+        assertThat(ProposalCardLayout.columnOf(line("주방", "씽크수전", true))).isEqualTo(2);
     }
 
     @Test
