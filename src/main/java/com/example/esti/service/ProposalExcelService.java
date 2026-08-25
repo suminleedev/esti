@@ -1,24 +1,35 @@
 package com.example.esti.service;
 
+import com.example.esti.dto.QuoteTargetView;
 import com.example.esti.entity.Proposal;
+import com.example.esti.entity.ProposalLine;
 import com.example.esti.output.ProposalCardExcelWriter;
 import com.example.esti.output.QuoteExcelWriter;
 import com.example.esti.output.QuoteTarget;
-import org.springframework.beans.factory.annotation.Value;
-import com.example.esti.entity.ProposalLine;
 import com.example.esti.repository.ProposalLineRepository;
 import com.example.esti.repository.ProposalRepository;
 import lombok.RequiredArgsConstructor;
-import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
+/**
+ * 제안서·견적서 엑셀 출력 (Phase 6).
+ *
+ * <p>출력물은 <b>2종</b>이고 수신자가 다르다 — 제안서는 고객 제출용(사입가·마진 없음),
+ * 견적서는 내부 검토용(사입가·마진 포함)이다. 한 파일 2시트로 묶지 않고 엔드포인트부터 나눈 이유는,
+ * 사입가가 든 시트를 실수로 고객에게 보내는 사고를 구조적으로 막기 위해서다(O-6).
+ *
+ * <p>양식 재현은 {@link ProposalCardExcelWriter} · {@link QuoteExcelWriter}가 맡고,
+ * 이 서비스는 조회·상태 검증·채번만 한다.
+ */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -32,33 +43,74 @@ public class ProposalExcelService {
     @Value("${app.company.ceo:}")
     private String ceoName;
 
+    /** 내려받을 엑셀 1건 — 내용과 파일명. 파일명 규칙이 양식마다 달라 함께 돌려준다. */
+    public record ExcelDownload(byte[] content, String fileName) {}
+
+    /** 제안서(고객 제출용) — 8행 카드 × 4열 그리드. */
+    public ExcelDownload exportProposal(Long proposalId) {
+        Proposal proposal = loadSentProposal(proposalId);
+        byte[] content = ProposalCardExcelWriter.write(proposal, lines(proposalId));
+        return new ExcelDownload(content,
+                "제안서_%s_%s.xlsx".formatted(safeName(proposal.getProjectName()), stamp(proposal)));
+    }
+
     /**
-     * 견적서(내부 검토용) 출력 — Phase 6 P3 실양식.
+     * 견적서(내부 검토용) — 표 + 4단 집계.
      *
-     * <p>제안서와 달리 사입가·마진이 들어간다. 대상은 평형별 본세대 또는 부속동·상가 합본이다(O-7).
-     * 견적번호는 첫 출력 때 부여되고 이후 재사용된다(O-9).
+     * <p>대상은 평형별 본세대 또는 부속동·상가 합본이다(O-7). 견적번호는 첫 출력 때 부여하고 재사용한다(O-9).
      */
     @Transactional
-    public byte[] exportQuote(Long proposalId, QuoteTarget target) {
+    public ExcelDownload exportQuote(Long proposalId, QuoteTarget target) {
         Proposal proposal = loadSentProposal(proposalId);
         String quoteNo = quoteNumberService.assign(proposal);
-        List<ProposalLine> lines = proposalLineRepository.findByProposalIdOrderBySortOrderAscIdAsc(proposalId);
-        return QuoteExcelWriter.write(proposal, lines, target, quoteNo, ceoName);
+        byte[] content = QuoteExcelWriter.write(proposal, lines(proposalId), target, quoteNo, ceoName);
+
+        String scope = target.kind() == QuoteTarget.Kind.ANNEX
+                ? "부속동상가"
+                : safeName(target.apartmentType() == null || target.apartmentType().isBlank()
+                        ? "본세대" : target.apartmentType());
+
+        return new ExcelDownload(content, "견적서_%s_%s_%s.xlsx"
+                .formatted(safeName(proposal.getProjectName()), scope, stamp(proposal)));
     }
 
     /**
-     * 제안서(고객 제출용) 카드 그리드 출력 — Phase 6 P2 실양식.
+     * 이 제안서에서 뽑을 수 있는 견적서 대상 목록 — 화면의 대상 선택에 쓴다.
      *
-     * <p>기존 {@link #exportProposal(Long)}의 16열 평면 표를 대체할 출력이다.
-     * 엔드포인트 교체는 P4에서 한다 — 그때까지 둘 다 남는다.
+     * <p>본세대는 평형마다 한 부씩, 부속동·상가는 있으면 합본 한 부다. <b>품목이 없는 대상은 넣지 않는다</b> —
+     * 빈 견적서를 내려받게 되는 걸 막는다.
      */
-    public byte[] exportProposalCards(Long proposalId) {
-        Proposal proposal = loadSentProposal(proposalId);
-        List<ProposalLine> lines = proposalLineRepository.findByProposalIdOrderBySortOrderAscIdAsc(proposalId);
-        return ProposalCardExcelWriter.write(proposal, lines);
+    public List<QuoteTargetView> listQuoteTargets(Long proposalId) {
+        loadSentProposal(proposalId);
+        List<ProposalLine> lines = lines(proposalId);
+
+        // 본세대 평형은 라인 등장 순서를 유지한다 — 화면 정렬과 어긋나지 않게
+        Set<String> apartmentTypes = new LinkedHashSet<>();
+        int annexCount = 0;
+        for (ProposalLine line : lines) {
+            if (QuoteTarget.annex().matches(line)) {
+                annexCount++;
+            } else {
+                apartmentTypes.add(nvl(line.getApartmentType()));
+            }
+        }
+
+        List<QuoteTargetView> targets = new ArrayList<>();
+        for (String type : apartmentTypes) {
+            QuoteTarget target = QuoteTarget.main(type.isEmpty() ? null : type);
+            int count = (int) lines.stream().filter(target::matches).count();
+            if (count == 0) continue;
+            targets.add(new QuoteTargetView(
+                    QuoteTarget.Kind.MAIN.name(), type,
+                    type.isEmpty() ? "본세대 (평형 미지정)" : type, count));
+        }
+        if (annexCount > 0) {
+            targets.add(new QuoteTargetView(QuoteTarget.Kind.ANNEX.name(), null, "부속동·상가", annexCount));
+        }
+        return targets;
     }
 
-    /** 발송완료 상태만 출력 대상이다(기존 규칙 유지). */
+    /** 발송완료 상태만 출력 대상이다. */
     private Proposal loadSentProposal(Long proposalId) {
         Proposal proposal = proposalRepository.findByIdAndDeletedAtIsNull(proposalId)
                 .orElseThrow(() -> new IllegalArgumentException("제안서를 찾을 수 없습니다. id=" + proposalId));
@@ -69,219 +121,27 @@ public class ProposalExcelService {
         return proposal;
     }
 
-    public byte[] exportProposal(Long proposalId) {
-        Proposal proposal = loadSentProposal(proposalId);
-
-        List<ProposalLine> lines = proposalLineRepository.findByProposalIdOrderBySortOrderAscIdAsc(proposalId);
-
-        try (Workbook workbook = new XSSFWorkbook();
-             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-
-            Sheet sheet = workbook.createSheet("Proposal");
-
-            // 스타일
-            CellStyle headerStyle = createHeaderStyle(workbook);
-            CellStyle textStyle = createTextStyle(workbook);
-            CellStyle numberStyle = createNumberStyle(workbook);
-
-            int rowIdx = 0;
-
-            // ===== 상단 기본정보 =====
-            rowIdx = writeProposalInfo(sheet, proposal, rowIdx, textStyle, numberStyle);
-
-            rowIdx++; // 한 줄 띄움
-
-            // ===== 헤더 =====
-            Row headerRow = sheet.createRow(rowIdx++);
-            String[] headers = {
-                    "No", "공간", "카테고리", "제품명", "업체코드", "업체명", "업체품명",
-                    "메인품목코드", "구품목코드", "최종단가",
-                    "수량", "금액", "비고", "이미지URL"
-            };
-
-            for (int i = 0; i < headers.length; i++) {
-                Cell cell = headerRow.createCell(i);
-                cell.setCellValue(headers[i]);
-                cell.setCellStyle(headerStyle);
-            }
-
-            // ===== 데이터 =====
-            int no = 1;
-            BigDecimal totalAmount = BigDecimal.ZERO;
-
-            for (ProposalLine line : lines) {
-                Row row = sheet.createRow(rowIdx++);
-
-                createCell(row, 0, no++, textStyle);
-                createCell(row, 1, nvl(line.getArea()), textStyle);
-                createCell(row, 2, nvl(line.getCategory()), textStyle);
-                createCell(row, 3, nvl(line.getProductName()), textStyle);
-                createCell(row, 4, nvl(line.getVendorCode()), textStyle);
-                createCell(row, 5, nvl(line.getVendorName()), textStyle);
-                createCell(row, 6, nvl(line.getVendorItemName()), textStyle);
-                createCell(row, 7, nvl(line.getMainItemCode()), textStyle);
-                createCell(row, 8, nvl(line.getOldItemCode()), textStyle);
-
-                // 사입단가(catalogUnitPrice)·마진율(marginRate)은 고객 발송용 출력에서 제외한다.
-                // 화면(제안서 상세)에서는 계속 보이며, 엑셀에만 제안단가(unitPrice)를 싣는다.
-                createCell(row, 9, defaultBigDecimal(line.getUnitPrice()).doubleValue(), numberStyle);
-
-                createCell(row, 10, line.getQty() != null ? line.getQty() : 0, numberStyle);
-
-                BigDecimal amount = line.getAmount() != null
-                        ? line.getAmount()
-                        : calculateAmount(line.getUnitPrice(), line.getQty());
-
-                createCell(row, 11, amount.doubleValue(), numberStyle);
-                // 내부 비고(카탈로그 remark: 단종/검수필요 등)는 출력하지 않는다 — 고객용 비고는 사용자 입력 note만.
-                createCell(row, 12, nvl(line.getNote()), textStyle);
-                createCell(row, 13, nvl(line.getImageUrl()), textStyle);
-
-                totalAmount = totalAmount.add(amount);
-            }
-
-            // ===== 합계 =====
-            Row totalRow = sheet.createRow(rowIdx);
-            createCell(totalRow, 10, "합계", headerStyle);
-            createCell(totalRow, 11, totalAmount.doubleValue(), numberStyle);
-
-            // 컬럼 너비
-            int[] widths = {
-                    3000, 5000, 5000, 8000, 5000, 6000, 7000,
-                    5000, 5000, 4500,
-                    3000, 5000, 7000, 10000
-            };
-
-            for (int i = 0; i < widths.length; i++) {
-                sheet.setColumnWidth(i, widths[i]);
-            }
-
-            workbook.write(out);
-            return out.toByteArray();
-
-        } catch (IOException e) {
-            throw new RuntimeException("엑셀 파일 생성 중 오류가 발생했습니다.", e);
-        }
+    private List<ProposalLine> lines(Long proposalId) {
+        return proposalLineRepository.findByProposalIdOrderBySortOrderAscIdAsc(proposalId);
     }
 
-    private int writeProposalInfo(
-            Sheet sheet,
-            Proposal proposal,
-            int rowIdx,
-            CellStyle textStyle,
-            CellStyle numberStyle
-    ) {
-        Row row0 = sheet.createRow(rowIdx++);
-        createCell(row0, 0, "제안서 ID", textStyle);
-        createCell(row0, 1, proposal.getId() != null ? proposal.getId() : 0L, numberStyle);
-
-        Row row1 = sheet.createRow(rowIdx++);
-        createCell(row1, 0, "프로젝트명", textStyle);
-        createCell(row1, 1, nvl(proposal.getProjectName()), textStyle);
-
-        Row row2 = sheet.createRow(rowIdx++);
-        createCell(row2, 0, "담당자", textStyle);
-        createCell(row2, 1, nvl(proposal.getManager()), textStyle);
-
-        Row row3 = sheet.createRow(rowIdx++);
-        createCell(row3, 0, "작성일", textStyle);
-        createCell(row3, 1, proposal.getDate() != null ? proposal.getDate().toString() : "", textStyle);
-
-        Row row4 = sheet.createRow(rowIdx++);
-        createCell(row4, 0, "아파트 타입", textStyle);
-        createCell(row4, 1, nvl(proposal.getApartmentType()), textStyle);
-
-        Row row5 = sheet.createRow(rowIdx++);
-        createCell(row5, 0, "세대수", textStyle);
-        createCell(row5, 1, proposal.getHouseholds() != null ? proposal.getHouseholds() : 0, numberStyle);
-
-        Row row6 = sheet.createRow(rowIdx++);
-        createCell(row6, 0, "비고", textStyle);
-        createCell(row6, 1, nvl(proposal.getNote()), textStyle);
-
-        return rowIdx;
-    }
-
-    private CellStyle createHeaderStyle(Workbook workbook) {
-        CellStyle style = workbook.createCellStyle();
-
-        Font font = workbook.createFont();
-        font.setBold(true);
-        style.setFont(font);
-
-        style.setAlignment(HorizontalAlignment.CENTER);
-        style.setVerticalAlignment(VerticalAlignment.CENTER);
-        style.setBorderTop(BorderStyle.THIN);
-        style.setBorderBottom(BorderStyle.THIN);
-        style.setBorderLeft(BorderStyle.THIN);
-        style.setBorderRight(BorderStyle.THIN);
-        style.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
-        style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-
-        return style;
-    }
-
-    private CellStyle createTextStyle(Workbook workbook) {
-        CellStyle style = workbook.createCellStyle();
-        style.setVerticalAlignment(VerticalAlignment.CENTER);
-        style.setBorderTop(BorderStyle.THIN);
-        style.setBorderBottom(BorderStyle.THIN);
-        style.setBorderLeft(BorderStyle.THIN);
-        style.setBorderRight(BorderStyle.THIN);
-        style.setWrapText(true);
-        return style;
-    }
-
-    private CellStyle createNumberStyle(Workbook workbook) {
-        CellStyle style = workbook.createCellStyle();
-        style.setVerticalAlignment(VerticalAlignment.CENTER);
-        style.setAlignment(HorizontalAlignment.RIGHT);
-        style.setBorderTop(BorderStyle.THIN);
-        style.setBorderBottom(BorderStyle.THIN);
-        style.setBorderLeft(BorderStyle.THIN);
-        style.setBorderRight(BorderStyle.THIN);
-
-        DataFormat dataFormat = workbook.createDataFormat();
-        style.setDataFormat(dataFormat.getFormat("#,##0.00"));
-
-        return style;
-    }
-
-    private void createCell(Row row, int cellIndex, String value, CellStyle style) {
-        Cell cell = row.createCell(cellIndex);
-        cell.setCellValue(value);
-        cell.setCellStyle(style);
-    }
-
-    private void createCell(Row row, int cellIndex, int value, CellStyle style) {
-        Cell cell = row.createCell(cellIndex);
-        cell.setCellValue(value);
-        cell.setCellStyle(style);
-    }
-
-    private void createCell(Row row, int cellIndex, long value, CellStyle style) {
-        Cell cell = row.createCell(cellIndex);
-        cell.setCellValue(value);
-        cell.setCellStyle(style);
-    }
-
-    private void createCell(Row row, int cellIndex, double value, CellStyle style) {
-        Cell cell = row.createCell(cellIndex);
-        cell.setCellValue(value);
-        cell.setCellStyle(style);
-    }
-
-    private BigDecimal calculateAmount(BigDecimal unitPrice, Integer qty) {
-        BigDecimal price = unitPrice != null ? unitPrice : BigDecimal.ZERO;
-        int quantity = qty != null ? qty : 0;
-        return price.multiply(BigDecimal.valueOf(quantity));
-    }
-
-    private BigDecimal defaultBigDecimal(BigDecimal value) {
-        return value != null ? value : BigDecimal.ZERO;
-    }
-
-    private String nvl(String value) {
+    private static String nvl(String value) {
         return value != null ? value : "";
+    }
+
+    /** 파일명에 쓸 수 없는 문자를 밀어낸다. */
+    private static String safeName(String value) {
+        if (value == null || value.isBlank()) return "제안서";
+        return value.trim().replaceAll("[\\\\/:*?\"<>|]", "_");
+    }
+
+    /** 파일명 끝의 날짜 도장(yyMMdd). 제안서 작성일을 쓰고, 없거나 형식이 어긋나면 오늘로 본다. */
+    private static String stamp(Proposal proposal) {
+        try {
+            return LocalDate.parse(proposal.getDate().trim())
+                    .format(DateTimeFormatter.ofPattern("yyMMdd"));
+        } catch (Exception e) {
+            return LocalDate.now().format(DateTimeFormatter.ofPattern("yyMMdd"));
+        }
     }
 }
