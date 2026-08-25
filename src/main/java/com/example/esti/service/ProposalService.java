@@ -4,6 +4,7 @@ import com.example.esti.dto.ProposalRequest;
 import com.example.esti.dto.ProposalResponse;
 import com.example.esti.entity.Proposal;
 import com.example.esti.entity.ProposalLine;
+import com.example.esti.entity.VendorProduct;
 import com.example.esti.entity.ProposalTemplate;
 import com.example.esti.repository.ProposalLineRepository;
 import com.example.esti.repository.ProposalRepository;
@@ -218,6 +219,9 @@ public class ProposalService {
             nl.setCategory(l.getCategory());
             nl.setQty(l.getQty());
             nl.setNote(l.getNote());
+            nl.setUnit(l.getUnit());
+            nl.setApartmentType(l.getApartmentType());
+            nl.setBuildingType(l.getBuildingType());
             // 원본이 legacy(sortOrder=null)여도 조회 순서(=id 순)대로 번호를 새로 매긴다
             nl.setSortOrder(copyOrder++);
             lineRepo.save(nl);
@@ -289,6 +293,11 @@ public class ProposalService {
             line.setCategory(lineReq.getCategory());
             line.setQty(lineReq.getQty());
             line.setNote(lineReq.getNote());
+
+            // 단위는 카탈로그에서 담을 때 스냅샷된다. 값이 없으면 기본값 SET(O-1b).
+            line.setUnit(VendorProduct.unitOrDefault(lineReq.getUnit()));
+            line.setApartmentType(lineReq.getApartmentType());
+            line.setBuildingType(lineReq.getBuildingType());
 
             lineRepo.save(line);
         }
@@ -391,6 +400,9 @@ public class ProposalService {
             o.setQty(l.getQty());
             o.setNote(l.getNote());
             o.setSortOrder(l.getSortOrder());
+            o.setUnit(l.getUnit());
+            o.setApartmentType(l.getApartmentType());
+            o.setBuildingType(l.getBuildingType());
             return o;
         }).collect(Collectors.toList()));
 

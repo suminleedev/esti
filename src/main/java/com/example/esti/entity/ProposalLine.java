@@ -79,5 +79,26 @@ public class ProposalLine extends BaseEntity {
     /** 제안서 내 표시 순서(0-based). 기존 행은 null이며 조회 시 id 순으로 폴백된다. */
     @Column(name = "sort_order")
     private Integer sortOrder;
+
+    /**
+     * 단위(SET/EA 등) — 견적서 C열. 담을 때 {@link VendorProduct}에서 스냅샷한다.
+     * 마스터가 나중에 바뀌어도 이미 만든 제안서는 당시 값을 유지한다(다른 표시 필드와 동일한 방침).
+     */
+    @Column(length = 20)
+    private String unit;
+
+    /**
+     * 평형 — 라인 단위다. 한 제안서에 59㎡·84㎡가 섞이고, 견적서는 그중 한 평형만 뽑는다(O-7).
+     * 제안서 단위 값인 {@code Proposal.apartmentType}과 별개다.
+     */
+    @Column(name = "apartment_type", length = 50)
+    private String apartmentType;
+
+    /**
+     * 건물 구분(본세대/부속동/상가 등) — 견적서의 본동·부속동 섹션 분리 기준(O-5).
+     * 현장마다 값이 추가될 수 있어 enum이 아니라 문자열이다. 마스터 관리는 Phase 7.
+     */
+    @Column(name = "building_type", length = 50)
+    private String buildingType;
 }
 

@@ -14,5 +14,6 @@ public record VendorCatalogUpdateRequest(
         String remark,
         BigDecimal unitPrice,
         String description,
-        String imageUrl
+        String imageUrl,
+        String unit          // 단위(SET/EA 등). 견적서 C열에 쓴다 (O-1b)
 ) {}

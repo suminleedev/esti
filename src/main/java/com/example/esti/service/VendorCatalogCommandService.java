@@ -39,6 +39,8 @@ public class VendorCatalogCommandService {
         product.setProductName(request.productName());
         product.setImageUrl(request.imageUrl());
         product.setDescription(request.description());
+        // 단위는 비우는 것을 허용하지 않는다 — 견적서 C열이 빈칸이 되므로 기본값 SET으로 접는다(O-1b)
+        product.setUnit(VendorProduct.unitOrDefault(request.unit()));
 
         return VendorCatalogView.from(vip);
     }

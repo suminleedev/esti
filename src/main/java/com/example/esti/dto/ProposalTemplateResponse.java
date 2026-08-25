@@ -42,6 +42,8 @@ public class ProposalTemplateResponse {
         private String category;
         private Integer defaultQty;
         private String note;
+
+        private String unit;   // 단위(SET/EA 등). 평형·건물구분은 현장별 값이라 템플릿에 두지 않는다
     }
 }
 

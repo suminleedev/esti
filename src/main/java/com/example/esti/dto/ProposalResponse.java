@@ -55,6 +55,10 @@ public class ProposalResponse {
         private String note;
 
         private Integer sortOrder;   // 제안서 내 표시 순서(0-based)
+
+        private String unit;           // 단위(SET/EA 등)
+        private String apartmentType;  // 평형 — 라인 단위(O-7)
+        private String buildingType;   // 건물 구분(본세대/부속동/상가 등, O-5)
     }
 }
 

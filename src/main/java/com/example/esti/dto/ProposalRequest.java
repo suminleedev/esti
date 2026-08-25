@@ -51,5 +51,9 @@ public class ProposalRequest {
         private String category;
         private Integer qty;
         private String note;
+
+        private String unit;           // 단위(SET/EA 등) — 카탈로그에서 스냅샷
+        private String apartmentType;  // 평형 — 라인 단위(O-7)
+        private String buildingType;   // 건물 구분(본세대/부속동/상가 등, O-5)
     }
 }
