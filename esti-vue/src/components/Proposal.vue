@@ -151,7 +151,8 @@
             <dt class="col-sm-2">세대수</dt><dd class="col-sm-4">{{ form.households ?? '-' }}</dd>
             <dt class="col-sm-2">작성일</dt><dd class="col-sm-4">{{ date(form.date) }}</dd>
             <dt class="col-sm-2">적용 부위</dt><dd class="col-sm-4">{{ form.areas.length ? form.areas.join(', ') : '-' }}</dd>
-            <dt class="col-sm-2">비고</dt><dd class="col-sm-10">{{ form.note || '-' }}</dd>
+            <dt class="col-sm-2">제출처</dt><dd class="col-sm-4">{{ form.clientName || '-' }}</dd>
+            <dt class="col-sm-2">비고</dt><dd class="col-sm-4">{{ form.note || '-' }}</dd>
           </dl>
         </div>
       </div>
@@ -244,6 +245,16 @@
             <div class="col-md-6">
               <label class="form-label">비고</label>
               <input v-model.trim="form.note" class="form-control" placeholder="현장 특이사항, 일정 등" />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">제출처</label>
+              <input v-model.trim="form.clientName" class="form-control" placeholder="예) 대우건설" />
+              <div class="form-text">견적서 머리글의 <code>貴下</code> 앞에 들어갑니다.</div>
+            </div>
+            <div class="col-md-12">
+              <label class="form-label">견적서 조건 문구</label>
+              <textarea v-model="form.quoteTerms" class="form-control" rows="4"
+                        placeholder="비워 두면 기본 문구 4줄이 나갑니다. 한 줄에 하나씩 적어주세요."></textarea>
             </div>
           </div>
 
@@ -699,6 +710,8 @@ const form = reactive({
   apartmentType: '',
   households: null,
   note: '',
+  clientName: '',   // 제출처(건설사) — 견적서 머리글
+  quoteTerms: '',   // 견적서 조건 문구(줄바꿈 구분). 비면 기본 문구가 나간다
   areas: [],
   requiredCategories: [],
   globalMarginRate: 10
@@ -1317,6 +1330,8 @@ function buildPayload() {
     apartmentType: form.apartmentType,
     households: form.households,
     note: form.note,
+    clientName: form.clientName,
+    quoteTerms: form.quoteTerms,
     areas: form.areas,
     requiredCategories: form.requiredCategories,
     globalMarginRate: form.globalMarginRate,
@@ -1492,6 +1507,8 @@ async function loadProposal(id) {
     form.apartmentType = p.apartmentType
     form.households = p.households
     form.note = p.note
+    form.clientName = p.clientName ?? ''
+    form.quoteTerms = p.quoteTerms ?? ''
 
     // Step2
     form.areas = p.areas || []

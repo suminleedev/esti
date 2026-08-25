@@ -47,6 +47,23 @@ public class Proposal extends BaseEntity {
     @Column(length = 500)
     private String note;             // 기타 메모
 
+    /** 제출처(건설사) — 견적서 머리글의 `[제출처] 貴下` 자리. 비면 `貴下`만 찍는다. */
+    @Column(name = "client_name", length = 200)
+    private String clientName;
+
+    /**
+     * 견적번호(`syt-YYYYMMDDNN`) — 견적서를 처음 출력할 때 한 번 부여하고 이후 재사용한다(O-9).
+     * 한 제안서에서 평형별로 여러 견적서가 나와도 번호는 하나를 공유한다.
+     */
+    @Column(name = "quote_no", length = 30)
+    private String quoteNo;
+
+    /**
+     * 견적서 하단 조건 문구. 줄바꿈으로 구분한다. 비어 있으면 기본 4줄을 쓴다(O-9).
+     */
+    @Column(name = "quote_terms", length = 2000)
+    private String quoteTerms;
+
     @Column(length = 1000)
     private String areasJson;        // ["욕실1","욕실2"] JSON 문자열
 

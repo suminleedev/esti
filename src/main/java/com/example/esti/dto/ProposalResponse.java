@@ -20,6 +20,9 @@ public class ProposalResponse {
     private Integer households;
     private String note;
     private String status; // "DRAFT" / "SUBMITTED" / "SENT"
+    private String clientName;   // 제출처(건설사)
+    private String quoteNo;      // 견적번호 — 첫 견적서 출력 때 부여된다(읽기 전용)
+    private String quoteTerms;   // 견적서 조건 문구(줄바꿈 구분)
 
     private List<String> areas;
     private List<String> requiredCategories;

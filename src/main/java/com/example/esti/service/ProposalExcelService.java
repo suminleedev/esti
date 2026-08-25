@@ -2,6 +2,9 @@ package com.example.esti.service;
 
 import com.example.esti.entity.Proposal;
 import com.example.esti.output.ProposalCardExcelWriter;
+import com.example.esti.output.QuoteExcelWriter;
+import com.example.esti.output.QuoteTarget;
+import org.springframework.beans.factory.annotation.Value;
 import com.example.esti.entity.ProposalLine;
 import com.example.esti.repository.ProposalLineRepository;
 import com.example.esti.repository.ProposalRepository;
@@ -23,6 +26,25 @@ public class ProposalExcelService {
 
     private final ProposalRepository proposalRepository;
     private final ProposalLineRepository proposalLineRepository;
+    private final QuoteNumberService quoteNumberService;
+
+    /** 견적서 서명란에 찍히는 대표이사명. 회사 정보라 설정으로 뺀다. */
+    @Value("${app.company.ceo:}")
+    private String ceoName;
+
+    /**
+     * 견적서(내부 검토용) 출력 — Phase 6 P3 실양식.
+     *
+     * <p>제안서와 달리 사입가·마진이 들어간다. 대상은 평형별 본세대 또는 부속동·상가 합본이다(O-7).
+     * 견적번호는 첫 출력 때 부여되고 이후 재사용된다(O-9).
+     */
+    @Transactional
+    public byte[] exportQuote(Long proposalId, QuoteTarget target) {
+        Proposal proposal = loadSentProposal(proposalId);
+        String quoteNo = quoteNumberService.assign(proposal);
+        List<ProposalLine> lines = proposalLineRepository.findByProposalIdOrderBySortOrderAscIdAsc(proposalId);
+        return QuoteExcelWriter.write(proposal, lines, target, quoteNo, ceoName);
+    }
 
     /**
      * 제안서(고객 제출용) 카드 그리드 출력 — Phase 6 P2 실양식.
