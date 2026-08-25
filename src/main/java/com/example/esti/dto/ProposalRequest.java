@@ -19,6 +19,8 @@ public class ProposalRequest {
     private String apartmentType;
     private Integer households;
     private String note;
+    private String clientName;   // 제출처(건설사) — 견적서 머리글
+    private String quoteTerms;   // 견적서 조건 문구(줄바꿈 구분). 비면 기본 문구
 
     private List<String> areas;
     private List<String> requiredCategories;

@@ -186,6 +186,9 @@ public class ProposalService {
         p.setApartmentType(src.getApartmentType());
         p.setHouseholds(src.getHouseholds());
         p.setNote(src.getNote());
+        p.setClientName(src.getClientName());
+        p.setQuoteTerms(src.getQuoteTerms());
+        // quoteNo는 복사하지 않는다 — 복사본은 별개 문서라 새 견적번호를 받아야 한다
         p.setAreasJson(src.getAreasJson());
         p.setRequiredCategoriesJson(src.getRequiredCategoriesJson());
         p.setGlobalMarginRate(src.getGlobalMarginRate());
@@ -247,6 +250,8 @@ public class ProposalService {
         p.setApartmentType(req.getApartmentType());
         p.setHouseholds(req.getHouseholds());
         p.setNote(req.getNote());
+        p.setClientName(req.getClientName());
+        p.setQuoteTerms(req.getQuoteTerms());
         p.setGlobalMarginRate(req.getGlobalMarginRate());
 
         p.setAreasJson(mapper.writeValueAsString(req.getAreas()));
@@ -483,6 +488,9 @@ public class ProposalService {
         res.setApartmentType(p.getApartmentType());
         res.setHouseholds(p.getHouseholds());
         res.setNote(p.getNote());
+        res.setClientName(p.getClientName());
+        res.setQuoteNo(p.getQuoteNo());
+        res.setQuoteTerms(p.getQuoteTerms());
         res.setStatus(p.getStatus().name());
         res.setGlobalMarginRate(p.getGlobalMarginRate());
         // 상세 areas/lines 는 생략 (필요하면 확장)
