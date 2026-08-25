@@ -12,8 +12,8 @@ import java.util.Set;
  * <p>샘플 양식의 4개 카드 열은 단순 순서가 아니라 의미로 나뉘어 있다. 샘플 20장을 대조해 얻은 규칙이다.
  *
  * <ol>
- *   <li><b>4열</b> — 악세사리</li>
  *   <li><b>3열</b> — 선택사항(유상옵션)</li>
+ *   <li><b>4열</b> — 악세사리</li>
  *   <li><b>1열</b> — 부위가 욕실이면서 메인 위생기구</li>
  *   <li><b>2열</b> — 나머지 (비욕실이거나, 욕실이지만 메인이 아닌 것)</li>
  * </ol>
@@ -21,9 +21,9 @@ import java.util.Set;
  * <p>2열의 존재가 규칙의 핵심 근거다 — 샘플의 `욕실청소건`은 부위가 욕실인데도 1열이 아니라 2열에 있다.
  * 즉 조건은 "욕실이면 1열"이 아니라 <b>"욕실 + 메인"</b>이다.
  *
- * <p><b>겹칠 때의 우선순위</b>: 악세사리를 옵션보다 먼저 본다. 악세사리는 제품 종류(고정)이고
- * 옵션은 상거래 표시(가변)라, 유상옵션인 악세사리도 4열에 모이는 편이 열의 성격이 흔들리지 않는다.
- * 반대로 두고 싶으면 {@link #columnOf} 의 두 분기 순서만 바꾸면 된다.
+ * <p><b>유상옵션은 3열만 해당한다</b>(2026-08-25 사용자 확인). 그래서 옵션을 가장 먼저 판정한다.
+ * 악세사리는 유상옵션으로 잡히지 않으므로 두 조건이 실제로 겹치지는 않지만, 순서를 이렇게 두면
+ * "옵션이면 3열"이 예외 없이 성립한다.
  */
 public final class ProposalCardLayout {
 
@@ -65,8 +65,8 @@ public final class ProposalCardLayout {
      * 샘플은 `공용욕실`·`부부욕실`처럼 뒤에 붙는다. 양쪽 다 걸려야 한다.
      */
     public static int columnOf(ProposalLine line) {
+        if (Boolean.TRUE.equals(line.getOptional())) return OPTION_COLUMN;
         if (ACCESSORY_CATEGORY.equals(line.getCategory())) return 3;
-        if (Boolean.TRUE.equals(line.getOptional())) return 2;
 
         boolean bathroom = line.getArea() != null && line.getArea().contains("욕실");
         boolean main = MAIN_CATEGORIES.contains(line.getCategory());
