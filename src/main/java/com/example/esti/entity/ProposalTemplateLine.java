@@ -77,4 +77,12 @@ public class ProposalTemplateLine extends BaseEntity {
      */
     @Column(length = 20)
     private String unit;
+
+    /** 소분류 — 제안서 카드의 `사양` 행. 없으면 템플릿으로 만든 카드의 사양이 빈다. */
+    @Column(name = "category_small", length = 100)
+    private String categorySmall;
+
+    /** 선택사항(유상옵션) 여부. 없으면 템플릿으로 만든 라인이 옵션 열(3열)로 가지 못한다. */
+    @Column(name = "is_optional", nullable = false)
+    private Boolean optional = false;
 }

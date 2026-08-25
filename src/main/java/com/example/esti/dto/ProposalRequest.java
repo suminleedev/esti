@@ -55,5 +55,7 @@ public class ProposalRequest {
         private String unit;           // 단위(SET/EA 등) — 카탈로그에서 스냅샷
         private String apartmentType;  // 평형 — 라인 단위(O-7)
         private String buildingType;   // 건물 구분(본세대/부속동/상가 등, O-5)
+        private String categorySmall;  // 소분류 — 카드 '사양' 행
+        private Boolean optional;      // 선택사항(유상옵션) — 카드 3열 배치 기준
     }
 }

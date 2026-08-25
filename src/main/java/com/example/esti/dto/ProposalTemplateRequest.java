@@ -41,7 +41,10 @@ public class ProposalTemplateRequest {
         private Integer defaultQty;
         private String note;
 
-        private String unit;   // 단위(SET/EA 등). 평형·건물구분은 현장별 값이라 템플릿에 두지 않는다
+        private String unit;           // 단위(SET/EA 등)
+        private String categorySmall;  // 소분류 — 카드 '사양' 행
+        private Boolean optional;      // 선택사항(유상옵션) — 카드 3열 배치 기준
+        // 평형·건물구분은 현장별 값이라 템플릿에 두지 않는다
     }
 }
 

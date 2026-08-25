@@ -102,6 +102,8 @@ public class ProposalTemplateService {
                     o.setDefaultQty(l.getDefaultQty());
                     o.setNote(l.getNote());
                     o.setUnit(l.getUnit());
+                    o.setCategorySmall(l.getCategorySmall());
+                    o.setOptional(l.getOptional());
 
                     return o;
                 }).collect(Collectors.toList())
@@ -164,6 +166,8 @@ public class ProposalTemplateService {
             line.setNote(lineReq.getNote());
             // 단위는 카탈로그에서 담을 때 스냅샷된다. 값이 없으면 기본값 SET(O-1b).
             line.setUnit(VendorProduct.unitOrDefault(lineReq.getUnit()));
+            line.setCategorySmall(lineReq.getCategorySmall());
+            line.setOptional(Boolean.TRUE.equals(lineReq.getOptional()));
 
             lineRepo.save(line);
         }

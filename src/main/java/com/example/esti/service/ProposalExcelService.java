@@ -1,6 +1,7 @@
 package com.example.esti.service;
 
 import com.example.esti.entity.Proposal;
+import com.example.esti.output.ProposalCardExcelWriter;
 import com.example.esti.entity.ProposalLine;
 import com.example.esti.repository.ProposalLineRepository;
 import com.example.esti.repository.ProposalRepository;
@@ -23,13 +24,31 @@ public class ProposalExcelService {
     private final ProposalRepository proposalRepository;
     private final ProposalLineRepository proposalLineRepository;
 
-    public byte[] exportProposal(Long proposalId) {
+    /**
+     * 제안서(고객 제출용) 카드 그리드 출력 — Phase 6 P2 실양식.
+     *
+     * <p>기존 {@link #exportProposal(Long)}의 16열 평면 표를 대체할 출력이다.
+     * 엔드포인트 교체는 P4에서 한다 — 그때까지 둘 다 남는다.
+     */
+    public byte[] exportProposalCards(Long proposalId) {
+        Proposal proposal = loadSentProposal(proposalId);
+        List<ProposalLine> lines = proposalLineRepository.findByProposalIdOrderBySortOrderAscIdAsc(proposalId);
+        return ProposalCardExcelWriter.write(proposal, lines);
+    }
+
+    /** 발송완료 상태만 출력 대상이다(기존 규칙 유지). */
+    private Proposal loadSentProposal(Long proposalId) {
         Proposal proposal = proposalRepository.findByIdAndDeletedAtIsNull(proposalId)
                 .orElseThrow(() -> new IllegalArgumentException("제안서를 찾을 수 없습니다. id=" + proposalId));
 
         if (proposal.getStatus() != Proposal.Status.SENT) {
             throw new IllegalStateException("발송완료 상태의 제안서만 출력할 수 있습니다.");
         }
+        return proposal;
+    }
+
+    public byte[] exportProposal(Long proposalId) {
+        Proposal proposal = loadSentProposal(proposalId);
 
         List<ProposalLine> lines = proposalLineRepository.findByProposalIdOrderBySortOrderAscIdAsc(proposalId);
 
