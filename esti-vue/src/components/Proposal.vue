@@ -187,8 +187,13 @@
                     {{ r.vendorItemName }}
                     <div class="small text-muted">{{ r.mainItemCode }} · {{ r.vendorName }}</div>
                   </td>
-                  <td>{{ r.area }}</td>
-                  <td class="text-end">{{ number(r.qty) }}</td>
+                  <td>
+                    {{ r.area }}
+                    <div v-if="r.apartmentType || r.buildingType" class="small text-muted">
+                      {{ [r.apartmentType, r.buildingType].filter(Boolean).join(' · ') }}
+                    </div>
+                  </td>
+                  <td class="text-end">{{ number(r.qty) }}<span class="text-muted small ms-1">{{ r.unit }}</span></td>
                   <td class="text-end">{{ getAppliedMarginRate(r) }}%</td>
                   <td class="text-end">{{ won(r.finalAmount) }}</td>
                 </tr>
@@ -392,6 +397,7 @@
                     <dt class="col-4">원가</dt><dd class="col-8">{{ candidate.vendorProductId ? number(candidate.unitPrice) : '-' }}</dd>
                     <dt class="col-4">설명</dt><dd class="col-8">{{ candidate.description || '-' }}</dd>
                     <dt class="col-4">비고</dt><dd class="col-8">{{ candidate.remark || '-' }}</dd>
+                    <dt class="col-4">단위</dt><dd class="col-8">{{ candidate.unit || '-' }}</dd>
                   </dl>
                 </div>
 
@@ -408,6 +414,27 @@
                     <option value="">선택하세요</option>
                     <option v-for="c in form.requiredCategories" :key="c" :value="c">{{ c }}</option>
                   </select>
+                </div>
+                <div class="row g-2 mb-2">
+                  <div class="col-6">
+                    <label class="form-label">평형</label>
+                    <select v-model="lineInput.apartmentType" class="form-select">
+                      <option value="">선택 안 함</option>
+                      <option v-for="t in APARTMENT_TYPES" :key="t" :value="t">{{ t }}</option>
+                    </select>
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label">건물 구분</label>
+                    <input
+                      v-model.trim="lineInput.buildingType"
+                      class="form-control"
+                      list="building-type-options"
+                      placeholder="선택 또는 직접 입력"
+                    />
+                    <datalist id="building-type-options">
+                      <option v-for="b in BUILDING_TYPES" :key="b" :value="b" />
+                    </datalist>
+                  </div>
                 </div>
                 <div class="mb-2">
                   <label class="form-label">수량</label>
@@ -487,7 +514,10 @@
                         {{ r.vendorItemName }}
                         <div class="small text-muted">{{ r.mainItemCode }} · {{ r.vendorName }}</div>
                         <div class="small text-muted">{{ r.category }} · {{ r.area }}</div>
-                        <div class="small text-muted">원가 {{ won(r.catalogUnitPrice) }}</div>
+                        <div v-if="r.apartmentType || r.buildingType" class="small text-muted">
+                          {{ [r.apartmentType, r.buildingType].filter(Boolean).join(' · ') }}
+                        </div>
+                        <div class="small text-muted">원가 {{ won(r.catalogUnitPrice) }} · 단위 {{ r.unit }}</div>
                       </td>
 
                       <td>
@@ -615,7 +645,8 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { usePrompt } from '@/composables/usePrompt'
-import { APARTMENT_TYPES, AREAS, CATEGORIES } from '@/constants/labels'
+// UNITS는 여기서 쓰지 않는다 — 제안서의 단위는 사용자가 고르는 값이 아니라 카탈로그에서 스냅샷된다.
+import { APARTMENT_TYPES, AREAS, CATEGORIES, BUILDING_TYPES, UNIT_DEFAULT } from '@/constants/labels'
 
 const route = useRoute()
 const router = useRouter()
@@ -742,11 +773,14 @@ const candidate = reactive({
   remark: '',
   specs: '',
   description: '',
-  imageUrl: ''
+  imageUrl: '',
+  unit: UNIT_DEFAULT
 })
 
+// 평형·건물구분은 라인마다 다를 수 있어(O-5, O-7) 담을 때 함께 고른다.
+// 부위·카테고리와 달리 필수는 아니다 — 기존 제안서에 없던 값이라 비워 둔 채로도 저장된다.
 const lineInput = reactive({
-  area: '', category: '', qty: 1, note: ''
+  area: '', category: '', qty: 1, note: '', apartmentType: '', buildingType: ''
 })
 
 const lineValid = computed(() =>
@@ -794,8 +828,9 @@ function selectCandidate(item) {
     remark: item.remark ?? '',
     specs: item.specs ?? '',
     description: item.description ?? '',
-    imageUrl: item.imageUrl ?? ''
-    // area/category는 사용자가 선택
+    imageUrl: item.imageUrl ?? '',
+    unit: item.unit ?? UNIT_DEFAULT
+    // area/category/평형/건물구분은 사용자가 선택
   })
 }
 
@@ -811,9 +846,10 @@ function resetLine () {
     remark: '',
     specs: '',
     description: '',
-    imageUrl: ''
+    imageUrl: '',
+    unit: UNIT_DEFAULT
   })
-  Object.assign(lineInput, { area: '', category: '', qty: 1, note: '' })
+  Object.assign(lineInput, { area: '', category: '', qty: 1, note: '', apartmentType: '', buildingType: '' })
 }
 
 /* ====== 마진 계산 ====== */
@@ -872,6 +908,10 @@ function createLine(data = {}) {
     category: data.category ?? '',
     qty: toNumber(data.qty ?? data.defaultQty ?? 1),
     note: data.note ?? '',
+
+    unit: data.unit ?? UNIT_DEFAULT,
+    apartmentType: data.apartmentType ?? '',
+    buildingType: data.buildingType ?? '',
   }
 }
 
@@ -904,7 +944,11 @@ function addLine() {
     area: lineInput.area,
     category: lineInput.category,
     qty: lineInput.qty,
-    note: lineInput.note
+    note: lineInput.note,
+
+    unit: candidate.unit,
+    apartmentType: lineInput.apartmentType,
+    buildingType: lineInput.buildingType
   })
 
   recalculateLine(newLine)
@@ -1082,6 +1126,8 @@ async function onLoadTemplate () {
         category: line.category,
         qty: line.defaultQty ?? line.qty,
         note: line.note,
+        // 평형·건물구분은 현장별 값이라 템플릿에 없다. 단위만 이어받는다.
+        unit: line.unit,
       }))
       recalculateLine(lines[lines.length - 1])
     })
@@ -1121,6 +1167,7 @@ function buildTemplatePayload(templateName) {
       category: l.category,
       defaultQty: l.qty,
       note: l.note || '',
+      unit: l.unit,
     }))
   }
 }
@@ -1202,6 +1249,7 @@ async function onRenameTemplate() {
         category: l.category,
         defaultQty: l.defaultQty,
         note: l.note,
+        unit: l.unit,
       })),
     })
 
@@ -1275,6 +1323,10 @@ function buildPayload() {
       category: l.category,
       qty: l.qty,
       note: l.note,
+
+      unit: l.unit,
+      apartmentType: l.apartmentType,
+      buildingType: l.buildingType,
     }))
   }
 }
@@ -1448,6 +1500,9 @@ async function loadProposal(id) {
         category: l.category,
         qty: l.qty,
         note: l.note,
+        unit: l.unit,
+        apartmentType: l.apartmentType,
+        buildingType: l.buildingType,
       }))
     })
 

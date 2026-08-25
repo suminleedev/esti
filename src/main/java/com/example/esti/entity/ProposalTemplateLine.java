@@ -70,4 +70,11 @@ public class ProposalTemplateLine extends BaseEntity {
 
     @Column(length = 200)
     private String note;
+
+    /**
+     * 단위(SET/EA 등). 템플릿도 스냅샷이라 여기 없으면 템플릿으로 만든 제안서 라인의 단위가 빈다.
+     * 평형·건물구분은 현장별 값이라 템플릿에 두지 않는다.
+     */
+    @Column(length = 20)
+    private String unit;
 }

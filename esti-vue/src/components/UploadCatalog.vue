@@ -9,6 +9,7 @@ import EmptyState from "@/components/common/EmptyState.vue"
 import { useToast } from "@/composables/useToast"
 import { useConfirm } from "@/composables/useConfirm"
 import { partsSumStatus, sumParts, PARTS_SUM_BADGE_CLASS } from "@/utils/partsSum"
+import { UNITS } from "@/constants/labels"
 
 const toast = useToast()
 const { confirm } = useConfirm()
@@ -480,10 +481,11 @@ onMounted(() => {
                 <th style="width:12%">제품명</th>
                 <th style="width:11%">모델명</th>
                 <th style="width:10%">브랜드</th>
-                <th style="width:13%">비고</th>
+                <th style="width:10%">비고</th>
                 <th style="width:7%">단가</th>
+                <th style="width:5%">단위</th>
 <!--                <th style="width:7%">구품번</th>-->
-                <th style="width:9%">설명</th>
+                <th style="width:8%">설명</th>
                 <th style="width:6%">이미지</th>
                 <th style="width:7%">액션</th>
               </tr>
@@ -506,6 +508,18 @@ onMounted(() => {
                       type="number"
                       class="form-control form-control-sm text-end"
                     />
+                  </td>
+                  <td>
+                    <!-- 견적서 C열 단위(O-1b). 대부분 SET이라 목록에서 고르되 직접 입력도 허용한다 -->
+                    <input
+                      v-model.trim="editingProduct.unit"
+                      class="form-control form-control-sm"
+                      list="catalog-unit-options"
+                      placeholder="SET"
+                    />
+                    <datalist id="catalog-unit-options">
+                      <option v-for="u in UNITS" :key="u" :value="u" />
+                    </datalist>
                   </td>
                   <td><input v-model="editingProduct.description" class="form-control form-control-sm" /></td>
                   <td><input v-model="editingProduct.imageUrl" class="form-control form-control-sm" /></td>
@@ -544,6 +558,7 @@ onMounted(() => {
                       ></i>
                     </button>
                   </td>
+                  <td class="text-center">{{ p.unit }}</td>
 <!--                  <td>{{ p.oldItemCode }}</td>-->
                   <td>{{ p.description }}</td>
                   <td style="padding:1px;">
@@ -567,7 +582,7 @@ onMounted(() => {
 
               <!-- 부속 구성 (B-2) — 단가 셀을 누른 행 아래에만 펼친다 -->
               <tr v-if="expandedRowId === p.vendorItemPriceId" class="parts-row">
-                <td colspan="11">
+                <td colspan="12">
                   <div v-if="partsLoadingId === p.vendorItemPriceId" class="text-muted small py-2">
                     <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
                     부속 구성을 불러오는 중...
