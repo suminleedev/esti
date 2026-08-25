@@ -444,6 +444,14 @@
                   <label class="form-label">비고</label>
                   <input v-model.trim="lineInput.note" class="form-control" placeholder="색상/사양 등" />
                 </div>
+                <div class="form-check mb-2">
+                  <!-- 제안서 엑셀에서 옵션 열(3열)로 모이고, 세대당 계약금액 합계에서는 빠진다 -->
+                  <input class="form-check-input" type="checkbox" id="chk-line-optional" v-model="lineInput.optional" />
+                  <label class="form-check-label" for="chk-line-optional">
+                    선택사항(유상옵션)
+                    <span class="text-muted small d-block">체크하면 계약금액 합계에서 제외됩니다</span>
+                  </label>
+                </div>
 
                 <div class="mt-auto d-flex gap-2">
                   <button class="btn btn-primary btn-sm" :disabled="!candidate.vendorProductId || !lineValid" @click="addLine">
@@ -518,6 +526,7 @@
                           {{ [r.apartmentType, r.buildingType].filter(Boolean).join(' · ') }}
                         </div>
                         <div class="small text-muted">원가 {{ won(r.catalogUnitPrice) }} · 단위 {{ r.unit }}</div>
+                        <span v-if="r.optional" class="badge bg-warning-subtle text-warning-emphasis">유상옵션</span>
                       </td>
 
                       <td>
@@ -774,13 +783,14 @@ const candidate = reactive({
   specs: '',
   description: '',
   imageUrl: '',
-  unit: UNIT_DEFAULT
+  unit: UNIT_DEFAULT,
+  categorySmall: ''
 })
 
 // 평형·건물구분은 라인마다 다를 수 있어(O-5, O-7) 담을 때 함께 고른다.
 // 부위·카테고리와 달리 필수는 아니다 — 기존 제안서에 없던 값이라 비워 둔 채로도 저장된다.
 const lineInput = reactive({
-  area: '', category: '', qty: 1, note: '', apartmentType: '', buildingType: ''
+  area: '', category: '', qty: 1, note: '', apartmentType: '', buildingType: '', optional: false
 })
 
 const lineValid = computed(() =>
@@ -829,8 +839,9 @@ function selectCandidate(item) {
     specs: item.specs ?? '',
     description: item.description ?? '',
     imageUrl: item.imageUrl ?? '',
-    unit: item.unit ?? UNIT_DEFAULT
-    // area/category/평형/건물구분은 사용자가 선택
+    unit: item.unit ?? UNIT_DEFAULT,
+    categorySmall: item.categorySmall ?? ''
+    // area/category/평형/건물구분/옵션여부는 사용자가 선택
   })
 }
 
@@ -847,9 +858,10 @@ function resetLine () {
     specs: '',
     description: '',
     imageUrl: '',
-    unit: UNIT_DEFAULT
+    unit: UNIT_DEFAULT,
+    categorySmall: ''
   })
-  Object.assign(lineInput, { area: '', category: '', qty: 1, note: '', apartmentType: '', buildingType: '' })
+  Object.assign(lineInput, { area: '', category: '', qty: 1, note: '', apartmentType: '', buildingType: '', optional: false })
 }
 
 /* ====== 마진 계산 ====== */
@@ -912,6 +924,8 @@ function createLine(data = {}) {
     unit: data.unit ?? UNIT_DEFAULT,
     apartmentType: data.apartmentType ?? '',
     buildingType: data.buildingType ?? '',
+    categorySmall: data.categorySmall ?? '',
+    optional: data.optional ?? false,
   }
 }
 
@@ -948,7 +962,9 @@ function addLine() {
 
     unit: candidate.unit,
     apartmentType: lineInput.apartmentType,
-    buildingType: lineInput.buildingType
+    buildingType: lineInput.buildingType,
+    categorySmall: candidate.categorySmall,
+    optional: lineInput.optional
   })
 
   recalculateLine(newLine)
@@ -1126,8 +1142,10 @@ async function onLoadTemplate () {
         category: line.category,
         qty: line.defaultQty ?? line.qty,
         note: line.note,
-        // 평형·건물구분은 현장별 값이라 템플릿에 없다. 단위만 이어받는다.
+        // 평형·건물구분은 현장별 값이라 템플릿에 없다. 나머지는 이어받는다.
         unit: line.unit,
+        categorySmall: line.categorySmall,
+        optional: line.optional,
       }))
       recalculateLine(lines[lines.length - 1])
     })
@@ -1168,6 +1186,8 @@ function buildTemplatePayload(templateName) {
       defaultQty: l.qty,
       note: l.note || '',
       unit: l.unit,
+      categorySmall: l.categorySmall,
+      optional: l.optional,
     }))
   }
 }
@@ -1250,6 +1270,8 @@ async function onRenameTemplate() {
         defaultQty: l.defaultQty,
         note: l.note,
         unit: l.unit,
+        categorySmall: l.categorySmall,
+        optional: l.optional,
       })),
     })
 
@@ -1327,6 +1349,8 @@ function buildPayload() {
       unit: l.unit,
       apartmentType: l.apartmentType,
       buildingType: l.buildingType,
+      categorySmall: l.categorySmall,
+      optional: l.optional,
     }))
   }
 }
@@ -1503,6 +1527,8 @@ async function loadProposal(id) {
         unit: l.unit,
         apartmentType: l.apartmentType,
         buildingType: l.buildingType,
+        categorySmall: l.categorySmall,
+        optional: l.optional,
       }))
     })
 

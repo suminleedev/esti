@@ -222,6 +222,8 @@ public class ProposalService {
             nl.setUnit(l.getUnit());
             nl.setApartmentType(l.getApartmentType());
             nl.setBuildingType(l.getBuildingType());
+            nl.setCategorySmall(l.getCategorySmall());
+            nl.setOptional(Boolean.TRUE.equals(l.getOptional()));
             // 원본이 legacy(sortOrder=null)여도 조회 순서(=id 순)대로 번호를 새로 매긴다
             nl.setSortOrder(copyOrder++);
             lineRepo.save(nl);
@@ -298,6 +300,8 @@ public class ProposalService {
             line.setUnit(VendorProduct.unitOrDefault(lineReq.getUnit()));
             line.setApartmentType(lineReq.getApartmentType());
             line.setBuildingType(lineReq.getBuildingType());
+            line.setCategorySmall(lineReq.getCategorySmall());
+            line.setOptional(Boolean.TRUE.equals(lineReq.getOptional()));
 
             lineRepo.save(line);
         }
@@ -403,6 +407,8 @@ public class ProposalService {
             o.setUnit(l.getUnit());
             o.setApartmentType(l.getApartmentType());
             o.setBuildingType(l.getBuildingType());
+            o.setCategorySmall(l.getCategorySmall());
+            o.setOptional(l.getOptional());
             return o;
         }).collect(Collectors.toList()));
 
