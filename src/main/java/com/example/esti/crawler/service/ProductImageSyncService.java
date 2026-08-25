@@ -5,7 +5,6 @@ import com.example.esti.crawler.common.ProductImageCrawler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Comparator;
 import java.util.List;
@@ -18,7 +17,10 @@ public class ProductImageSyncService {
     private final List<ProductImageCrawler> crawlers;
     private final List<ManufacturerProductSyncHandler> syncHandlers;
 
-    @Transactional
+    /**
+     * 트랜잭션 없이 실행한다 — 크롤링(네트워크 I/O)이 수 분간 커넥션을 점유하지 않도록.
+     * DB 쓰기는 각 핸들러의 {@code save(@Transactional, 제품 단위)}가 자체 트랜잭션으로 수행한다.
+     */
     public void syncByMaker(String maker) throws Exception {
         ProductImageCrawler crawler = crawlers.stream()
                 .filter(c -> c.maker().equalsIgnoreCase(maker))

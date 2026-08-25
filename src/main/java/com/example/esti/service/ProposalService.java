@@ -100,7 +100,7 @@ public class ProposalService {
 
     /* 임시저장 수정 */
     public ProposalResponse updateDraft(Long id, ProposalRequest req) throws Exception {
-        Proposal p = proposalRepo.findById(id)
+        Proposal p = proposalRepo.findByIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new RuntimeException("Proposal not found"));
 
         if (p.getStatus() != Proposal.Status.DRAFT) {
@@ -117,7 +117,7 @@ public class ProposalService {
 
     /* 제출 */
     public ProposalResponse submit(Long id, ProposalRequest req) throws Exception {
-        Proposal p = proposalRepo.findById(id)
+        Proposal p = proposalRepo.findByIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new RuntimeException("Proposal not found"));
 
         if (p.getStatus() == Proposal.Status.SENT) {
@@ -157,7 +157,7 @@ public class ProposalService {
 
     /* 최종 발송 확정 */
     public ProposalResponse send(Long id) {
-        Proposal p = proposalRepo.findById(id)
+        Proposal p = proposalRepo.findByIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new RuntimeException("Proposal not found"));
 
         if (p.getStatus() != Proposal.Status.SUBMITTED) {
@@ -172,7 +172,7 @@ public class ProposalService {
 
     /* 견적서 복사 : SENT 상태 수정 필요시 복제 (원본 보존, 새 제안서 id 발급) */
     public ProposalResponse copyToDraft(Long id) throws Exception {
-        Proposal src = proposalRepo.findById(id)
+        Proposal src = proposalRepo.findByIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new RuntimeException("Proposal not found"));
 
         Proposal p = new Proposal();
@@ -422,7 +422,7 @@ public class ProposalService {
 
     /* DELETE */
     public void delete(Long id) {
-        Proposal p = proposalRepo.findById(id)
+        Proposal p = proposalRepo.findByIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new RuntimeException("Proposal not found"));
 
         // SENT만 금지, SUBMITTED는 허용
