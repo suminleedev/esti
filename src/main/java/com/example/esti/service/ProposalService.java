@@ -4,6 +4,7 @@ import com.example.esti.dto.ProposalRequest;
 import com.example.esti.dto.ProposalResponse;
 import com.example.esti.entity.Proposal;
 import com.example.esti.entity.ProposalLine;
+import com.example.esti.entity.VendorProduct;
 import com.example.esti.entity.ProposalTemplate;
 import com.example.esti.repository.ProposalLineRepository;
 import com.example.esti.repository.ProposalRepository;
@@ -185,6 +186,9 @@ public class ProposalService {
         p.setApartmentType(src.getApartmentType());
         p.setHouseholds(src.getHouseholds());
         p.setNote(src.getNote());
+        p.setClientName(src.getClientName());
+        p.setQuoteTerms(src.getQuoteTerms());
+        // quoteNo는 복사하지 않는다 — 복사본은 별개 문서라 새 견적번호를 받아야 한다
         p.setAreasJson(src.getAreasJson());
         p.setRequiredCategoriesJson(src.getRequiredCategoriesJson());
         p.setGlobalMarginRate(src.getGlobalMarginRate());
@@ -218,6 +222,11 @@ public class ProposalService {
             nl.setCategory(l.getCategory());
             nl.setQty(l.getQty());
             nl.setNote(l.getNote());
+            nl.setUnit(l.getUnit());
+            nl.setApartmentType(l.getApartmentType());
+            nl.setBuildingType(l.getBuildingType());
+            nl.setCategorySmall(l.getCategorySmall());
+            nl.setOptional(Boolean.TRUE.equals(l.getOptional()));
             // 원본이 legacy(sortOrder=null)여도 조회 순서(=id 순)대로 번호를 새로 매긴다
             nl.setSortOrder(copyOrder++);
             lineRepo.save(nl);
@@ -241,6 +250,8 @@ public class ProposalService {
         p.setApartmentType(req.getApartmentType());
         p.setHouseholds(req.getHouseholds());
         p.setNote(req.getNote());
+        p.setClientName(req.getClientName());
+        p.setQuoteTerms(req.getQuoteTerms());
         p.setGlobalMarginRate(req.getGlobalMarginRate());
 
         p.setAreasJson(mapper.writeValueAsString(req.getAreas()));
@@ -289,6 +300,13 @@ public class ProposalService {
             line.setCategory(lineReq.getCategory());
             line.setQty(lineReq.getQty());
             line.setNote(lineReq.getNote());
+
+            // 단위는 카탈로그에서 담을 때 스냅샷된다. 값이 없으면 기본값 SET(O-1b).
+            line.setUnit(VendorProduct.unitOrDefault(lineReq.getUnit()));
+            line.setApartmentType(lineReq.getApartmentType());
+            line.setBuildingType(lineReq.getBuildingType());
+            line.setCategorySmall(lineReq.getCategorySmall());
+            line.setOptional(Boolean.TRUE.equals(lineReq.getOptional()));
 
             lineRepo.save(line);
         }
@@ -391,6 +409,11 @@ public class ProposalService {
             o.setQty(l.getQty());
             o.setNote(l.getNote());
             o.setSortOrder(l.getSortOrder());
+            o.setUnit(l.getUnit());
+            o.setApartmentType(l.getApartmentType());
+            o.setBuildingType(l.getBuildingType());
+            o.setCategorySmall(l.getCategorySmall());
+            o.setOptional(l.getOptional());
             return o;
         }).collect(Collectors.toList()));
 
@@ -465,6 +488,9 @@ public class ProposalService {
         res.setApartmentType(p.getApartmentType());
         res.setHouseholds(p.getHouseholds());
         res.setNote(p.getNote());
+        res.setClientName(p.getClientName());
+        res.setQuoteNo(p.getQuoteNo());
+        res.setQuoteTerms(p.getQuoteTerms());
         res.setStatus(p.getStatus().name());
         res.setGlobalMarginRate(p.getGlobalMarginRate());
         // 상세 areas/lines 는 생략 (필요하면 확장)

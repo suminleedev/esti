@@ -20,6 +20,9 @@ public class ProposalResponse {
     private Integer households;
     private String note;
     private String status; // "DRAFT" / "SUBMITTED" / "SENT"
+    private String clientName;   // 제출처(건설사)
+    private String quoteNo;      // 견적번호 — 첫 견적서 출력 때 부여된다(읽기 전용)
+    private String quoteTerms;   // 견적서 조건 문구(줄바꿈 구분)
 
     private List<String> areas;
     private List<String> requiredCategories;
@@ -55,6 +58,12 @@ public class ProposalResponse {
         private String note;
 
         private Integer sortOrder;   // 제안서 내 표시 순서(0-based)
+
+        private String unit;           // 단위(SET/EA 등)
+        private String apartmentType;  // 평형 — 라인 단위(O-7)
+        private String buildingType;   // 건물 구분(본세대/부속동/상가 등, O-5)
+        private String categorySmall;  // 소분류 — 카드 '사양' 행
+        private Boolean optional;      // 선택사항(유상옵션) — 카드 3열 배치 기준
     }
 }
 

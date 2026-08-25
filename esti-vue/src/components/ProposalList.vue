@@ -144,13 +144,45 @@
                 >
                   삭제
                 </button>
-                <button
-                  v-if="p.status === 'SENT'"
-                  class="btn btn-outline-primary btn-sm"
-                  @click="printProposal(p.id)"
-                >
-                  출력
-                </button>
+                <div v-if="p.status === 'SENT'" class="btn-group">
+                  <button
+                    class="btn btn-outline-primary btn-sm dropdown-toggle"
+                    type="button"
+                    data-bs-toggle="dropdown"
+                    aria-expanded="false"
+                    @click="loadQuoteTargets(p.id)"
+                  >
+                    출력
+                  </button>
+                  <ul class="dropdown-menu dropdown-menu-end">
+                    <li>
+                      <button class="dropdown-item" @click="downloadProposal(p.id)">
+                        제안서 <span class="text-muted small">(고객 제출용)</span>
+                      </button>
+                    </li>
+                    <li><hr class="dropdown-divider" /></li>
+                    <li>
+                      <h6 class="dropdown-header">
+                        견적서 <span class="text-danger">— 사입가·마진 포함</span>
+                      </h6>
+                    </li>
+                    <li v-if="quoteTargetsLoadingId === p.id" class="dropdown-item-text small text-muted">
+                      불러오는 중...
+                    </li>
+                    <li
+                      v-else-if="!(quoteTargets[p.id] || []).length"
+                      class="dropdown-item-text small text-muted"
+                    >
+                      낼 수 있는 대상이 없습니다
+                    </li>
+                    <li v-for="t in quoteTargets[p.id] || []" :key="`${t.kind}-${t.apartmentType}`">
+                      <button class="dropdown-item" @click="downloadQuote(p.id, t)">
+                        {{ t.label }}
+                        <span class="text-muted small">{{ t.lineCount }}건</span>
+                      </button>
+                    </li>
+                  </ul>
+                </div>
               </td>
             </tr>
             </tbody>
@@ -179,7 +211,7 @@
 </template>
 
 <script setup>
-import {ref, onMounted, watch} from 'vue'
+import {ref, reactive, onMounted, watch} from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 
@@ -187,6 +219,7 @@ import { date } from "@/utils/format"
 import { usePagination } from "@/composables/usePagination"
 import { useToast } from "@/composables/useToast"
 import { useConfirm } from "@/composables/useConfirm"
+import { saveBlob } from "@/utils/download"
 import Pagination from "@/components/Pagination.vue";
 import StatusBadge from "@/components/common/StatusBadge.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
@@ -300,30 +333,47 @@ async function onDelete (p) {
   }
 }
 
-// 출력
-async function printProposal(id) {
+/* ====== 출력 (제안서 / 견적서) ======
+   두 양식은 수신자가 다르다 — 제안서는 고객 제출용(사입가 없음), 견적서는 내부 검토용(사입가 포함).
+   메뉴에서부터 갈라 두어 잘못 내려받는 일을 줄인다. */
+const quoteTargets = reactive({})
+const quoteTargetsLoadingId = ref(null)
+
+/** 견적서 대상 목록은 메뉴를 열 때 한 번만 불러온다 (목록 행마다 미리 부르면 N+1). */
+async function loadQuoteTargets(id) {
+  if (quoteTargets[id]) return
+  quoteTargetsLoadingId.value = id
   try {
-    const res = await axios.get(`/api/proposals/${id}/export-excel`, {
-      responseType: 'blob'
-    })
-
-    const blob = new Blob([res.data], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    })
-
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `proposal_${id}.xlsx`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    window.URL.revokeObjectURL(url)
+    const res = await axios.get(`/api/proposals/${id}/export/quote-targets`)
+    quoteTargets[id] = res.data
   } catch (e) {
-    console.error(e)
+    console.error('견적서 대상 조회 실패', e)
+    quoteTargets[id] = []
+    toast.error('견적서 대상을 불러오지 못했습니다.')
+  } finally {
+    quoteTargetsLoadingId.value = null
+  }
+}
+
+async function downloadProposal(id) {
+  await download(`/api/proposals/${id}/export/proposal`, `제안서_${id}.xlsx`)
+}
+
+async function downloadQuote(id, target) {
+  const params = new URLSearchParams({ kind: target.kind })
+  if (target.apartmentType) params.set('apartmentType', target.apartmentType)
+  await download(`/api/proposals/${id}/export/quote?${params}`, `견적서_${id}.xlsx`)
+}
+
+/** 파일명은 서버가 Content-Disposition으로 정한다. fallback은 헤더를 못 읽을 때만 쓴다. */
+async function download(url, fallbackName) {
+  try {
+    const res = await axios.get(url, { responseType: 'blob' })
+    saveBlob(res, fallbackName)
+  } catch (e) {
+    console.error('엑셀 출력 실패', e)
     toast.error('엑셀 출력 중 오류가 발생했습니다.')
   }
-
 }
 
 onMounted(() => {

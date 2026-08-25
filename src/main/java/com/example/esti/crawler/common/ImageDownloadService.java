@@ -1,5 +1,6 @@
 package com.example.esti.crawler.common;
 
+import com.example.esti.util.VectorImageConverter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -52,11 +53,22 @@ public class ImageDownloadService {
     /**
      * 메모리상의 이미지 바이트를 저장한다(엑셀 임베디드 이미지용). 동일 파일명은 덮어쓰기 → 재업로드 멱등.
      *
+     * <p>EMF/WMF는 브라우저가 렌더링하지 못하므로 저장 전에 PNG로 변환한다(P0). 변환에 실패하면
+     * 원본 확장자 그대로 저장한다 — 이미지 한 건 때문에 적재가 막히지 않게 하기 위함이다.
+     *
      * @param preferredFileName 확장자 없는 파일명 힌트(예: 품번)
      * @param ext               확장자(jpeg/png 등, null이면 jpg)
      */
     public DownloadResult saveBytes(byte[] data, String preferredFileName, String ext) throws Exception {
         Files.createDirectories(rootDir);
+
+        if (VectorImageConverter.isVectorFormat(ext)) {
+            byte[] png = VectorImageConverter.toPng(data, ext);
+            if (png != null) {
+                data = png;
+                ext = "png";
+            }
+        }
 
         String fileName = sanitize(preferredFileName);
         if (!hasImageExtension(fileName)) {
