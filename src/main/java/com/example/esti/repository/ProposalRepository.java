@@ -15,6 +15,12 @@ public interface ProposalRepository
         extends JpaRepository<Proposal, Long>, JpaSpecificationExecutor<Proposal> {
     List<Proposal> findByDeletedAtIsNull();
     Optional<Proposal> findByIdAndDeletedAtIsNull(Long id);
+
+    /**
+     * 오늘 날짜 접두어로 부여된 견적번호 중 가장 큰 것 — 다음 일련번호를 정할 때 쓴다.
+     * 형식이 {@code syt-YYYYMMDDNN}으로 자릿수가 고정이라 사전순 최대가 곧 번호 최대다.
+     */
+    Optional<Proposal> findTopByQuoteNoStartingWithOrderByQuoteNoDesc(String prefix);
     @Override
     @EntityGraph(attributePaths = {"template"})
     Page<Proposal> findAll(Specification<Proposal> spec, Pageable pageable);

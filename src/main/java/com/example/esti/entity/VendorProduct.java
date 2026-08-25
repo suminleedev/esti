@@ -70,6 +70,23 @@ public class VendorProduct extends BaseEntity {
     @Column(length = 20)
     private String itemType;       // 'SET', 'PART' 등
 
+    /**
+     * 견적서 C열에 찍히는 단위(SET/EA 등). 단가표 원본에는 `부속류` 시트 D3에만 있어 파싱으로 못 얻는다(O-1b).
+     * 기본값 `SET`으로 두고 예외(수건걸이·휴지걸이 등 EA)만 카탈로그 화면에서 고친다.
+     * 기존 행은 null이며 읽는 쪽에서 SET으로 폴백한다.
+     */
+    @Column(length = 20)
+    @Builder.Default
+    private String unit = UNIT_DEFAULT;
+
+    /** 단위 기본값. 원본에 값이 없을 때 쓴다. */
+    public static final String UNIT_DEFAULT = "SET";
+
+    /** null·공백을 기본값으로 접어 준다. 표시·스냅샷 경로가 공통으로 쓴다. */
+    public static String unitOrDefault(String unit) {
+        return (unit == null || unit.isBlank()) ? UNIT_DEFAULT : unit;
+    }
+
     // ===== 이미지 =====
     // 대표 이미지
     @Column(name = "image_url", length = 1000)

@@ -151,7 +151,8 @@
             <dt class="col-sm-2">세대수</dt><dd class="col-sm-4">{{ form.households ?? '-' }}</dd>
             <dt class="col-sm-2">작성일</dt><dd class="col-sm-4">{{ date(form.date) }}</dd>
             <dt class="col-sm-2">적용 부위</dt><dd class="col-sm-4">{{ form.areas.length ? form.areas.join(', ') : '-' }}</dd>
-            <dt class="col-sm-2">비고</dt><dd class="col-sm-10">{{ form.note || '-' }}</dd>
+            <dt class="col-sm-2">제출처</dt><dd class="col-sm-4">{{ form.clientName || '-' }}</dd>
+            <dt class="col-sm-2">비고</dt><dd class="col-sm-4">{{ form.note || '-' }}</dd>
           </dl>
         </div>
       </div>
@@ -187,8 +188,13 @@
                     {{ r.vendorItemName }}
                     <div class="small text-muted">{{ r.mainItemCode }} · {{ r.vendorName }}</div>
                   </td>
-                  <td>{{ r.area }}</td>
-                  <td class="text-end">{{ number(r.qty) }}</td>
+                  <td>
+                    {{ r.area }}
+                    <div v-if="r.apartmentType || r.buildingType" class="small text-muted">
+                      {{ [r.apartmentType, r.buildingType].filter(Boolean).join(' · ') }}
+                    </div>
+                  </td>
+                  <td class="text-end">{{ number(r.qty) }}<span class="text-muted small ms-1">{{ r.unit }}</span></td>
                   <td class="text-end">{{ getAppliedMarginRate(r) }}%</td>
                   <td class="text-end">{{ won(r.finalAmount) }}</td>
                 </tr>
@@ -239,6 +245,16 @@
             <div class="col-md-6">
               <label class="form-label">비고</label>
               <input v-model.trim="form.note" class="form-control" placeholder="현장 특이사항, 일정 등" />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">제출처</label>
+              <input v-model.trim="form.clientName" class="form-control" placeholder="예) 대우건설" />
+              <div class="form-text">견적서 머리글의 <code>貴下</code> 앞에 들어갑니다.</div>
+            </div>
+            <div class="col-md-12">
+              <label class="form-label">견적서 조건 문구</label>
+              <textarea v-model="form.quoteTerms" class="form-control" rows="4"
+                        placeholder="비워 두면 기본 문구 4줄이 나갑니다. 한 줄에 하나씩 적어주세요."></textarea>
             </div>
           </div>
 
@@ -392,6 +408,7 @@
                     <dt class="col-4">원가</dt><dd class="col-8">{{ candidate.vendorProductId ? number(candidate.unitPrice) : '-' }}</dd>
                     <dt class="col-4">설명</dt><dd class="col-8">{{ candidate.description || '-' }}</dd>
                     <dt class="col-4">비고</dt><dd class="col-8">{{ candidate.remark || '-' }}</dd>
+                    <dt class="col-4">단위</dt><dd class="col-8">{{ candidate.unit || '-' }}</dd>
                   </dl>
                 </div>
 
@@ -409,6 +426,27 @@
                     <option v-for="c in form.requiredCategories" :key="c" :value="c">{{ c }}</option>
                   </select>
                 </div>
+                <div class="row g-2 mb-2">
+                  <div class="col-6">
+                    <label class="form-label">평형</label>
+                    <select v-model="lineInput.apartmentType" class="form-select">
+                      <option value="">선택 안 함</option>
+                      <option v-for="t in APARTMENT_TYPES" :key="t" :value="t">{{ t }}</option>
+                    </select>
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label">건물 구분</label>
+                    <input
+                      v-model.trim="lineInput.buildingType"
+                      class="form-control"
+                      list="building-type-options"
+                      placeholder="선택 또는 직접 입력"
+                    />
+                    <datalist id="building-type-options">
+                      <option v-for="b in BUILDING_TYPES" :key="b" :value="b" />
+                    </datalist>
+                  </div>
+                </div>
                 <div class="mb-2">
                   <label class="form-label">수량</label>
                   <input v-model.number="lineInput.qty" type="number" min="1" class="form-control" />
@@ -416,6 +454,14 @@
                 <div class="mb-2">
                   <label class="form-label">비고</label>
                   <input v-model.trim="lineInput.note" class="form-control" placeholder="색상/사양 등" />
+                </div>
+                <div class="form-check mb-2">
+                  <!-- 제안서 엑셀에서 옵션 열(3열)로 모이고, 세대당 계약금액 합계에서는 빠진다 -->
+                  <input class="form-check-input" type="checkbox" id="chk-line-optional" v-model="lineInput.optional" />
+                  <label class="form-check-label" for="chk-line-optional">
+                    선택사항(유상옵션)
+                    <span class="text-muted small d-block">체크하면 계약금액 합계에서 제외됩니다</span>
+                  </label>
                 </div>
 
                 <div class="mt-auto d-flex gap-2">
@@ -487,7 +533,11 @@
                         {{ r.vendorItemName }}
                         <div class="small text-muted">{{ r.mainItemCode }} · {{ r.vendorName }}</div>
                         <div class="small text-muted">{{ r.category }} · {{ r.area }}</div>
-                        <div class="small text-muted">원가 {{ won(r.catalogUnitPrice) }}</div>
+                        <div v-if="r.apartmentType || r.buildingType" class="small text-muted">
+                          {{ [r.apartmentType, r.buildingType].filter(Boolean).join(' · ') }}
+                        </div>
+                        <div class="small text-muted">원가 {{ won(r.catalogUnitPrice) }} · 단위 {{ r.unit }}</div>
+                        <span v-if="r.optional" class="badge bg-warning-subtle text-warning-emphasis">유상옵션</span>
                       </td>
 
                       <td>
@@ -615,7 +665,8 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { usePrompt } from '@/composables/usePrompt'
-import { APARTMENT_TYPES, AREAS, CATEGORIES } from '@/constants/labels'
+// UNITS는 여기서 쓰지 않는다 — 제안서의 단위는 사용자가 고르는 값이 아니라 카탈로그에서 스냅샷된다.
+import { APARTMENT_TYPES, AREAS, CATEGORIES, BUILDING_TYPES, UNIT_DEFAULT } from '@/constants/labels'
 
 const route = useRoute()
 const router = useRouter()
@@ -659,6 +710,8 @@ const form = reactive({
   apartmentType: '',
   households: null,
   note: '',
+  clientName: '',   // 제출처(건설사) — 견적서 머리글
+  quoteTerms: '',   // 견적서 조건 문구(줄바꿈 구분). 비면 기본 문구가 나간다
   areas: [],
   requiredCategories: [],
   globalMarginRate: 10
@@ -742,11 +795,15 @@ const candidate = reactive({
   remark: '',
   specs: '',
   description: '',
-  imageUrl: ''
+  imageUrl: '',
+  unit: UNIT_DEFAULT,
+  categorySmall: ''
 })
 
+// 평형·건물구분은 라인마다 다를 수 있어(O-5, O-7) 담을 때 함께 고른다.
+// 부위·카테고리와 달리 필수는 아니다 — 기존 제안서에 없던 값이라 비워 둔 채로도 저장된다.
 const lineInput = reactive({
-  area: '', category: '', qty: 1, note: ''
+  area: '', category: '', qty: 1, note: '', apartmentType: '', buildingType: '', optional: false
 })
 
 const lineValid = computed(() =>
@@ -794,8 +851,10 @@ function selectCandidate(item) {
     remark: item.remark ?? '',
     specs: item.specs ?? '',
     description: item.description ?? '',
-    imageUrl: item.imageUrl ?? ''
-    // area/category는 사용자가 선택
+    imageUrl: item.imageUrl ?? '',
+    unit: item.unit ?? UNIT_DEFAULT,
+    categorySmall: item.categorySmall ?? ''
+    // area/category/평형/건물구분/옵션여부는 사용자가 선택
   })
 }
 
@@ -811,9 +870,11 @@ function resetLine () {
     remark: '',
     specs: '',
     description: '',
-    imageUrl: ''
+    imageUrl: '',
+    unit: UNIT_DEFAULT,
+    categorySmall: ''
   })
-  Object.assign(lineInput, { area: '', category: '', qty: 1, note: '' })
+  Object.assign(lineInput, { area: '', category: '', qty: 1, note: '', apartmentType: '', buildingType: '', optional: false })
 }
 
 /* ====== 마진 계산 ====== */
@@ -872,6 +933,12 @@ function createLine(data = {}) {
     category: data.category ?? '',
     qty: toNumber(data.qty ?? data.defaultQty ?? 1),
     note: data.note ?? '',
+
+    unit: data.unit ?? UNIT_DEFAULT,
+    apartmentType: data.apartmentType ?? '',
+    buildingType: data.buildingType ?? '',
+    categorySmall: data.categorySmall ?? '',
+    optional: data.optional ?? false,
   }
 }
 
@@ -904,7 +971,13 @@ function addLine() {
     area: lineInput.area,
     category: lineInput.category,
     qty: lineInput.qty,
-    note: lineInput.note
+    note: lineInput.note,
+
+    unit: candidate.unit,
+    apartmentType: lineInput.apartmentType,
+    buildingType: lineInput.buildingType,
+    categorySmall: candidate.categorySmall,
+    optional: lineInput.optional
   })
 
   recalculateLine(newLine)
@@ -1082,6 +1155,10 @@ async function onLoadTemplate () {
         category: line.category,
         qty: line.defaultQty ?? line.qty,
         note: line.note,
+        // 평형·건물구분은 현장별 값이라 템플릿에 없다. 나머지는 이어받는다.
+        unit: line.unit,
+        categorySmall: line.categorySmall,
+        optional: line.optional,
       }))
       recalculateLine(lines[lines.length - 1])
     })
@@ -1121,6 +1198,9 @@ function buildTemplatePayload(templateName) {
       category: l.category,
       defaultQty: l.qty,
       note: l.note || '',
+      unit: l.unit,
+      categorySmall: l.categorySmall,
+      optional: l.optional,
     }))
   }
 }
@@ -1202,6 +1282,9 @@ async function onRenameTemplate() {
         category: l.category,
         defaultQty: l.defaultQty,
         note: l.note,
+        unit: l.unit,
+        categorySmall: l.categorySmall,
+        optional: l.optional,
       })),
     })
 
@@ -1247,6 +1330,8 @@ function buildPayload() {
     apartmentType: form.apartmentType,
     households: form.households,
     note: form.note,
+    clientName: form.clientName,
+    quoteTerms: form.quoteTerms,
     areas: form.areas,
     requiredCategories: form.requiredCategories,
     globalMarginRate: form.globalMarginRate,
@@ -1275,6 +1360,12 @@ function buildPayload() {
       category: l.category,
       qty: l.qty,
       note: l.note,
+
+      unit: l.unit,
+      apartmentType: l.apartmentType,
+      buildingType: l.buildingType,
+      categorySmall: l.categorySmall,
+      optional: l.optional,
     }))
   }
 }
@@ -1416,6 +1507,8 @@ async function loadProposal(id) {
     form.apartmentType = p.apartmentType
     form.households = p.households
     form.note = p.note
+    form.clientName = p.clientName ?? ''
+    form.quoteTerms = p.quoteTerms ?? ''
 
     // Step2
     form.areas = p.areas || []
@@ -1448,6 +1541,11 @@ async function loadProposal(id) {
         category: l.category,
         qty: l.qty,
         note: l.note,
+        unit: l.unit,
+        apartmentType: l.apartmentType,
+        buildingType: l.buildingType,
+        categorySmall: l.categorySmall,
+        optional: l.optional,
       }))
     })
 
