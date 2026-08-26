@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static com.example.esti.support.TestSamples.requireSample;
 import static org.junit.jupiter.api.Assertions.*;
@@ -86,16 +87,23 @@ class VendorB2026SheetFamilyTest {
         assertEquals("FITTING_PRICE", f.get("부속 단가표"));
     }
 
+    /**
+     * 최신본 적재 진척도 — 시트별 세트 수. Task가 하나 끝날 때마다 이 표에 한 줄이 채워진다.
+     * 미구현 시트가 0이 아니게 되면 구본 파서로 샜다는 뜻이다
+     * (개편 전에는 '액세사리류' 232건 + '수전금구류' 264건이 잘못된 구조로 들어왔다).
+     */
     @Test
-    void 최신본_적재결과는_구본경로_시트분만_남는다() {
+    void 최신본_적재는_구현된_시트에서만_나온다() {
         requireSample(NEW_BOOK);
         List<VendorProductSet> sets = parser.parseSets(NEW_BOOK);
 
-        // T0 시점에는 신양식 전용 파서가 없으므로(T1~T8), 양식이 그대로인 '비데, 기타'만 적재된다.
-        // 개편 전에는 '액세사리류' 232건 + '수전금구류' 264건이 잘못된 구조로 섞여 들어왔다.
-        assertEquals(28, sets.size(), "비데 6 + 기타 22");
-        assertTrue(sets.stream().allMatch(s -> "비데, 기타".equals(s.sheetName())),
-                "신양식 시트가 구본 파서로 새면 안 된다");
+        Map<String, Long> bySheet = sets.stream()
+                .collect(Collectors.groupingBy(VendorProductSet::sheetName, Collectors.counting()));
+
+        assertEquals(Map.of(
+                "비데, 기타", 28L,   // 양식 그대로 → 구본 경로(BIDET_ETC)
+                "양변기", 39L        // T1
+        ), bySheet, "구현되지 않은 시트는 결과에 나타나지 않아야 한다");
 
         // 숨김·(삭제) 시트는 어떤 형태로도 결과에 나타나지 않는다.
         assertTrue(sets.stream().noneMatch(s -> s.sheetName() != null && s.sheetName().startsWith("(삭제)")));
