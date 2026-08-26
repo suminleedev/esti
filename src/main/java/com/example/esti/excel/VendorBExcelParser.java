@@ -95,9 +95,10 @@ public class VendorBExcelParser implements VendorExcelParser {
                     case SET_TOTAL  -> parseHeaderTotalSetSheet(ctx, result);
                     case SET_SUBTOTAL -> parseSubtotalSetSheet(ctx, result);
                     case SINGLE     -> parseSingleRowSheet(ctx, result);
-                    case TOILET_V2  -> parseToiletSheetV2(ctx, result);
-                    // 최신본(2026) 전용 — T2~T8에서 순차 구현. 그전까지는 오적재를 막기 위해 스킵한다.
-                    case WASHBASIN_V2, URINAL_SINK_V2, ACCESSORY_V2,
+                    case TOILET_V2    -> parseToiletSheetV2(ctx, result);
+                    case WASHBASIN_V2 -> parseWashbasinSheetV2(ctx, result);
+                    // 최신본(2026) 전용 — T3~T8에서 순차 구현. 그전까지는 오적재를 막기 위해 스킵한다.
+                    case URINAL_SINK_V2, ACCESSORY_V2,
                          FITTING_CATALOG_V2, FAUCET_V2, FAUCET_CODEMAP_V2, BATH_V2 ->
                             logger.warn("[B][{}] 최신본(2026) 양식 — 전용 파서 미구현 → 스킵", name);
                 }
@@ -1645,10 +1646,26 @@ public class VendorBExcelParser implements VendorExcelParser {
     // ============================================================
 
     private void parseToiletSheetV2(Ctx c, List<VendorProductSet> out) {
-        parseDogiSheetV2(c, out);
+        parseDogiSheetV2(c, out, DogiV2Rules.DETERMINATE);
     }
 
-    private void parseDogiSheetV2(Ctx c, List<VendorProductSet> out) {
+    private void parseWashbasinSheetV2(Ctx c, List<VendorProductSet> out) {
+        parseDogiSheetV2(c, out, DogiV2Rules.SELECTABLE);
+    }
+
+    /**
+     * 시트별 차이. 지금 필요한 축은 하나뿐이다 — <b>구성에 선택 항목이 섞이는가</b>.
+     *
+     * <p>양변기·소변기는 구성이 확정이라 {@code 計 = 구성합}이 성립하고, 어긋나면 원본 오류다.
+     * 세면기는 한 세트에 도기 변형·반다리/긴다리 같은 <b>택일 항목</b>이 함께 실려 있어
+     * 구성합이 언제나 {@code 計}보다 크다 — 이걸 경고로 올리면 전건이 시끄러워진다.
+     */
+    private record DogiV2Rules(boolean selectable) {
+        static final DogiV2Rules DETERMINATE = new DogiV2Rules(false);
+        static final DogiV2Rules SELECTABLE = new DogiV2Rules(true);
+    }
+
+    private void parseDogiSheetV2(Ctx c, List<VendorProductSet> out, DogiV2Rules rules) {
         int headerRow = findRow(c, r -> "구분".equals(noSpace(str(c, r, 0)))
                 && "품목".equals(noSpace(str(c, r, 2))));
         if (headerRow < 0) {
@@ -1673,18 +1690,20 @@ public class VendorBExcelParser implements VendorExcelParser {
 
             String item = stripSpace(str(c, r, cols.itemCol()));      // C=품목
             String name = stripSpace(str(c, r, cols.nameCol()));      // E=품명
-            if (name == null) { cur = flushDogiV2(c, out, cur); continue; }  // 빈 행 → 세트 종료
+            if (name == null) { cur = flushDogiV2(c, out, cur, rules); continue; }  // 빈 행 → 세트 종료
 
             if (item != null) {                                        // 세트 시작
-                cur = flushDogiV2(c, out, cur);
+                cur = flushDogiV2(c, out, cur, rules);
                 String kind = stripSpace(str(c, r, cols.kindCol()));   // B=품종(병합셀)
                 if (kind != null) lastKind = kind;
                 cur = startDogiV2Set(c, cols, r, item, lastKind, codeOverrides.get(r));
             }
-            if (cur == null) continue;                                 // 세트 밖의 잔여 행
+            // 세트 밖의 잔여 행 — 세면기 142행 아래 '품명/제품코드/단가' 부록표가 여기 걸린다.
+            // C(품목)가 없어 세트로 시작되지 않고, 직전 세트는 빈 행에서 이미 닫혔다.
+            if (cur == null) continue;
             addDogiV2Row(c, cols, r, name, cur);
         }
-        flushDogiV2(c, out, cur);
+        flushDogiV2(c, out, cur, rules);
     }
 
     /** 세트 시작 행에서 대표품목의 뼈대를 만든다(부속 행은 {@link #addDogiV2Row}가 채운다). */
@@ -1692,7 +1711,7 @@ public class VendorBExcelParser implements VendorExcelParser {
         String[] rep = splitParen(item);                       // "IC552EF⏎(구륙)" → 코드 + 설명
         String repCode = rep[0];
         if (repCode == null) return null;
-        String desc = rep[1];
+        String desc = joinNotes(rep[1], trailingAfterParen(item)); // "IL672(롱하우) 비누대, 폽업"의 꼬리까지
         if (codeOverride != null) {
             // 같은 품목이 구성만 다르게 두 번 나온다(L352E 자폐수전 2종, U352E 감지기 색상 2종).
             // 그대로 두면 upsert가 한 행으로 병합해 한쪽 구성이 사라지므로 접미로 갈라 둔다(§8 잔여 ⑤).
@@ -1705,8 +1724,24 @@ public class VendorBExcelParser implements VendorExcelParser {
         DogiV2Set set = new DogiV2Set(r, repCode, kind, normalizeCode(str(c, r, cols.ksCol())));
         set.description = desc;
         set.specs = cols.specCol() >= 0 ? stripSpace(str(c, r, cols.specCol())) : null;
+        if (cols.waterCol() >= 0) {                             // 세면기 담수(6ℓ 등)도 규격의 일부다
+            String water = stripSpace(str(c, r, cols.waterCol()));
+            if (water != null && !water.equals("-")) set.specs = joinNotes(set.specs, "담수 " + water);
+        }
         set.setPrice = cols.totalCol() >= 0 ? dec(c, r, cols.totalCol()) : null;
         return set;
+    }
+
+    /**
+     * 품목 셀에서 첫 괄호 그룹 <b>뒤에</b> 남은 설명. {@code splitParen}은 첫 괄호까지만 보기 때문에
+     * "IL672 (롱하우) 비누대, 폽업"의 꼬리("비누대, 폽업")를 놓친다.
+     */
+    private String trailingAfterParen(String raw) {
+        String x = stripSpace(raw);
+        if (x == null) return null;
+        int close = x.indexOf(')');
+        if (close < 0 || close + 1 >= x.length()) return null;
+        return stripSpace(x.substring(close + 1));
     }
 
     /** 세트에 속한 행 1개(대표품목 본품 또는 부속)를 담는다. */
@@ -1737,10 +1772,10 @@ public class VendorBExcelParser implements VendorExcelParser {
                 nz(price), isMain ? null : note.remark(), desc));
     }
 
-    private DogiV2Set flushDogiV2(Ctx c, List<VendorProductSet> out, DogiV2Set set) {
+    private DogiV2Set flushDogiV2(Ctx c, List<VendorProductSet> out, DogiV2Set set, DogiV2Rules rules) {
         if (set == null || set.rows.isEmpty()) return null;
 
-        if (set.setPrice != null && set.partSum.compareTo(set.setPrice) != 0) {
+        if (!rules.selectable() && set.setPrice != null && set.partSum.compareTo(set.setPrice) != 0) {
             logger.warn("[B][{}] 計≠구성합 (품목={}, 計={}, 합={})",
                     c.sheetName, set.repCode, set.setPrice, set.partSum);
         }
@@ -1793,7 +1828,7 @@ public class VendorBExcelParser implements VendorExcelParser {
         }
         // 2단 헤더 아랫줄: 제품코드 / 제품코드(대체) / 단가 / 計 … 그리고 부속 서브테이블의 제품코드.
         // '제품코드'가 세 번 나오면 세 번째가 N~P 부속 서브테이블의 것이다(세면기는 서브테이블이 없어 두 번).
-        int codeCol = -1, altCodeCol = -1, subCodeCol = -1, priceCol = -1, totalCol = -1;
+        int codeCol = -1, altCodeCol = -1, subCodeCol = -1, priceCol = -1, totalCol = -1, waterCol = -1;
         Row sub = c.sheet.getRow(headerRow + 1);
         short subLast = sub == null ? 0 : sub.getLastCellNum();
         for (int col = 0; col < subLast; col++) {
@@ -1806,10 +1841,11 @@ public class VendorBExcelParser implements VendorExcelParser {
             }
             else if (h.equals("단가") && priceCol < 0) priceCol = col;
             else if ((h.equals("計") || h.equals("계")) && totalCol < 0) totalCol = col;
+            else if (h.equals("담수") && waterCol < 0) waterCol = col;  // 세면기 전용(규격 병합의 둘째 칸)
         }
         if (codeCol < 0 || priceCol < 0 || totalCol < 0 || itemCol < 0 || nameCol < 0) return null;
         return new DogiV2Cols(0, kindCol, itemCol, ksCol, nameCol, codeCol, altCodeCol, subCodeCol,
-                priceCol, totalCol, specCol, noteCol);
+                priceCol, totalCol, specCol, waterCol, noteCol);
     }
 
     /** 이 행이 N~P 부속 서브테이블에 항목을 갖고 있는가(= 비고가 그쪽 설명일 수 있는가). */
@@ -1831,14 +1867,20 @@ public class VendorBExcelParser implements VendorExcelParser {
      */
     private DogiV2Note splitDogiV2Note(String raw, boolean hasSubTableEntry) {
         if (raw == null || raw.isBlank()) return DogiV2Note.EMPTY;
-        String remark = null, desc = null;
+        // 같은 셀 안의 줄바꿈은 대부분 좁은 컬럼에서 문장이 접힌 것이라 공백으로 잇는다
+        // ("NB 모델은⏎<CODE>만⏎가능"). ' / '로 이으면 한 문장이 조각나 보인다.
+        StringBuilder remark = new StringBuilder(), desc = new StringBuilder();
         for (String line : raw.split("\\R")) {
             String s = stripSpace(line);
             if (s == null) continue;
-            if (s.replaceAll("\\s", "").contains("단종")) remark = joinNotes(remark, s);
-            else if (!hasSubTableEntry) desc = joinNotes(desc, s);
+            StringBuilder target = s.replaceAll("\\s", "").contains("단종") ? remark
+                    : (hasSubTableEntry ? null : desc);
+            if (target == null) continue;
+            if (target.length() > 0) target.append(' ');
+            target.append(s);
         }
-        return new DogiV2Note(remark, desc);
+        return new DogiV2Note(remark.length() == 0 ? null : remark.toString(),
+                desc.length() == 0 ? null : desc.toString());
     }
 
     private record DogiV2Note(String remark, String description) {
@@ -1848,7 +1890,7 @@ public class VendorBExcelParser implements VendorExcelParser {
     /** 최신본 도기 시트의 컬럼 위치(헤더에서 읽는다). 없는 컬럼은 -1. */
     private record DogiV2Cols(int divCol, int kindCol, int itemCol, int ksCol, int nameCol,
                               int codeCol, int altCodeCol, int subCodeCol, int priceCol, int totalCol,
-                              int specCol, int noteCol) {}
+                              int specCol, int waterCol, int noteCol) {}
 
     /** 조립 중인 세트 1건(대표품목 + 부속 행들). */
     private static final class DogiV2Set {
