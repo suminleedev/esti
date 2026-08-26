@@ -12,8 +12,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -36,6 +39,81 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
     @Override
     public int order() {
         return 10;
+    }
+
+    /**
+     * 벤더 가격행을 1회만 로드해 "대표품번 → VendorItemPrice id 목록" 인덱스를 만든다.
+     * 제품 1건마다 전체 테이블을 로드하던 O(제품수 x 전체 행) 풀스캔을 제거한다.
+     */
+    @Override
+    public Object prepare(String vendorCode) {
+        Map<String, List<Long>> index = new HashMap<>();
+
+        for (VendorItemPrice vip : vendorItemPriceRepository.findAllByVendor_VendorCode(vendorCode)) {
+            for (String candidate : getCandidateCodes(vip)) {
+                String base = extractAstdBaseCodeFromDb(candidate);
+                if (base != null) {
+                    index.computeIfAbsent(base, k -> new ArrayList<>()).add(vip.getId());
+                }
+            }
+        }
+
+        return index;
+    }
+
+    @Override
+    @Transactional
+    @SuppressWarnings("unchecked")
+    public void save(CrawledProduct crawled, Object context) {
+        Map<String, List<Long>> index = (context instanceof Map) ? (Map<String, List<Long>>) context : null;
+        if (index == null) {
+            save(crawled); // 방어적 폴백(구 경로)
+            return;
+        }
+
+        try {
+            String siteCode = normalizeCode(crawled.getProductCode());
+            if (siteCode == null || siteCode.isBlank()) {
+                log.info("[{}] skip. no productCode. url={}", crawled.getMaker(), crawled.getProductUrl());
+                return;
+            }
+
+            String sourceUrl = resolveSourceUrl(crawled);
+            if (sourceUrl == null) {
+                log.info("[{}] skip. no image url. productCode={}", crawled.getMaker(), siteCode);
+                return;
+            }
+
+            List<Long> matchedIds = index.getOrDefault(siteCode, List.of());
+            if (matchedIds.isEmpty()) {
+                log.info("[{}] no matched vendorItemPrice. vendorCode={}, siteCode={}",
+                        crawled.getMaker(), crawled.getVendorCode(), siteCode);
+                return;
+            }
+
+            // prepare()의 결과는 트랜잭션 밖에서 만들어져 detach 상태다.
+            // id로 관리 상태 엔티티를 다시 조회해야 lazy 필드(vip.getVendor()) 접근이 안전하다.
+            List<VendorItemPrice> matchedItems = vendorItemPriceRepository.findAllById(matchedIds);
+
+            String fileName = crawled.getVendorCode() + "_" + siteCode + ".jpg";
+            ImageDownloadService.DownloadResult result =
+                    imageDownloadService.download(sourceUrl, fileName);
+
+            for (VendorItemPrice vip : matchedItems) {
+                upsertVendorProduct(vip, crawled, result.relativePath());
+            }
+
+            log.info("[{}] saved vendorProducts. vendorCode={}, siteCode={}, count={}, path={}",
+                    crawled.getMaker(),
+                    crawled.getVendorCode(),
+                    siteCode,
+                    matchedItems.size(),
+                    result.relativePath());
+
+        } catch (Exception e) {
+            log.error("[{}] save failed. vendorCode={}, productCode={}",
+                    crawled.getMaker(), crawled.getVendorCode(), crawled.getProductCode(), e);
+        }
     }
 
     @Override

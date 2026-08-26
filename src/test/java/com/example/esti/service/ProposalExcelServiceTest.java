@@ -1,5 +1,6 @@
 package com.example.esti.service;
 
+import com.example.esti.exception.InvalidStateException;
 import com.example.esti.dto.ProposalRequest;
 import com.example.esti.dto.ProposalResponse;
 import com.example.esti.dto.QuoteTargetView;
@@ -80,10 +81,10 @@ class ProposalExcelServiceTest {
         ProposalResponse draft = proposalService.createDraft(request(line("본세대", "59㎡", "양변기", 100_000)));
 
         assertThatThrownBy(() -> excelService.exportProposal(draft.getId()))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(InvalidStateException.class)
                 .hasMessageContaining("발송완료");
         assertThatThrownBy(() -> excelService.listQuoteTargets(draft.getId()))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(InvalidStateException.class);
     }
 
     @Test
