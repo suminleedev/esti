@@ -7,6 +7,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static com.example.esti.support.TestSamples.requireSample;
@@ -80,6 +82,25 @@ class VendorB2026FullBookTest {
         assertTrue(strict.stream().allMatch(s -> s.setPrice() != null
                         && sumOf(s).compareTo(s.setPrice()) == 0),
                 "도기 3시트는 計 = 구성합이 정확히 성립해야 한다");
+    }
+
+    @Test
+    void 액세사리_세트의_품수와_부속_건수가_전건_일치한다() {
+        // `plan-b-parts-followup.md` ③ — 구본에서는 옵션 품목이 부속으로 잡혀 품수를 넘겼다.
+        // T4의 품수 경계로 구조적으로 해소됐고, 여기서 14세트 전건을 고정한다.
+        Pattern pieces = Pattern.compile("(\\d+)\\s*품");
+
+        List<VendorProductSet> acc = parse().stream()
+                .filter(s -> "액세사리류".equals(s.sheetName()) && !s.parts().isEmpty())
+                .toList();
+
+        assertEquals(14, acc.size());
+        for (VendorProductSet s : acc) {
+            Matcher m = pieces.matcher(s.main().productName());
+            assertTrue(m.find(), "세트명에 품수 표기가 있어야 한다: " + s.main().productName());
+            assertEquals(Integer.parseInt(m.group(1)), s.parts().size(),
+                    s.main().productCode() + " 품수 대 부속 건수");
+        }
     }
 
     @Test
