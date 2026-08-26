@@ -102,7 +102,8 @@ class VendorB2026SheetFamilyTest {
 
         assertEquals(Map.of(
                 "비데, 기타", 28L,   // 양식 그대로 → 구본 경로(BIDET_ETC)
-                "양변기", 39L        // T1
+                "양변기", 39L,       // T1
+                "세면기", 56L        // T2
         ), bySheet, "구현되지 않은 시트는 결과에 나타나지 않아야 한다");
 
         // 숨김·(삭제) 시트는 어떤 형태로도 결과에 나타나지 않는다.
