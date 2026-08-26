@@ -39,6 +39,14 @@ import static com.example.esti.excel.ExcelParseUtils.*;
  * </ul>
  *
  * 가격 없는 행은 스킵하지 않고 단가 0 + 제품명 뒤 "(가격없음)" 표기(D8).
+ *
+ * <h2>최신본(2026) 양식 — {@code *_V2} 패밀리</h2>
+ * B사가 단가표를 9시트 → 14시트로 개편하면서 도기 3시트(양변기/세면기/소변기,수채)의 양식이
+ * <b>가로 슬롯형 → 세로 나열형</b>으로 뒤집혔다(부속이 열이 아니라 행으로 내려온다).
+ * 구본 픽스처를 쓰는 기존 테스트를 지키기 위해 <b>구·신 파서를 공존</b>시킨다(D-B1) —
+ * 구본 메서드는 수정하지 않고 신양식은 별도 메서드로 만든다.
+ * 시트명이 겹치는 도기 3시트만 {@link #isV2DogiSheet}로 레이아웃을 보고 가른다.
+ * 상세는 {@code docs/analysis-b-format-2026.md} / {@code docs/plan-b-format-2026.md}.
  */
 @Component
 public class VendorBExcelParser implements VendorExcelParser {
@@ -65,10 +73,14 @@ public class VendorBExcelParser implements VendorExcelParser {
             for (int i = 0; i < wb.getNumberOfSheets(); i++) {
                 Sheet sheet = wb.getSheetAt(i);
                 if (sheet == null) continue;
+                if (isSkippedSheet(wb, i)) {
+                    logger.info("[B][{}] 적재 대상 아님(숨김 또는 '(삭제)' 표기) → 스킵", sheet.getSheetName());
+                    continue;
+                }
                 String name = sheet.getSheetName();
                 Ctx ctx = new Ctx(sheet, fmt, ev, name, fittingPrices);
 
-                switch (family(name)) {
+                switch (family(ctx)) {
                     case TOILET     -> parseToiletSheet(ctx, result);
                     case WASHBASIN  -> parseWashbasinSheet(ctx, result);
                     case URINAL_SINK -> parseUrinalSinkSheet(ctx, result);
@@ -83,6 +95,10 @@ public class VendorBExcelParser implements VendorExcelParser {
                     case SET_TOTAL  -> parseHeaderTotalSetSheet(ctx, result);
                     case SET_SUBTOTAL -> parseSubtotalSetSheet(ctx, result);
                     case SINGLE     -> parseSingleRowSheet(ctx, result);
+                    // 최신본(2026) 전용 — T1~T8에서 순차 구현. 그전까지는 오적재를 막기 위해 스킵한다.
+                    case TOILET_V2, WASHBASIN_V2, URINAL_SINK_V2, ACCESSORY_V2,
+                         FITTING_CATALOG_V2, FAUCET_V2, FAUCET_CODEMAP_V2, BATH_V2 ->
+                            logger.warn("[B][{}] 최신본(2026) 양식 — 전용 파서 미구현 → 스킵", name);
                 }
             }
             return result;
@@ -95,11 +111,87 @@ public class VendorBExcelParser implements VendorExcelParser {
     // 패밀리 판별
     // ============================================================
 
-    private enum Family { TOILET, WASHBASIN, URINAL_SINK, BIDET_ETC, FAUCET_GENERAL, FAUCET_PARTS,
-        BREAKDOWN, FITTING_SET, FITTING_PRICE, FITTING_OEM, GALAXIA, SET_TOTAL, SET_SUBTOTAL, SINGLE }
+    private enum Family {
+        // 구본(2020) 9시트 + 시트별 test 픽스처 4종
+        TOILET, WASHBASIN, URINAL_SINK, BIDET_ETC, FAUCET_GENERAL, FAUCET_PARTS,
+        BREAKDOWN, FITTING_SET, FITTING_PRICE, FITTING_OEM, GALAXIA, SET_TOTAL, SET_SUBTOTAL, SINGLE,
+        // 최신본(2026) 14시트 — 구본과 공존한다(D-B1). 시트명이 겹치는 도기 3시트는 레이아웃으로 갈린다.
+        TOILET_V2, WASHBASIN_V2, URINAL_SINK_V2, ACCESSORY_V2,
+        FITTING_CATALOG_V2, FAUCET_V2, FAUCET_CODEMAP_V2, BATH_V2
+    }
+
+    /**
+     * 시트별 판별 결과를 진단용으로 노출한다(시트명 → {@code Family} 이름, 스킵된 시트는 {@code SKIPPED}).
+     *
+     * <p>파싱 결과만으로는 "구본 파서가 헤더를 못 찾아 0건"과 "신양식으로 판별돼 스킵돼서 0건"이 구분되지 않는다.
+     * 구·신 분기(D-B1)가 조용히 뒤집히는 회귀를 잡으려면 판별 자체를 관찰할 수 있어야 한다.
+     */
+    Map<String, String> diagnoseSheetFamilies(Path path) {
+        try (InputStream is = Files.newInputStream(path);
+             Workbook wb = WorkbookFactory.create(is)) {
+            FormulaEvaluator ev = wb.getCreationHelper().createFormulaEvaluator();
+            DataFormatter fmt = new DataFormatter();
+            Map<String, String> out = new LinkedHashMap<>();
+            for (int i = 0; i < wb.getNumberOfSheets(); i++) {
+                Sheet sheet = wb.getSheetAt(i);
+                if (sheet == null) continue;
+                String name = sheet.getSheetName();
+                out.put(name, isSkippedSheet(wb, i)
+                        ? "SKIPPED"
+                        : family(new Ctx(sheet, fmt, ev, name, Map.of())).name());
+            }
+            return out;
+        } catch (Exception e) {
+            throw wrap("B사 엑셀 시트 판별 중 오류", e);
+        }
+    }
+
+    /**
+     * 시트명 + 레이아웃 판별. 구·신 양식은 시트명만으로 갈리지만, 도기 3시트(양변기/세면기/소변기,수채)만은
+     * 시트명이 같고 양식이 완전히 다르다(가로 슬롯형 ↔ 세로 나열형) → 헤더 라벨로 판별한다.
+     */
+    private Family family(Ctx c) {
+        Family byName = family(c.sheetName);
+        return switch (byName) {
+            case TOILET      -> isV2DogiSheet(c) ? Family.TOILET_V2 : byName;
+            case WASHBASIN   -> isV2DogiSheet(c) ? Family.WASHBASIN_V2 : byName;
+            case URINAL_SINK -> isV2DogiSheet(c) ? Family.URINAL_SINK_V2 : byName;
+            default -> byName;
+        };
+    }
+
+    /**
+     * 최신본 도기 3시트 판별 — 구본에 없는 헤더 라벨 {@code 제품정보}가 상단 6행 안에 있으면 신양식이다.
+     * (신양식은 F열이 '제품정보 / 제품코드' 2단 헤더. 구본 헤더는 '구분/품종/품번/이미지/KS품번'뿐이다.)
+     */
+    private boolean isV2DogiSheet(Ctx c) {
+        int last = Math.min(c.sheet.getLastRowNum(), 5);
+        for (int r = 0; r <= last; r++) {
+            Row row = c.sheet.getRow(r);
+            if (row == null) continue;
+            for (int col = 0; col < row.getLastCellNum(); col++) {
+                if ("제품정보".equals(noSpace(str(c, r, col)))) return true;
+            }
+        }
+        return false;
+    }
+
+    /** 적재 대상이 아닌 시트 — 숨김 처리됐거나 시트명이 {@code (삭제)}로 시작한다(D-B8). */
+    private boolean isSkippedSheet(Workbook wb, int idx) {
+        if (wb.isSheetHidden(idx) || wb.isSheetVeryHidden(idx)) return true;
+        return wb.getSheetAt(idx).getSheetName().replaceAll("\\s", "").startsWith("(삭제)");
+    }
 
     private Family family(String sheetName) {
         String n = sheetName.replaceAll("\\s", "");
+        // ── 최신본(2026) 전용 시트명. 구본 분기보다 먼저 판별한다.
+        //    특히 '수전금구 품번 및 품목코드'는 아래 contains("수전금구")에 먼저 걸리므로 반드시 여기 있어야 한다.
+        if (n.contains("품번") && n.contains("품목코드")) return Family.FAUCET_CODEMAP_V2; // 수전금구 품번 및 품목코드(매핑표)
+        if (n.equals("수전금구류")) return Family.FAUCET_V2;
+        if (n.contains("액세사리") || n.contains("액세서리")) return Family.ACCESSORY_V2;   // '악'세사리(구본)와 다른 글자
+        if (n.equals("부속류")) return Family.FITTING_CATALOG_V2;
+        if (n.startsWith("바스")) return Family.BATH_V2;                                  // 바스 선반/파티션·욕조/천정재/욕실장·거울 (직영)
+        // ── 구본(2020) 시트명
         if (n.equals("양변기")) return Family.TOILET;            // 양변기 전용 경로(서브테이블별 헤더/품종 병합 처리)
         if (n.equals("세면기")) return Family.WASHBASIN;          // 세면기 전용 경로(선택형 기본구성·도자 분기·괄호 설명 분리)
         if (n.contains("소변기")) return Family.URINAL_SINK;       // 소변기·수채 전용 경로(서브테이블별 헤더/대분류 분리)
@@ -1189,7 +1281,8 @@ public class VendorBExcelParser implements VendorExcelParser {
                                       Map<String, BigDecimal> idx, Family target, int codeCol, int priceCol) {
         for (int i = 0; i < wb.getNumberOfSheets(); i++) {
             Sheet sheet = wb.getSheetAt(i);
-            if (sheet == null || family(sheet.getSheetName()) != target) continue;
+            if (sheet == null || isSkippedSheet(wb, i)) continue;
+            if (family(sheet.getSheetName()) != target) continue;
             Ctx c = new Ctx(sheet, fmt, ev, sheet.getSheetName(), Map.of());
             for (int r = 0; r <= sheet.getLastRowNum(); r++) {
                 String raw = str(c, r, codeCol);
