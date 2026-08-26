@@ -100,8 +100,9 @@ public class VendorBExcelParser implements VendorExcelParser {
                     case URINAL_SINK_V2 -> parseUrinalSinkSheetV2(ctx, result);
                     case ACCESSORY_V2   -> parseAccessorySheetV2(ctx, result);
                     case FITTING_CATALOG_V2 -> parseFittingCatalogSheetV2(ctx, result);
-                    // 최신본(2026) 전용 — T6~T8에서 순차 구현. 그전까지는 오적재를 막기 위해 스킵한다.
-                    case FAUCET_V2, FAUCET_CODEMAP_V2, BATH_V2 ->
+                    case FAUCET_V2      -> parseFaucetSheetV2(ctx, result);
+                    // 최신본(2026) 전용 — T7~T8에서 순차 구현. 그전까지는 오적재를 막기 위해 스킵한다.
+                    case FAUCET_CODEMAP_V2, BATH_V2 ->
                             logger.warn("[B][{}] 최신본(2026) 양식 — 전용 파서 미구현 → 스킵", name);
                 }
             }
@@ -2177,6 +2178,76 @@ public class VendorBExcelParser implements VendorExcelParser {
                 null, orDefault(spec, ns.specs()));
         return new VendorProductSet("B", "수전부속", catSmall, main,
                 new ArrayList<>(), nz(price), false, imageKeyOf(row), false, c.sheetName);
+    }
+
+    // ============================================================
+    // (V2-수전금구) 최신본(2026) 수전금구류 — 단일 제품 목록.
+    //
+    //   컬럼(2단 헤더): B=시리즈 C=품목 D=이미지 E=품번 F=전산코드 | G=대리점가 H=박스 기준 I=비고
+    //
+    //   구본 `parseFaucetGeneralSheet`가 형태상 읽기는 하나 두 군데가 어긋난다.
+    //     · 시트명을 "수전금구"로 고정해 이미지 맵(키=실제 시트명 '수전금구류')과 안 맞는다 → 285장 유실
+    //     · 전산코드(F)를 버린다 → T7의 품번표 조인 키가 사라진다
+    //   구본 메서드는 그대로 두고(R2′) 여기서 새로 읽는다.
+    // ============================================================
+
+    private void parseFaucetSheetV2(Ctx c, List<VendorProductSet> out) {
+        int headerRow = findRow(c, r -> "시리즈".equals(noSpace(str(c, r, 1)))
+                && "품번".equals(noSpace(str(c, r, 4)))
+                && "전산코드".equals(noSpace(str(c, r, 5))));
+        if (headerRow < 0) {
+            logger.warn("[B][{}] 수전금구 헤더(시리즈/품번/전산코드) 미발견 → 스킵", c.sheetName);
+            return;
+        }
+        int last = c.sheet.getLastRowNum();
+        Set<String> ambiguous = duplicateFaucetPartNos(c, headerRow, last);
+
+        String series = null;
+        for (int r = headerRow + 1; r <= last; r++) {
+            String pn = normalizeCode(str(c, r, 4));            // E=품번
+            String ecode = normalizeCode(str(c, r, 5));         // F=전산코드
+            if (pn == null && ecode == null) continue;
+
+            String seriesRaw = stripSpace(str(c, r, 1));        // B=시리즈(병합셀)
+            if (seriesRaw != null) series = seriesRaw;
+            String kind = stripSpace(str(c, r, 2));             // C=품목
+            BigDecimal price = dec(c, r, 6);                    // G=대리점가
+            String box = stripSpace(str(c, r, 7));              // H=박스 기준
+            DogiV2Note note = splitDogiV2Note(str(c, r, 8), false); // I=비고(줄 단위로 단종/설명 분리)
+
+            // 품번이 겹치면(제조사 변경으로 같은 품번이 두 벌) 전산코드를 붙여 가른다.
+            String code = pn == null ? ecode
+                    : (ecode != null && ambiguous.contains(pn) ? pn + "-" + ecode : pn);
+            if (code == null) continue;
+
+            String name = orDefault(join(kind, code), code);
+            if (price == null) name = name + " (가격없음)";     // D8 — '26 신상품 12건은 단가가 비어 있다
+            String desc = joinNotes(box == null ? null : stripSpace(box.replaceAll("\\R", " ")),
+                    note.description());
+
+            // 전산코드는 subItemCode로 보존한다 — T7이 품번표와 조인하는 키이고, 화면에서도 보조 코드다.
+            VendorParsedItem main = new VendorParsedItem(code, name, null, ecode,
+                    VendorParsedItem.RELATION_MAIN, nz(price), note.remark(), desc);
+            out.add(new VendorProductSet("B", "수전금구", series, main,
+                    new ArrayList<>(), nz(price), false, imageKeyOf(r), false, c.sheetName));
+        }
+    }
+
+    /** 시트 안에서 서로 다른 전산코드를 갖는 같은 품번(제조사 변경 병존 6쌍). */
+    private Set<String> duplicateFaucetPartNos(Ctx c, int headerRow, int last) {
+        Map<String, String> first = new HashMap<>();
+        Set<String> dup = new HashSet<>();
+        for (int r = headerRow + 1; r <= last; r++) {
+            String pn = normalizeCode(str(c, r, 4));
+            String ecode = normalizeCode(str(c, r, 5));
+            if (pn == null || ecode == null) continue;
+            String prev = first.putIfAbsent(pn, ecode);
+            if (prev != null && !prev.equalsIgnoreCase(ecode)) dup.add(pn);
+        }
+        if (!dup.isEmpty()) {
+            logger.info("[B][{}] 품번이 겹치는 항목 {}건 → 전산코드를 붙여 구분 {}", c.sheetName, dup.size(), dup);
+        }
+        return dup;
     }
 
     /**
