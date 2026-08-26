@@ -1,5 +1,6 @@
 package com.example.esti.service;
 
+import com.example.esti.exception.NotFoundException;
 import com.example.esti.entity.ProductCatalog;
 import com.example.esti.repository.ProductCatalogRepository;
 import org.springframework.stereotype.Service;
@@ -23,7 +24,7 @@ public class ProductCatalogService {
     // ===== 단일 조회 (없으면 예외) =====
     public ProductCatalog findById(Long id) {
         return repository.findById(id)
-                .orElseThrow(() -> new RuntimeException("카탈로그를 찾을 수 없음. id=" + id));
+                .orElseThrow(() -> new NotFoundException("카탈로그를 찾을 수 없음. id=" + id));
     }
 
     // ===== 등록 =====
@@ -62,7 +63,7 @@ public class ProductCatalogService {
     public void delete(Long id) {
         // 존재 여부 체크 후 없으면 예외 던지는 패턴
         if (!repository.existsById(id)) {
-            throw new RuntimeException("삭제할 카탈로그가 없습니다. id=" + id);
+            throw new NotFoundException("삭제할 카탈로그가 없습니다. id=" + id);
         }
         repository.deleteById(id);
     }

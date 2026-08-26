@@ -1,5 +1,7 @@
 package com.example.esti.service;
 
+import com.example.esti.exception.InvalidStateException;
+import com.example.esti.exception.NotFoundException;
 import com.example.esti.dto.QuoteTargetView;
 import com.example.esti.entity.Proposal;
 import com.example.esti.entity.ProposalLine;
@@ -113,10 +115,10 @@ public class ProposalExcelService {
     /** 발송완료 상태만 출력 대상이다. */
     private Proposal loadSentProposal(Long proposalId) {
         Proposal proposal = proposalRepository.findByIdAndDeletedAtIsNull(proposalId)
-                .orElseThrow(() -> new IllegalArgumentException("제안서를 찾을 수 없습니다. id=" + proposalId));
+                .orElseThrow(() -> new NotFoundException("제안서를 찾을 수 없습니다. id=" + proposalId));
 
         if (proposal.getStatus() != Proposal.Status.SENT) {
-            throw new IllegalStateException("발송완료 상태의 제안서만 출력할 수 있습니다.");
+            throw new InvalidStateException("발송완료 상태의 제안서만 출력할 수 있습니다.");
         }
         return proposal;
     }

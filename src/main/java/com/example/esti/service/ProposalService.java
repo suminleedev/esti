@@ -1,5 +1,8 @@
 package com.example.esti.service;
 
+import com.example.esti.exception.BadRequestException;
+import com.example.esti.exception.InvalidStateException;
+import com.example.esti.exception.NotFoundException;
 import com.example.esti.dto.ProposalRequest;
 import com.example.esti.dto.ProposalResponse;
 import com.example.esti.entity.Proposal;
@@ -46,7 +49,7 @@ public class ProposalService {
 //
 //        if (req.getTemplateId() != null) {
 //            ProposalTemplate template = templateRepo.findById(req.getTemplateId())
-//                    .orElseThrow(() -> new RuntimeException("Template not found"));
+//                    .orElseThrow(() -> new NotFoundException("Template not found"));
 //            p.setTemplate(template);
 //        }
 //
@@ -101,10 +104,10 @@ public class ProposalService {
     /* 임시저장 수정 */
     public ProposalResponse updateDraft(Long id, ProposalRequest req) throws Exception {
         Proposal p = proposalRepo.findByIdAndDeletedAtIsNull(id)
-                .orElseThrow(() -> new RuntimeException("Proposal not found"));
+                .orElseThrow(() -> new NotFoundException("Proposal not found"));
 
         if (p.getStatus() != Proposal.Status.DRAFT) {
-            throw new RuntimeException("DRAFT 상태에서만 임시저장 수정 가능합니다.");
+            throw new InvalidStateException("DRAFT 상태에서만 임시저장 수정 가능합니다.");
         }
 
         applyBasicFields(p, req);
@@ -118,10 +121,10 @@ public class ProposalService {
     /* 제출 */
     public ProposalResponse submit(Long id, ProposalRequest req) throws Exception {
         Proposal p = proposalRepo.findByIdAndDeletedAtIsNull(id)
-                .orElseThrow(() -> new RuntimeException("Proposal not found"));
+                .orElseThrow(() -> new NotFoundException("Proposal not found"));
 
         if (p.getStatus() == Proposal.Status.SENT) {
-            throw new RuntimeException("발송 완료된 최종 견적서는 수정할 수 없습니다.");
+            throw new InvalidStateException("발송 완료된 최종 견적서는 수정할 수 없습니다.");
         }
 
         validateForSubmit(req); // 강검증
@@ -158,10 +161,10 @@ public class ProposalService {
     /* 최종 발송 확정 */
     public ProposalResponse send(Long id) {
         Proposal p = proposalRepo.findByIdAndDeletedAtIsNull(id)
-                .orElseThrow(() -> new RuntimeException("Proposal not found"));
+                .orElseThrow(() -> new NotFoundException("Proposal not found"));
 
         if (p.getStatus() != Proposal.Status.SUBMITTED) {
-            throw new RuntimeException("SUBMITTED 상태에서만 발송 확정할 수 있습니다.");
+            throw new InvalidStateException("SUBMITTED 상태에서만 발송 확정할 수 있습니다.");
         }
 
         p.setStatus(Proposal.Status.SENT);
@@ -173,7 +176,7 @@ public class ProposalService {
     /* 견적서 복사 : SENT 상태 수정 필요시 복제 (원본 보존, 새 제안서 id 발급) */
     public ProposalResponse copyToDraft(Long id) throws Exception {
         Proposal src = proposalRepo.findByIdAndDeletedAtIsNull(id)
-                .orElseThrow(() -> new RuntimeException("Proposal not found"));
+                .orElseThrow(() -> new NotFoundException("Proposal not found"));
 
         Proposal p = new Proposal();
         p.setStatus(Proposal.Status.DRAFT);
@@ -238,7 +241,7 @@ public class ProposalService {
     private void applyBasicFields(Proposal p, ProposalRequest req) throws Exception {
         if (req.getTemplateId() != null) {
             ProposalTemplate template = templateRepo.findById(req.getTemplateId())
-                    .orElseThrow(() -> new RuntimeException("Template not found"));
+                    .orElseThrow(() -> new NotFoundException("Template not found"));
             p.setTemplate(template);
         } else {
             p.setTemplate(null);
@@ -347,11 +350,11 @@ public class ProposalService {
     private void validateForSubmit(ProposalRequest req) {
 
         if (req.getProjectName() == null || req.getProjectName().isBlank()) {
-            throw new RuntimeException("현장명은 필수입니다.");
+            throw new BadRequestException("현장명은 필수입니다.");
         }
 
         if (req.getLines() == null || req.getLines().isEmpty()) {
-            throw new RuntimeException("라인이 최소 1개 이상 필요합니다.");
+            throw new BadRequestException("라인이 최소 1개 이상 필요합니다.");
         }
     }
 
@@ -369,7 +372,7 @@ public class ProposalService {
     public ProposalResponse get(Long id) {
 //        Proposal p = proposalRepo.findById(id)
         Proposal p = proposalRepo.findByIdAndDeletedAtIsNull(id)
-                .orElseThrow(() -> new RuntimeException("Proposal not found"));
+                .orElseThrow(() -> new NotFoundException("Proposal not found"));
 
         ProposalResponse res = toResponse(p);
 
@@ -423,11 +426,11 @@ public class ProposalService {
     /* DELETE */
     public void delete(Long id) {
         Proposal p = proposalRepo.findByIdAndDeletedAtIsNull(id)
-                .orElseThrow(() -> new RuntimeException("Proposal not found"));
+                .orElseThrow(() -> new NotFoundException("Proposal not found"));
 
         // SENT만 금지, SUBMITTED는 허용
         if (p.getStatus() == Proposal.Status.SENT) {
-            throw new RuntimeException("발송 완료된 최종 견적서는 삭제할 수 없습니다.");
+            throw new InvalidStateException("발송 완료된 최종 견적서는 삭제할 수 없습니다.");
         }
         // 더 보수적으로 하려면 SUBMITTED도 막기:
         // if (p.getStatus() != Proposal.Status.DRAFT) { ... }
@@ -451,7 +454,7 @@ public class ProposalService {
             return;
         }
 
-        throw new RuntimeException("삭제할 수 없는 상태입니다: " + p.getStatus());
+        throw new InvalidStateException("삭제할 수 없는 상태입니다: " + p.getStatus());
 
 
     }
