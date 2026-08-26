@@ -98,9 +98,9 @@ public class VendorBExcelParser implements VendorExcelParser {
                     case TOILET_V2    -> parseToiletSheetV2(ctx, result);
                     case WASHBASIN_V2 -> parseWashbasinSheetV2(ctx, result);
                     case URINAL_SINK_V2 -> parseUrinalSinkSheetV2(ctx, result);
-                    // 최신본(2026) 전용 — T4~T8에서 순차 구현. 그전까지는 오적재를 막기 위해 스킵한다.
-                    case ACCESSORY_V2,
-                         FITTING_CATALOG_V2, FAUCET_V2, FAUCET_CODEMAP_V2, BATH_V2 ->
+                    case ACCESSORY_V2   -> parseAccessorySheetV2(ctx, result);
+                    // 최신본(2026) 전용 — T5~T8에서 순차 구현. 그전까지는 오적재를 막기 위해 스킵한다.
+                    case FITTING_CATALOG_V2, FAUCET_V2, FAUCET_CODEMAP_V2, BATH_V2 ->
                             logger.warn("[B][{}] 최신본(2026) 양식 — 전용 파서 미구현 → 스킵", name);
                 }
             }
@@ -1961,6 +1961,135 @@ public class VendorBExcelParser implements VendorExcelParser {
             this.ksCode = ksCode;
             this.categoryLarge = categoryLarge;
         }
+    }
+
+    // ============================================================
+    // (V2-액세사리) 최신본(2026) 액세사리류 — 헤더총가 세트형 + 일반품.
+    //
+    //   컬럼: A=제품(세트명) B=품번 C=전산코드 D=품명 E=규격 F=대리점가 G=수량/BOX H=비고
+    //         I=공급처 J~L=참고(대림비앤코)  ← I·J~L은 우리 데이터가 아니라 저장하지 않는다(R7 ④)
+    //   구본 '악세사리 단가표' 대비 컬럼이 2칸 왼쪽으로 밀렸다(구 A=품목·B=세부분류가 삭제).
+    //
+    //   · 세트 시작 = 규격(E)이 'SET'인 행. 세트가는 F.
+    //     "A열에 값이 있으면 세트"로 판정하면 100행 이후 시리즈 라벨(DT 20A…)이 전부 세트가 된다.
+    //   · 세트 구성 = 품명(D)의 'N품'이 말하는 만큼만. 그 뒤 옷걸이처럼 덤으로 붙는 행은
+    //     세트가에 안 들어가므로(AC8300G 4품 <PRICE> vs 옷걸이 포함 <PRICE>) 단일품으로 뺀다.
+    // ============================================================
+
+    private static final Pattern ACC_SET_COUNT = Pattern.compile("(\\d+)\\s*품");
+
+    private void parseAccessorySheetV2(Ctx c, List<VendorProductSet> out) {
+        int headerRow = findRow(c, r -> "품번".equals(noSpace(str(c, r, 1)))
+                && "전산코드".equals(noSpace(str(c, r, 2))));
+        if (headerRow < 0) {
+            logger.warn("[B][{}] 액세사리 헤더(품번/전산코드) 미발견 → 스킵", c.sheetName);
+            return;
+        }
+        int last = c.sheet.getLastRowNum();
+        Set<String> ambiguous = duplicateAccPartNos(c, headerRow, last);
+
+        VendorParsedItem setMain = null;
+        List<VendorParsedItem> parts = null;
+        String setCat = null;
+        BigDecimal setPrice = null;
+        int setRow = -1, remaining = 0;
+        String lastName = null;                    // 품명(D) 병합셀 carry-forward(165~186행 손잡이 구간)
+
+        for (int r = headerRow + 1; r <= last; r++) {
+            String pn = normalizeCode(str(c, r, 1));            // B=품번
+            String ecode = normalizeCode(str(c, r, 2));         // C=전산코드
+            if (pn == null && ecode == null) continue;
+
+            String name = stripSpace(str(c, r, 3));             // D=품명(병합)
+            if (name != null) lastName = name; else name = lastName;
+            String spec = stripSpace(str(c, r, 4));             // E=규격 또는 'SET'
+            BigDecimal price = dec(c, r, 5);                    // F=대리점가
+            DogiV2Note note = splitDogiV2Note(str(c, r, 7), false); // H=비고
+            String code = accCode(pn, ecode, ambiguous);
+            if (code == null) continue;
+
+            if (spec != null && spec.replace(" ", "").equalsIgnoreCase("SET")) {   // ── 세트 대표행
+                flushAccSetV2(c, out, setMain, parts, setCat, setPrice, setRow);
+                setCat = stripSpace(str(c, r, 0));              // A=세트명("AC8100 4품 세트")
+                setPrice = price;
+                setRow = r;
+                remaining = accSetCount(name, setCat);
+                // 세트가가 회계서식 0이면 DataFormatter가 '-'로 내주고 단가는 비게 된다(AC5300, 단종품).
+                String setName = orDefault(setCat, code) + (price == null ? " (가격없음)" : ""); // D8
+                setMain = new VendorParsedItem(code, setName, null, null,
+                        VendorParsedItem.RELATION_MAIN, nz(price), note.remark(), note.description());
+                parts = new ArrayList<>();
+                continue;
+            }
+
+            if (setMain != null && remaining > 0 && stripSpace(str(c, r, 0)) == null) {  // ── 세트 구성행
+                String pName = orDefault(name, code);
+                parts.add(new VendorParsedItem(partCode(setMain.productCode(), code), pName, null, null,
+                        pName, nz(price), note.remark(), note.description()));
+                remaining--;
+                continue;
+            }
+
+            // ── 단일품(세트 종료 포함). 세트 뒤에 덤으로 붙는 옵션행도 여기로 온다.
+            flushAccSetV2(c, out, setMain, parts, setCat, setPrice, setRow);
+            setMain = null; parts = null; setCat = null; setPrice = null; remaining = 0;
+
+            String descr = (spec != null && !spec.equals(name)) ? spec : null; // 규격이 품명과 같으면 중복이라 생략
+            String single = stripSpace(str(c, r, 0));           // A=시리즈/구분(DT 20A, 750mm…)
+            VendorParsedItem item = new VendorParsedItem(code, orDefault(name, code), null, null,
+                    VendorParsedItem.RELATION_MAIN, nz(price), note.remark(),
+                    joinNotes(descr, note.description()));
+            out.add(new VendorProductSet("B", "악세사리", single, item,
+                    new ArrayList<>(), nz(price), false, imageKeyOf(r), false, c.sheetName));
+        }
+        flushAccSetV2(c, out, setMain, parts, setCat, setPrice, setRow);
+    }
+
+    private void flushAccSetV2(Ctx c, List<VendorProductSet> out, VendorParsedItem main,
+                               List<VendorParsedItem> parts, String setCat, BigDecimal setPrice, int setRow) {
+        if (main == null) return;
+        // 대분류=악세사리 고정(C-1) — 시트명('액세사리류')을 대분류로 쓰지 않는다. 이미지 키는 시트명(D52).
+        out.add(new VendorProductSet("B", "악세사리", setCat, main,
+                parts != null ? parts : new ArrayList<>(), setPrice, false,
+                imageKeyOf(setRow), false, c.sheetName));
+    }
+
+    /** 세트 구성 품수 — 품명 "AC8100(4품)" 우선, 없으면 세트명 "AC8100 4품 세트". 못 읽으면 4로 본다. */
+    private int accSetCount(String name, String setLabel) {
+        for (String s : new String[]{name, setLabel}) {
+            if (s == null) continue;
+            Matcher m = ACC_SET_COUNT.matcher(s);
+            if (m.find()) return Integer.parseInt(m.group(1));
+        }
+        logger.warn("[B] 액세사리 세트 품수를 못 읽었다 (품명={}, 세트명={}) → 4품으로 본다", name, setLabel);
+        return 4;
+    }
+
+    /**
+     * 품번이 시트 안에서 유일하지 않으면 전산코드를 붙여 가른다.
+     * {@code AC9320}은 비누대·휴지걸이·수건걸이·컵대 4행이 같은 품번을 쓴다 — 그대로면 한 제품으로 병합된다.
+     * {@code U}로 시작하는 품번은 수전부속 품번 체계와 겹치므로(U9120) 시트 안에서 유일해도 갈라 둔다(구본 A1 정책).
+     */
+    private String accCode(String pn, String ecode, Set<String> ambiguous) {
+        if (pn == null) return ecode;
+        if (ecode != null && (ambiguous.contains(pn) || pn.startsWith("U"))) return pn + "-" + ecode;
+        return pn;
+    }
+
+    private Set<String> duplicateAccPartNos(Ctx c, int headerRow, int last) {
+        Map<String, String> firstCode = new HashMap<>();
+        Set<String> dup = new HashSet<>();
+        for (int r = headerRow + 1; r <= last; r++) {
+            String pn = normalizeCode(str(c, r, 1));
+            String ecode = normalizeCode(str(c, r, 2));
+            if (pn == null || ecode == null) continue;
+            String prev = firstCode.putIfAbsent(pn, ecode);
+            if (prev != null && !prev.equalsIgnoreCase(ecode)) dup.add(pn); // 완전 중복행은 upsert가 흡수한다
+        }
+        if (!dup.isEmpty()) {
+            logger.info("[B][{}] 품번이 겹치는 항목 {}건 → 전산코드를 붙여 구분 {}", c.sheetName, dup.size(), dup);
+        }
+        return dup;
     }
 
     /**
