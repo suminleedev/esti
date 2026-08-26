@@ -99,8 +99,9 @@ public class VendorBExcelParser implements VendorExcelParser {
                     case WASHBASIN_V2 -> parseWashbasinSheetV2(ctx, result);
                     case URINAL_SINK_V2 -> parseUrinalSinkSheetV2(ctx, result);
                     case ACCESSORY_V2   -> parseAccessorySheetV2(ctx, result);
-                    // 최신본(2026) 전용 — T5~T8에서 순차 구현. 그전까지는 오적재를 막기 위해 스킵한다.
-                    case FITTING_CATALOG_V2, FAUCET_V2, FAUCET_CODEMAP_V2, BATH_V2 ->
+                    case FITTING_CATALOG_V2 -> parseFittingCatalogSheetV2(ctx, result);
+                    // 최신본(2026) 전용 — T6~T8에서 순차 구현. 그전까지는 오적재를 막기 위해 스킵한다.
+                    case FAUCET_V2, FAUCET_CODEMAP_V2, BATH_V2 ->
                             logger.warn("[B][{}] 최신본(2026) 양식 — 전용 파서 미구현 → 스킵", name);
                 }
             }
@@ -2090,6 +2091,92 @@ public class VendorBExcelParser implements VendorExcelParser {
             logger.info("[B][{}] 품번이 겹치는 항목 {}건 → 전산코드를 붙여 구분 {}", c.sheetName, dup.size(), dup);
         }
         return dup;
+    }
+
+    // ============================================================
+    // (V2-부속류) 최신본(2026) 부속류 — 순수 부속 카탈로그.
+    //
+    //   컬럼: A=품명(그룹) B=품번 C=제품코드 D=단위 E=수량 F=단가 G=이미지 H=비고
+    //   구본 '수전 부속(세트)'와 레이아웃은 같지만 소계행이 하나도 없다 → 세트를 만들지 않는다(D-B5).
+    //   141행 아래에 니쁠 부표(B=품목 C=제품코드 D=단가 E=규격)가 다른 레이아웃으로 붙는다.
+    //
+    //   식별자는 품번(B)이 아니라 <b>전산코드(C)</b>다. 구·신 코드가 병존해
+    //   같은 품번이 서로 다른 전산코드를 갖는 쌍이 14개 있다(U9013c 냉수 → <CODE> 구버전 / <CODE> 신규).
+    //   품번을 코드로 쓰면 이 쌍이 한 제품으로 병합된다. T7의 품번표 조인 키도 전산코드다.
+    // ============================================================
+
+    private void parseFittingCatalogSheetV2(Ctx c, List<VendorProductSet> out) {
+        int headerRow = findRow(c, r -> "품명".equals(noSpace(str(c, r, 0)))
+                && "품번".equals(noSpace(str(c, r, 1))));
+        if (headerRow < 0) {
+            logger.warn("[B][{}] 부속류 헤더(품명/품번) 미발견 → 스킵", c.sheetName);
+            return;
+        }
+        int last = c.sheet.getLastRowNum();
+
+        boolean nipple = false;
+        String group = null;
+        Map<String, BigDecimal> emitted = new LinkedHashMap<>(); // 전산코드 → 처음 본 단가
+
+        for (int r = headerRow + 1; r <= last; r++) {
+            // 니쁠 부표 서브헤더 → 이 아래는 컬럼 배치가 다르다
+            if ("품목".equals(noSpace(str(c, r, 1))) && "제품코드".equals(noSpace(str(c, r, 2)))) {
+                nipple = true;
+                group = null;
+                continue;
+            }
+
+            String code = normalizeCode(str(c, r, 2));   // C=제품코드(전산코드)
+            if (code == null) continue;
+            code = code.toLowerCase();                    // 대소문자 오타 흡수(43U9113, 구본 P9)
+
+            String label = stripSpace(str(c, r, 1));      // 니쁠 부표는 B=품목, 본표는 B=품번
+            BigDecimal price;
+            String spec = null, remark = null;
+            if (nipple) {
+                if (label != null) group = label;         // '니쁠' (병합셀)
+                price = dec(c, r, 3);                     // D=단가
+                spec = stripSpace(str(c, r, 4));          // E=규격
+                label = null;                             // 니쁠 부표엔 품번이 없다
+            } else {
+                String aRaw = stripSpace(str(c, r, 0));   // A=품명(그룹, 병합셀)
+                if (aRaw != null) group = aRaw;
+                price = dec(c, r, 5);                     // F=단가
+                remark = stripSpace(str(c, r, 7));        // H=비고
+            }
+
+            // 같은 전산코드가 여러 그룹에 다시 등장한다(<CODE>은 6번). 단가는 전부 같으므로
+            // 처음 본 그룹의 이름을 canonical로 삼고 이후는 건너뛴다 — 안 그러면 upsert 순서에 따라
+            // '가로꼭지(2구)'가 '발코니수전 U9510'으로 덮인다.
+            BigDecimal prev = emitted.putIfAbsent(code, nz(price));
+            if (prev != null) {
+                if (prev.compareTo(nz(price)) != 0) {
+                    logger.warn("[B][{}] 같은 전산코드에 다른 단가 (코드={}, 처음={}, {}행={})",
+                            c.sheetName, code, prev, r + 1, price);
+                }
+                continue;
+            }
+
+            String name = orDefault(join(group, label), join(group, code));
+            if (spec != null) name = join(name, "(" + spec + ")");
+            out.add(fittingSingleV2(c, group, code, name, price, remark, spec, r));
+        }
+    }
+
+    /**
+     * 부속 카탈로그 1건 방출. 구본 {@link #fittingSingle}과 같은 모양이되 <b>규격을 받는다</b> —
+     * 니쁠 부표의 {@code 65mm}는 R7 ③에 따라 {@code specs}로 가야 하는데 구본 헬퍼는 비고에서만 규격을 뽑는다.
+     * (구본 헬퍼에 인자를 더하면 구본 호출부를 건드리게 되어 R2′에 걸린다.)
+     */
+    private VendorProductSet fittingSingleV2(Ctx c, String catSmall, String code, String name,
+                                             BigDecimal price, String remark, String spec, int row) {
+        if (price == null) name = name + " (가격없음)"; // D8
+        NoteSplit ns = splitFittingNote(remark);        // 단종→remark / 규격→specs / 매입처→미저장
+        VendorParsedItem main = new VendorParsedItem(code, name, null, null,
+                VendorParsedItem.RELATION_MAIN, nz(price), ns.remark(), ns.description(),
+                null, orDefault(spec, ns.specs()));
+        return new VendorProductSet("B", "수전부속", catSmall, main,
+                new ArrayList<>(), nz(price), false, imageKeyOf(row), false, c.sheetName);
     }
 
     /**
