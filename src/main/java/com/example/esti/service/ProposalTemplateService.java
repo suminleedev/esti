@@ -1,5 +1,6 @@
 package com.example.esti.service;
 
+import com.example.esti.exception.NotFoundException;
 import com.example.esti.dto.ProposalTemplateRequest;
 import com.example.esti.dto.ProposalTemplateResponse;
 import com.example.esti.entity.ProposalTemplate;
@@ -57,7 +58,7 @@ public class ProposalTemplateService {
     /* DETAIL */
     public ProposalTemplateResponse get(Long id) {
         ProposalTemplate t = templateRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Template not found"));
+                .orElseThrow(() -> new NotFoundException("Template not found"));
 
         ProposalTemplateResponse res = new ProposalTemplateResponse();
         res.setId(t.getId());
@@ -116,7 +117,7 @@ public class ProposalTemplateService {
     @Transactional
     public ProposalTemplateResponse update(Long id, ProposalTemplateRequest req) throws Exception {
         ProposalTemplate template = templateRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Template not found"));
+                .orElseThrow(() -> new NotFoundException("Template not found"));
 
         template.setTemplateName(req.getTemplateName());
         template.setApartmentType(req.getApartmentType());
