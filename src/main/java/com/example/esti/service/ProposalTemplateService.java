@@ -1,11 +1,13 @@
 package com.example.esti.service;
 
+import com.example.esti.exception.InvalidStateException;
 import com.example.esti.exception.NotFoundException;
 import com.example.esti.dto.ProposalTemplateRequest;
 import com.example.esti.dto.ProposalTemplateResponse;
 import com.example.esti.entity.ProposalTemplate;
 import com.example.esti.entity.ProposalTemplateLine;
 import com.example.esti.entity.VendorProduct;
+import com.example.esti.repository.ProposalRepository;
 import com.example.esti.repository.ProposalTemplateLineRepository;
 import com.example.esti.repository.ProposalTemplateRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,6 +25,7 @@ public class ProposalTemplateService {
 
     private final ProposalTemplateRepository templateRepo;
     private final ProposalTemplateLineRepository lineRepo;
+    private final ProposalRepository proposalRepo;
     private final ObjectMapper mapper;
 
     /* CREATE */
@@ -82,10 +85,6 @@ public class ProposalTemplateService {
                     o.setId(l.getId());
                     o.setProductId(l.getProductId());
 
-                    o.setVendorItemName(l.getVendorItemName());
-                    o.setMainItemCode(l.getMainItemCode());
-                    o.setVendorName(l.getVendorName());
-
                     o.setVendorCode(l.getVendorCode());
                     o.setVendorName(l.getVendorName());
                     o.setVendorItemName(l.getVendorItemName());
@@ -136,6 +135,10 @@ public class ProposalTemplateService {
     /* DELETE */
     @Transactional
     public void delete(Long id) {
+        if (proposalRepo.existsByTemplate_Id(id)) {
+            throw new InvalidStateException("해당 템플릿을 참조하는 제안서가 있어 삭제할 수 없습니다.");
+        }
+
         lineRepo.deleteByTemplateId(id);
         templateRepo.deleteById(id);
     }

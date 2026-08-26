@@ -21,6 +21,9 @@ public interface ProposalRepository
      * 형식이 {@code syt-YYYYMMDDNN}으로 자릿수가 고정이라 사전순 최대가 곧 번호 최대다.
      */
     Optional<Proposal> findTopByQuoteNoStartingWithOrderByQuoteNoDesc(String prefix);
+
+    /** 해당 템플릿을 참조하는 제안서가 있는지 — 템플릿 삭제 가드용. */
+    boolean existsByTemplate_Id(Long templateId);
     @Override
     @EntityGraph(attributePaths = {"template"})
     Page<Proposal> findAll(Specification<Proposal> spec, Pageable pageable);
