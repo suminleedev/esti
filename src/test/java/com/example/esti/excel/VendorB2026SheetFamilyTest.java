@@ -100,15 +100,22 @@ class VendorB2026SheetFamilyTest {
         Map<String, Long> bySheet = sets.stream()
                 .collect(Collectors.groupingBy(VendorProductSet::sheetName, Collectors.counting()));
 
-        assertEquals(Map.of(
-                "비데, 기타", 28L,   // 양식 그대로 → 구본 경로(BIDET_ETC)
-                "양변기", 39L,       // T1
-                "세면기", 56L,       // T2
-                "소변기, 수채", 11L,  // T3
-                "액세사리류", 175L,   // T4
-                "부속류", 124L,       // T5
-                "수전금구류", 264L    // T6
+        assertEquals(Map.ofEntries(
+                Map.entry("비데, 기타", 28L),   // 양식 그대로 → 구본 경로(BIDET_ETC)
+                Map.entry("양변기", 39L),       // T1
+                Map.entry("세면기", 56L),       // T2
+                Map.entry("소변기, 수채", 11L), // T3
+                Map.entry("액세사리류", 175L),  // T4
+                Map.entry("부속류", 124L),      // T5
+                Map.entry("수전금구류", 264L),  // T6
+                Map.entry("바스 선반(직영)", 18L),          // T8
+                Map.entry("바스 파티션,욕조(직영)", 10L),
+                Map.entry("바스 천정재(직영)", 7L),
+                Map.entry("바스 욕실장,거울(직영)", 35L)
         ), bySheet, "구현되지 않은 시트는 결과에 나타나지 않아야 한다");
+
+        // T7(품번 매핑표)은 보류 — 부속 구성의 단가가 원본에 없어 관계를 만들지 않는다.
+        assertFalse(bySheet.containsKey("수전금구 품번 및 품목코드"));
 
         // 숨김·(삭제) 시트는 어떤 형태로도 결과에 나타나지 않는다.
         assertTrue(sets.stream().noneMatch(s -> s.sheetName() != null && s.sheetName().startsWith("(삭제)")));

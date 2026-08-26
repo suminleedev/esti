@@ -101,9 +101,11 @@ public class VendorBExcelParser implements VendorExcelParser {
                     case ACCESSORY_V2   -> parseAccessorySheetV2(ctx, result);
                     case FITTING_CATALOG_V2 -> parseFittingCatalogSheetV2(ctx, result);
                     case FAUCET_V2      -> parseFaucetSheetV2(ctx, result);
-                    // 최신본(2026) 전용 — T7~T8에서 순차 구현. 그전까지는 오적재를 막기 위해 스킵한다.
-                    case FAUCET_CODEMAP_V2, BATH_V2 ->
-                            logger.warn("[B][{}] 최신본(2026) 양식 — 전용 파서 미구현 → 스킵", name);
+                    case BATH_V2        -> parseBathSheetV2(ctx, result);
+                    // 품번↔전산코드 매핑표라 제품 시트가 아니다. 부속 구성(분계)을 담고 있지만
+                    // 구성의 단가가 이 파일 어디에도 없어(380건 중 344건) 관계 생성은 보류했다(T7, 계획서 §5).
+                    case FAUCET_CODEMAP_V2 ->
+                            logger.info("[B][{}] 품번 매핑표 — 제품 시트가 아니라 적재하지 않는다", name);
                 }
             }
             return result;
@@ -2248,6 +2250,113 @@ public class VendorBExcelParser implements VendorExcelParser {
             logger.info("[B][{}] 품번이 겹치는 항목 {}건 → 전산코드를 붙여 구분 {}", c.sheetName, dup.size(), dup);
         }
         return dup;
+    }
+
+    // ============================================================
+    // (V2-바스) 최신본(2026) 바스 4시트(직영) — 선반 / 파티션·욕조 / 천정재 / 욕실장·거울.
+    //
+    //   2단 헤더이고 컬럼 규약이 같다. 다만 천정재만 이미지 컬럼이 없어 한 칸씩 왼쪽이라
+    //   위치를 하드코딩하지 않고 헤더에서 읽는다.
+    //     A=구분  [B=이미지]  전산코드  명  규격  단위|세트명  수량  판매점단가  인테리어가  소비자가  비고 …
+    //
+    //   가격은 3단이지만 <b>판매점 단가만</b> 저장한다(D-B3). 인테리어가·소비자가를 쓰려면
+    //   VendorItemPrice에 축이 필요해 모델 변경이 따른다.
+    // ============================================================
+
+    private void parseBathSheetV2(Ctx c, List<VendorProductSet> out) {
+        int headerRow = findRow(c, r -> findColByHeader(c, r, h -> h.contains("판매점")) >= 0);
+        if (headerRow < 0) {
+            logger.warn("[B][{}] 바스 헤더(판매점 단가) 미발견 → 스킵", c.sheetName);
+            return;
+        }
+        int priceCol = findColByHeader(c, headerRow, h -> h.contains("판매점"));
+        int imageCol = findColByHeader(c, headerRow, h -> h.equals("이미지"));
+        int noteCol = findColByHeader(c, headerRow, h -> h.contains("비고"));
+
+        int sub = headerRow + 1;
+        int codeCol = findColByHeader(c, sub, h -> h.equals("전산코드"));
+        int nameCol = findColByHeader(c, sub, h -> h.equals("명"));
+        int specCol = findColByHeader(c, sub, h -> h.equals("규격"));
+        int setNameCol = findColByHeader(c, sub, h -> h.equals("세트명"));  // 욕실장·거울만
+        if (codeCol < 0 || priceCol < 0) {
+            logger.warn("[B][{}] 바스 컬럼(전산코드/판매점 단가) 미발견 → 스킵", c.sheetName);
+            return;
+        }
+
+        String sheetGroup = bathCategorySmall(c.sheetName);
+        String group = sheetGroup;
+        Map<String, BigDecimal> emitted = new LinkedHashMap<>();
+
+        for (int r = sub + 1; r <= c.sheet.getLastRowNum(); r++) {
+            // 이미지 컬럼에 품목군 라벨이 섞여 온다(파티션·욕조의 '샤워파티션'/'민자형'). 그림은 글자가 없다.
+            if (imageCol >= 0) {
+                String label = stripSpace(str(c, r, imageCol));
+                if (label != null) group = label;
+            }
+            String code = normalizeCode(str(c, r, codeCol));
+            if (code == null) continue;
+            code = code.toLowerCase();                       // 대소문자 표기가 섞여 있다(45T1322S)
+
+            BigDecimal price = dec(c, r, priceCol);
+            BigDecimal prev = emitted.putIfAbsent(code, nz(price));
+            if (prev != null) {
+                if (prev.compareTo(nz(price)) != 0) {
+                    logger.warn("[B][{}] 같은 전산코드에 다른 단가 (코드={}, 처음={}, {}행={})",
+                            c.sheetName, code, prev, r + 1, price);
+                }
+                continue;
+            }
+
+            String name = nameCol >= 0 ? stripSpace(str(c, r, nameCol)) : null;
+            String specs = specCol >= 0 ? stripSpace(str(c, r, specCol)) : null;
+            DogiV2Note note = splitDogiV2Note(collectTrailingNotes(c, r, noteCol), false);
+
+            String descr = note.description();
+            if (setNameCol >= 0) {                            // '노블리젠시'처럼 세트명이 오지만 'ea'도 섞인다
+                String setName = stripSpace(str(c, r, setNameCol));
+                if (setName != null && !setName.equalsIgnoreCase("ea")) descr = joinNotes(setName, descr);
+            }
+
+            String display = orDefault(name, code);
+            if (price == null) display = display + " (가격없음)"; // D8
+            VendorParsedItem main = new VendorParsedItem(code, display, null, null,
+                    VendorParsedItem.RELATION_MAIN, nz(price), note.remark(), descr, null, specs);
+            out.add(new VendorProductSet("B", "바스", group, main,
+                    new ArrayList<>(), nz(price), false, imageKeyOf(r), false, c.sheetName));
+        }
+    }
+
+    /** 비고 컬럼부터 행 끝까지 모은다 — '단종'이 비고 오른쪽의 라벨 없는 컬럼에 따로 들어온다. */
+    private String collectTrailingNotes(Ctx c, int r, int noteCol) {
+        if (noteCol < 0) return null;
+        Row row = c.sheet.getRow(r);
+        if (row == null) return null;
+        StringBuilder sb = new StringBuilder();
+        for (int col = noteCol; col < row.getLastCellNum(); col++) {
+            String v = stripSpace(str(c, r, col));
+            if (v == null) continue;
+            if (sb.length() > 0) sb.append('\n');
+            sb.append(v);
+        }
+        return sb.length() == 0 ? null : sb.toString();
+    }
+
+    /** "바스 욕실장,거울(직영)" → "욕실장,거울". 대분류는 '바스'로 통일하고 시트별 품목군만 남긴다. */
+    private String bathCategorySmall(String sheetName) {
+        String s = sheetName.replaceAll("\\(.*?\\)", "").trim();
+        if (s.startsWith("바스")) s = s.substring(2).trim();
+        return s.isEmpty() ? sheetName : s;
+    }
+
+    /** 헤더 행에서 조건에 맞는 첫 컬럼. 없으면 -1. */
+    private int findColByHeader(Ctx c, int r, Predicate<String> match) {
+        Row row = c.sheet.getRow(r);
+        if (row == null) return -1;
+        for (int col = 0; col < row.getLastCellNum(); col++) {
+            String h = noSpace(str(c, r, col));
+            if (h != null && match.test(h)) return col;
+        }
+        return -1;
     }
 
     /**
