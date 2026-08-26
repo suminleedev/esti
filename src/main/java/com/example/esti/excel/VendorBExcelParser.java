@@ -39,6 +39,14 @@ import static com.example.esti.excel.ExcelParseUtils.*;
  * </ul>
  *
  * 가격 없는 행은 스킵하지 않고 단가 0 + 제품명 뒤 "(가격없음)" 표기(D8).
+ *
+ * <h2>최신본(2026) 양식 — {@code *_V2} 패밀리</h2>
+ * B사가 단가표를 9시트 → 14시트로 개편하면서 도기 3시트(양변기/세면기/소변기,수채)의 양식이
+ * <b>가로 슬롯형 → 세로 나열형</b>으로 뒤집혔다(부속이 열이 아니라 행으로 내려온다).
+ * 구본 픽스처를 쓰는 기존 테스트를 지키기 위해 <b>구·신 파서를 공존</b>시킨다(D-B1) —
+ * 구본 메서드는 수정하지 않고 신양식은 별도 메서드로 만든다.
+ * 시트명이 겹치는 도기 3시트만 {@link #isV2DogiSheet}로 레이아웃을 보고 가른다.
+ * 상세는 {@code docs/analysis-b-format-2026.md} / {@code docs/plan-b-format-2026.md}.
  */
 @Component
 public class VendorBExcelParser implements VendorExcelParser {
@@ -65,10 +73,14 @@ public class VendorBExcelParser implements VendorExcelParser {
             for (int i = 0; i < wb.getNumberOfSheets(); i++) {
                 Sheet sheet = wb.getSheetAt(i);
                 if (sheet == null) continue;
+                if (isSkippedSheet(wb, i)) {
+                    logger.info("[B][{}] 적재 대상 아님(숨김 또는 '(삭제)' 표기) → 스킵", sheet.getSheetName());
+                    continue;
+                }
                 String name = sheet.getSheetName();
                 Ctx ctx = new Ctx(sheet, fmt, ev, name, fittingPrices);
 
-                switch (family(name)) {
+                switch (family(ctx)) {
                     case TOILET     -> parseToiletSheet(ctx, result);
                     case WASHBASIN  -> parseWashbasinSheet(ctx, result);
                     case URINAL_SINK -> parseUrinalSinkSheet(ctx, result);
@@ -83,6 +95,17 @@ public class VendorBExcelParser implements VendorExcelParser {
                     case SET_TOTAL  -> parseHeaderTotalSetSheet(ctx, result);
                     case SET_SUBTOTAL -> parseSubtotalSetSheet(ctx, result);
                     case SINGLE     -> parseSingleRowSheet(ctx, result);
+                    case TOILET_V2    -> parseToiletSheetV2(ctx, result);
+                    case WASHBASIN_V2 -> parseWashbasinSheetV2(ctx, result);
+                    case URINAL_SINK_V2 -> parseUrinalSinkSheetV2(ctx, result);
+                    case ACCESSORY_V2   -> parseAccessorySheetV2(ctx, result);
+                    case FITTING_CATALOG_V2 -> parseFittingCatalogSheetV2(ctx, result);
+                    case FAUCET_V2      -> parseFaucetSheetV2(ctx, result);
+                    case BATH_V2        -> parseBathSheetV2(ctx, result);
+                    // 품번↔전산코드 매핑표라 제품 시트가 아니다. 부속 구성(분계)을 담고 있지만
+                    // 구성의 단가가 이 파일 어디에도 없어(380건 중 344건) 관계 생성은 보류했다(T7, 계획서 §5).
+                    case FAUCET_CODEMAP_V2 ->
+                            logger.info("[B][{}] 품번 매핑표 — 제품 시트가 아니라 적재하지 않는다", name);
                 }
             }
             return result;
@@ -95,11 +118,87 @@ public class VendorBExcelParser implements VendorExcelParser {
     // 패밀리 판별
     // ============================================================
 
-    private enum Family { TOILET, WASHBASIN, URINAL_SINK, BIDET_ETC, FAUCET_GENERAL, FAUCET_PARTS,
-        BREAKDOWN, FITTING_SET, FITTING_PRICE, FITTING_OEM, GALAXIA, SET_TOTAL, SET_SUBTOTAL, SINGLE }
+    private enum Family {
+        // 구본(2020) 9시트 + 시트별 test 픽스처 4종
+        TOILET, WASHBASIN, URINAL_SINK, BIDET_ETC, FAUCET_GENERAL, FAUCET_PARTS,
+        BREAKDOWN, FITTING_SET, FITTING_PRICE, FITTING_OEM, GALAXIA, SET_TOTAL, SET_SUBTOTAL, SINGLE,
+        // 최신본(2026) 14시트 — 구본과 공존한다(D-B1). 시트명이 겹치는 도기 3시트는 레이아웃으로 갈린다.
+        TOILET_V2, WASHBASIN_V2, URINAL_SINK_V2, ACCESSORY_V2,
+        FITTING_CATALOG_V2, FAUCET_V2, FAUCET_CODEMAP_V2, BATH_V2
+    }
+
+    /**
+     * 시트별 판별 결과를 진단용으로 노출한다(시트명 → {@code Family} 이름, 스킵된 시트는 {@code SKIPPED}).
+     *
+     * <p>파싱 결과만으로는 "구본 파서가 헤더를 못 찾아 0건"과 "신양식으로 판별돼 스킵돼서 0건"이 구분되지 않는다.
+     * 구·신 분기(D-B1)가 조용히 뒤집히는 회귀를 잡으려면 판별 자체를 관찰할 수 있어야 한다.
+     */
+    Map<String, String> diagnoseSheetFamilies(Path path) {
+        try (InputStream is = Files.newInputStream(path);
+             Workbook wb = WorkbookFactory.create(is)) {
+            FormulaEvaluator ev = wb.getCreationHelper().createFormulaEvaluator();
+            DataFormatter fmt = new DataFormatter();
+            Map<String, String> out = new LinkedHashMap<>();
+            for (int i = 0; i < wb.getNumberOfSheets(); i++) {
+                Sheet sheet = wb.getSheetAt(i);
+                if (sheet == null) continue;
+                String name = sheet.getSheetName();
+                out.put(name, isSkippedSheet(wb, i)
+                        ? "SKIPPED"
+                        : family(new Ctx(sheet, fmt, ev, name, Map.of())).name());
+            }
+            return out;
+        } catch (Exception e) {
+            throw wrap("B사 엑셀 시트 판별 중 오류", e);
+        }
+    }
+
+    /**
+     * 시트명 + 레이아웃 판별. 구·신 양식은 시트명만으로 갈리지만, 도기 3시트(양변기/세면기/소변기,수채)만은
+     * 시트명이 같고 양식이 완전히 다르다(가로 슬롯형 ↔ 세로 나열형) → 헤더 라벨로 판별한다.
+     */
+    private Family family(Ctx c) {
+        Family byName = family(c.sheetName);
+        return switch (byName) {
+            case TOILET      -> isV2DogiSheet(c) ? Family.TOILET_V2 : byName;
+            case WASHBASIN   -> isV2DogiSheet(c) ? Family.WASHBASIN_V2 : byName;
+            case URINAL_SINK -> isV2DogiSheet(c) ? Family.URINAL_SINK_V2 : byName;
+            default -> byName;
+        };
+    }
+
+    /**
+     * 최신본 도기 3시트 판별 — 구본에 없는 헤더 라벨 {@code 제품정보}가 상단 6행 안에 있으면 신양식이다.
+     * (신양식은 F열이 '제품정보 / 제품코드' 2단 헤더. 구본 헤더는 '구분/품종/품번/이미지/KS품번'뿐이다.)
+     */
+    private boolean isV2DogiSheet(Ctx c) {
+        int last = Math.min(c.sheet.getLastRowNum(), 5);
+        for (int r = 0; r <= last; r++) {
+            Row row = c.sheet.getRow(r);
+            if (row == null) continue;
+            for (int col = 0; col < row.getLastCellNum(); col++) {
+                if ("제품정보".equals(noSpace(str(c, r, col)))) return true;
+            }
+        }
+        return false;
+    }
+
+    /** 적재 대상이 아닌 시트 — 숨김 처리됐거나 시트명이 {@code (삭제)}로 시작한다(D-B8). */
+    private boolean isSkippedSheet(Workbook wb, int idx) {
+        if (wb.isSheetHidden(idx) || wb.isSheetVeryHidden(idx)) return true;
+        return wb.getSheetAt(idx).getSheetName().replaceAll("\\s", "").startsWith("(삭제)");
+    }
 
     private Family family(String sheetName) {
         String n = sheetName.replaceAll("\\s", "");
+        // ── 최신본(2026) 전용 시트명. 구본 분기보다 먼저 판별한다.
+        //    특히 '수전금구 품번 및 품목코드'는 아래 contains("수전금구")에 먼저 걸리므로 반드시 여기 있어야 한다.
+        if (n.contains("품번") && n.contains("품목코드")) return Family.FAUCET_CODEMAP_V2; // 수전금구 품번 및 품목코드(매핑표)
+        if (n.equals("수전금구류")) return Family.FAUCET_V2;
+        if (n.contains("액세사리") || n.contains("액세서리")) return Family.ACCESSORY_V2;   // '악'세사리(구본)와 다른 글자
+        if (n.equals("부속류")) return Family.FITTING_CATALOG_V2;
+        if (n.startsWith("바스")) return Family.BATH_V2;                                  // 바스 선반/파티션·욕조/천정재/욕실장·거울 (직영)
+        // ── 구본(2020) 시트명
         if (n.equals("양변기")) return Family.TOILET;            // 양변기 전용 경로(서브테이블별 헤더/품종 병합 처리)
         if (n.equals("세면기")) return Family.WASHBASIN;          // 세면기 전용 경로(선택형 기본구성·도자 분기·괄호 설명 분리)
         if (n.contains("소변기")) return Family.URINAL_SINK;       // 소변기·수채 전용 경로(서브테이블별 헤더/대분류 분리)
@@ -1189,7 +1288,8 @@ public class VendorBExcelParser implements VendorExcelParser {
                                       Map<String, BigDecimal> idx, Family target, int codeCol, int priceCol) {
         for (int i = 0; i < wb.getNumberOfSheets(); i++) {
             Sheet sheet = wb.getSheetAt(i);
-            if (sheet == null || family(sheet.getSheetName()) != target) continue;
+            if (sheet == null || isSkippedSheet(wb, i)) continue;
+            if (family(sheet.getSheetName()) != target) continue;
             Ctx c = new Ctx(sheet, fmt, ev, sheet.getSheetName(), Map.of());
             for (int r = 0; r <= sheet.getLastRowNum(); r++) {
                 String raw = str(c, r, codeCol);
@@ -1533,6 +1633,730 @@ public class VendorBExcelParser implements VendorExcelParser {
             out.add(new VendorProductSet("B", c.sheetName, name, main,
                     new ArrayList<>(), nz(price), false, imageKeyOf(r), false));
         }
+    }
+
+    // ============================================================
+    // (V2-도기) 최신본(2026) 도기 3시트 공통 리더 — 양변기/세면기/소변기,수채.
+    //
+    //   구본은 부속이 열로 펼쳐지는 가로 슬롯형이었으나, 최신본은 부속이 행으로 내려오는 세로 나열형이다.
+    //   세트 1건 = 여러 행이며 컬럼 규약은 세 시트가 같다(헤더에서 위치를 읽으므로 하드코딩하지 않는다).
+    //
+    //     A=구분  B=품종  C=품목  D=KS품번  E=품명  F=제품코드  G=제품코드(대체)  H=단가  I=計  …  규격 … 비고
+    //
+    //   · 세트 시작 = C(품목)와 E(품명)가 모두 있는 행. 그 행이 대표품목(MAIN)이고 I=計가 세트가.
+    //   · 이후 C가 비고 E만 있는 행 = 부속. 빈 행이나 다음 품목에서 세트가 끝난다.
+    //   · N~P의 부속 서브테이블은 좌측 세트와 행이 정렬되지 않는 독립 옵션 목록이라 여기서 읽지 않는다
+    //     (계획서 §8 잔여 ①). 실제로 IC717E의 計는 E열 '양부속(대소구분)' <PRICE>을 쓰고
+    //     N열 '양부속(기본)' <PRICE>은 쓰지 않는다 — 서브테이블이 세트 구성이 아님을 보여준다.
+    // ============================================================
+
+    private void parseToiletSheetV2(Ctx c, List<VendorProductSet> out) {
+        parseDogiSheetV2(c, out, DogiV2Rules.DETERMINATE);
+    }
+
+    private void parseWashbasinSheetV2(Ctx c, List<VendorProductSet> out) {
+        parseDogiSheetV2(c, out, DogiV2Rules.SELECTABLE);
+    }
+
+    private void parseUrinalSinkSheetV2(Ctx c, List<VendorProductSet> out) {
+        // 한 시트에 소변기 표와 소제싱크 표가 세로로 쌓여 있고 '■'로 갈린다.
+        // 대분류는 구본과 같이 시트명("소변기, 수채")을 콤마로 쪼개 순서대로 부여한다.
+        parseDogiSheetV2(c, out, DogiV2Rules.DETERMINATE.withCategories(splitSheetCategories(c.sheetName)));
+    }
+
+    /**
+     * 시트별 차이.
+     *
+     * <p>{@code selectable} — 구성에 <b>택일 항목</b>이 섞이는가. 양변기·소변기는 구성이 확정이라
+     * {@code 計 = 구성합}이 성립하고 어긋나면 원본 오류다. 세면기는 도기 변형·반다리/긴다리가
+     * 한 세트에 함께 실려 구성합이 언제나 {@code 計}보다 크다 — 경고로 올리면 전건이 시끄러워진다.
+     *
+     * <p>{@code categories} — 시트 안에 대분류가 여러 개인 경우('■'로 갈린 서브테이블) 쓸 이름들.
+     * 비면 시트명을 그대로 대분류로 쓴다.
+     */
+    private record DogiV2Rules(boolean selectable, List<String> categories) {
+        static final DogiV2Rules DETERMINATE = new DogiV2Rules(false, List.of());
+        static final DogiV2Rules SELECTABLE = new DogiV2Rules(true, List.of());
+
+        DogiV2Rules withCategories(List<String> cats) { return new DogiV2Rules(selectable, cats); }
+    }
+
+    private void parseDogiSheetV2(Ctx c, List<VendorProductSet> out, DogiV2Rules rules) {
+        int headerRow = findRow(c, r -> "구분".equals(noSpace(str(c, r, 0)))
+                && "품목".equals(noSpace(str(c, r, 2))));
+        if (headerRow < 0) {
+            logger.warn("[B][{}] 최신본 도기 헤더(구분/품목) 미발견 → 스킵", c.sheetName);
+            return;
+        }
+        DogiV2Cols cols = readDogiV2Header(c, headerRow);
+        if (cols == null) {
+            logger.warn("[B][{}] 최신본 도기 2단 헤더(단가/計) 미발견 → 스킵", c.sheetName);
+            return;
+        }
+
+        int last = c.sheet.getLastRowNum();
+        Map<Integer, String> codeOverrides = computeDogiV2DuplicateCodes(c, cols, headerRow, last);
+
+        DogiV2Set cur = null;
+        String lastKind = null;
+        int catIdx = 0;
+        String category = rules.categories().isEmpty() ? c.sheetName : rules.categories().get(0);
+        for (int r = headerRow + 2; r <= last; r++) {   // 헤더는 2행짜리
+            // 본표 아래에 성격이 다른 부록표가 붙는다(양변기 218행~: 구분/BOX/PLT/소프트개폐시트).
+            // 그 행들은 C에 값이 있어 세트 시작으로 오인되므로, 두 번째 '구분' 헤더에서 명시적으로 끝낸다.
+            if (r > headerRow && "구분".equals(noSpace(str(c, r, 0)))) break;
+
+            // '■ 소제싱크' 같은 구역 제목 → 다음 대분류로 넘어간다.
+            String head = stripSpace(str(c, r, 0));
+            if (head != null && head.startsWith("■")) {
+                cur = flushDogiV2(c, out, cur, rules);
+                if (!rules.categories().isEmpty()) {
+                    catIdx = Math.min(catIdx + 1, rules.categories().size() - 1);
+                    category = rules.categories().get(catIdx);
+                }
+                lastKind = null;
+                continue;
+            }
+
+            String item = blankOrDash(str(c, r, cols.itemCol()));      // C=품목
+            String name = blankOrDash(str(c, r, cols.nameCol()));      // E=품명
+            if (name == null) { cur = flushDogiV2(c, out, cur, rules); continue; }  // 빈 행 → 세트 종료
+
+            if (item != null) {                                        // 세트 시작
+                cur = flushDogiV2(c, out, cur, rules);
+                String kind = blankOrDash(str(c, r, cols.kindCol()));   // B=품종(병합셀)
+                if (kind != null) lastKind = kind;
+                cur = startDogiV2Set(c, cols, r, item, lastKind, codeOverrides.get(r), category);
+            }
+            // 세트 밖의 잔여 행 — 세면기 142행 아래 '품명/제품코드/단가' 부록표가 여기 걸린다.
+            // C(품목)가 없어 세트로 시작되지 않고, 직전 세트는 빈 행에서 이미 닫혔다.
+            if (cur == null) continue;
+            addDogiV2Row(c, cols, r, name, cur);
+        }
+        flushDogiV2(c, out, cur, rules);
+    }
+
+    /** 세트 시작 행에서 대표품목의 뼈대를 만든다(부속 행은 {@link #addDogiV2Row}가 채운다). */
+    private DogiV2Set startDogiV2Set(Ctx c, DogiV2Cols cols, int r, String item, String kind,
+                                     String codeOverride, String categoryLarge) {
+        String[] rep = splitParen(item);                       // "IC552EF⏎(구륙)" → 코드 + 설명
+        String repCode = rep[0];
+        if (repCode == null) return null;
+        String desc = joinNotes(rep[1], trailingAfterParen(item)); // "IL672(롱하우) 비누대, 폽업"의 꼬리까지
+        if (codeOverride != null) {
+            // 같은 품목이 구성만 다르게 두 번 나온다(L352E 자폐수전 2종, U352E 감지기 색상 2종).
+            // 그대로 두면 upsert가 한 행으로 병합해 한쪽 구성이 사라지므로 접미로 갈라 둔다(§8 잔여 ⑤).
+            desc = joinNotes(desc, "동일 품번 변형 " + codeOverride.substring(codeOverride.lastIndexOf('-') + 1));
+            repCode = codeOverride;
+        }
+        String div = stripSpace(str(c, r, cols.divCol()));      // A=구분(상품/제품, 병합셀)
+        if (div != null) desc = joinNotes(desc, "구분: " + div);
+
+        DogiV2Set set = new DogiV2Set(r, repCode, kind, normalizeCode(str(c, r, cols.ksCol())), categoryLarge);
+        set.description = desc;
+        set.specs = cols.specCol() >= 0 ? stripSpace(str(c, r, cols.specCol())) : null;
+        if (cols.waterCol() >= 0) {                             // 세면기 담수(6ℓ 등)도 규격의 일부다
+            String water = stripSpace(str(c, r, cols.waterCol()));
+            if (water != null && !water.equals("-")) set.specs = joinNotes(set.specs, "담수 " + water);
+        }
+        set.setPrice = cols.totalCol() >= 0 ? dec(c, r, cols.totalCol()) : null;
+        return set;
+    }
+
+    /**
+     * 품목 셀에서 첫 괄호 그룹 <b>뒤에</b> 남은 설명. {@code splitParen}은 첫 괄호까지만 보기 때문에
+     * "IL672 (롱하우) 비누대, 폽업"의 꼬리("비누대, 폽업")를 놓친다.
+     */
+    private String trailingAfterParen(String raw) {
+        String x = stripSpace(raw);
+        if (x == null) return null;
+        int close = x.indexOf(')');
+        if (close < 0 || close + 1 >= x.length()) return null;
+        return stripSpace(x.substring(close + 1));
+    }
+
+    /** 세트에 속한 행 1개(대표품목 본품 또는 부속)를 담는다. */
+    private void addDogiV2Row(Ctx c, DogiV2Cols cols, int r, String name, DogiV2Set set) {
+        String code = normalizeCode(str(c, r, cols.codeCol()));         // F=제품코드
+        String altCode = cols.altCodeCol() >= 0 ? normalizeCode(str(c, r, cols.altCodeCol())) : null;
+        BigDecimal price = cols.priceCol() >= 0 ? dec(c, r, cols.priceCol()) : null;
+        DogiV2Note note = splitDogiV2Note(cols.noteCol() >= 0 ? str(c, r, cols.noteCol()) : null,
+                hasSubTableEntry(c, cols, r));
+
+        String label = normLabel(name);
+        boolean isMain = set.rows.isEmpty();                            // 세트 첫 행이 대표품목(도기/하부)
+        String desc = null;
+        if (altCode != null && !altCode.equalsIgnoreCase(code)) desc = "대체코드: " + altCode;
+        desc = joinNotes(desc, note.description());
+
+        if (isMain) {
+            set.description = joinNotes(set.description, note.description());
+            set.remark = joinNotes(set.remark, note.remark());
+            if (altCode != null && !altCode.equalsIgnoreCase(code)) {
+                set.description = joinNotes(set.description, "대체코드: " + altCode);
+            }
+            desc = null;
+        }
+        set.partSum = set.partSum.add(nz(price));
+        set.rows.add(new VendorParsedItem(partCode(set.repCode, code), label, null, null,
+                isMain ? VendorParsedItem.RELATION_MAIN : label,
+                nz(price), isMain ? null : note.remark(), desc));
+    }
+
+    private DogiV2Set flushDogiV2(Ctx c, List<VendorProductSet> out, DogiV2Set set, DogiV2Rules rules) {
+        if (set == null || set.rows.isEmpty()) return null;
+
+        if (!rules.selectable() && set.setPrice != null && set.partSum.compareTo(set.setPrice) != 0) {
+            logger.warn("[B][{}] 計≠구성합 (품목={}, 計={}, 합={})",
+                    c.sheetName, set.repCode, set.setPrice, set.partSum);
+        }
+        // 같은 부속이 한 세트에 2개 들어가는 경우(S132E 수채가량 ×2, L352E 앵글밸브 ×2).
+        // 計는 두 번 더하므로 구성합은 맞지만, 관계는 (source,target,type) 유일이라 저장 시 1건으로 접힌다.
+        // 수량 축이 없어 파서가 살릴 방법이 없다(구성행 description은 공유 제품 행으로 가서 다른 세트를 오염시킨다).
+        long distinct = set.rows.stream().map(VendorParsedItem::productCode).distinct().count();
+        if (distinct < set.rows.size()) {
+            logger.warn("[B][{}] 세트에 같은 부속이 여러 개 — 관계 저장 시 1건으로 접힌다 (품목={}, 구성행={}, 고유={})",
+                    c.sheetName, set.repCode, set.rows.size(), distinct);
+        }
+        String repName = join(set.kind, set.repCode);
+        if (set.setPrice == null) repName = repName + " (가격없음)"; // D8
+
+        VendorParsedItem main = new VendorParsedItem(set.repCode, repName, null, set.ksCode,
+                VendorParsedItem.RELATION_MAIN, nz(set.setPrice), set.remark, set.description, null, set.specs);
+        // 대분류가 시트명과 다를 수 있다(소변기,수채 → 소변기 / 수채). 이미지 매칭 키는 시트명이라
+        // 10-인자 생성자로 시트명을 따로 넘긴다(§13 sheetName 분리) — 안 그러면 수채 3건의 이미지가 끊긴다.
+        // 이로써 V2 도기 3시트는 priceBasis도 시트명이 된다(가격 분리 기준 = 시트, 일관).
+        out.add(new VendorProductSet("B", set.categoryLarge, set.kind, main, set.rows,
+                set.setPrice, false, imageKeyOf(set.startRow), false, c.sheetName));
+        return null;
+    }
+
+    /**
+     * 값이 없거나 대시 플레이스홀더면 null. 소변기 42~47행은 좌측 컬럼이 전부 {@code -}이고
+     * 우측 부속 서브테이블만 채워져 있다 — 대시를 값으로 읽으면 품번이 {@code -}인 세트가 생긴다.
+     */
+    private String blankOrDash(String raw) {
+        String x = stripSpace(raw);
+        if (x == null) return null;
+        return x.matches("^[-\u2010-\u2015\uFF0D]+$") ? null : x;
+    }
+
+    /**
+     * 같은 품목 코드가 시트 안에서 두 번 이상 세트로 나오면 2번째부터 {@code -2}, {@code -3}… 접미를 붙인다.
+     * (행 → 최종 코드) 맵을 돌려주며, 중복이 없으면 빈 맵이다.
+     */
+    private Map<Integer, String> computeDogiV2DuplicateCodes(Ctx c, DogiV2Cols cols, int headerRow, int last) {
+        Map<String, List<Integer>> byCode = new LinkedHashMap<>();
+        for (int r = headerRow + 2; r <= last; r++) {
+            if ("구분".equals(noSpace(str(c, r, 0)))) break;
+            String item = stripSpace(str(c, r, cols.itemCol()));
+            if (item == null || stripSpace(str(c, r, cols.nameCol())) == null) continue;
+            String code = splitParen(item)[0];
+            if (code != null) byCode.computeIfAbsent(code, k -> new ArrayList<>()).add(r);
+        }
+        Map<Integer, String> out = new HashMap<>();
+        byCode.forEach((code, rows) -> {
+            if (rows.size() < 2) return;
+            logger.warn("[B][{}] 동일 품번이 {}회 — 구성이 다른 별개 세트로 보고 접미를 붙인다 (품목={})",
+                    c.sheetName, rows.size(), code);
+            for (int i = 1; i < rows.size(); i++) out.put(rows.get(i), code + "-" + (i + 1));
+        });
+        return out;
+    }
+
+    /** 최신본 도기 2단 헤더에서 컬럼 위치를 읽는다. 단가·計를 못 찾으면 null. */
+    private DogiV2Cols readDogiV2Header(Ctx c, int headerRow) {
+        int kindCol = -1, itemCol = -1, ksCol = -1, nameCol = -1, specCol = -1, noteCol = -1;
+        short lastCell = c.sheet.getRow(headerRow).getLastCellNum();
+        for (int col = 0; col < lastCell; col++) {
+            String h = noSpace(str(c, headerRow, col));
+            if (h == null) continue;
+            if (h.equals("품종") && kindCol < 0) kindCol = col;
+            else if (h.equals("품목") && itemCol < 0) itemCol = col;
+            else if (h.contains("KS품번") && ksCol < 0) ksCol = col;
+            else if (h.equals("품명") && nameCol < 0) nameCol = col;
+            else if (h.equals("규격") && specCol < 0) specCol = col;
+            else if (h.contains("비고") && noteCol < 0) noteCol = col;
+        }
+        // 2단 헤더 아랫줄: 제품코드 / 제품코드(대체) / 단가 / 計 … 그리고 부속 서브테이블의 제품코드.
+        // '제품코드'가 세 번 나오면 세 번째가 N~P 부속 서브테이블의 것이다(세면기는 서브테이블이 없어 두 번).
+        int codeCol = -1, altCodeCol = -1, subCodeCol = -1, priceCol = -1, totalCol = -1, waterCol = -1;
+        Row sub = c.sheet.getRow(headerRow + 1);
+        short subLast = sub == null ? 0 : sub.getLastCellNum();
+        for (int col = 0; col < subLast; col++) {
+            String h = noSpace(str(c, headerRow + 1, col));
+            if (h == null) continue;
+            if (h.equals("제품코드")) {
+                if (codeCol < 0) codeCol = col;
+                else if (altCodeCol < 0) altCodeCol = col;
+                else if (subCodeCol < 0) subCodeCol = col;
+            }
+            else if (h.equals("단가") && priceCol < 0) priceCol = col;
+            else if ((h.equals("計") || h.equals("계")) && totalCol < 0) totalCol = col;
+            else if (h.equals("담수") && waterCol < 0) waterCol = col;  // 세면기 전용(규격 병합의 둘째 칸)
+        }
+        if (codeCol < 0 || priceCol < 0 || totalCol < 0 || itemCol < 0 || nameCol < 0) return null;
+        return new DogiV2Cols(0, kindCol, itemCol, ksCol, nameCol, codeCol, altCodeCol, subCodeCol,
+                priceCol, totalCol, specCol, waterCol, noteCol);
+    }
+
+    /** 이 행이 N~P 부속 서브테이블에 항목을 갖고 있는가(= 비고가 그쪽 설명일 수 있는가). */
+    private boolean hasSubTableEntry(Ctx c, DogiV2Cols cols, int r) {
+        return cols.subCodeCol() >= 0 && str(c, r, cols.subCodeCol()) != null;
+    }
+
+    /**
+     * 최신본 도기 비고 분류(R7 / C-2 원칙) — 줄 단위로 나눠 상태 변동(단종)은 {@code remark},
+     * 나머지 설명은 {@code description}으로 보낸다. 한 셀에 "소진 후 단종"과 기능 설명이
+     * 줄바꿈으로 함께 들어오기 때문에 셀 전체를 한 덩어리로 판정하면 안 된다.
+     *
+     * <p><b>{@code hasSubTableEntry}가 참이면 설명은 버린다.</b> 비고(Q)는 구조상 행 전체 컬럼이지만
+     * (헤더 병합이 {@code N3:P3=부속} / {@code Q3:Q4=비고}로 갈려 있다), 실제 내용은 그 행에
+     * 부속 서브테이블 항목이 있으면 <b>그쪽</b>을 설명한다 — IC552EF 구간의 "막대형 일반 세척밸브, 3등급"은
+     * 좌측 스퍼드가 아니라 우측 F/V 옵션(<CODE>)의 설명이다. 서브테이블은 저장하지 않으므로(§8 잔여 ①)
+     * 이런 설명은 버리는 편이 좌측 부속에 잘못 붙이는 것보다 낫다.
+     * 단, {@code 단종}은 옵션이 아니라 제품 상태라 서브테이블 유무와 무관하게 남긴다.
+     */
+    private DogiV2Note splitDogiV2Note(String raw, boolean hasSubTableEntry) {
+        if (raw == null || raw.isBlank()) return DogiV2Note.EMPTY;
+        // 같은 셀 안의 줄바꿈은 대부분 좁은 컬럼에서 문장이 접힌 것이라 공백으로 잇는다
+        // ("NB 모델은⏎<CODE>만⏎가능"). ' / '로 이으면 한 문장이 조각나 보인다.
+        StringBuilder remark = new StringBuilder(), desc = new StringBuilder();
+        for (String line : raw.split("\\R")) {
+            String s = stripSpace(line);
+            if (s == null) continue;
+            StringBuilder target = s.replaceAll("\\s", "").contains("단종") ? remark
+                    : (hasSubTableEntry ? null : desc);
+            if (target == null) continue;
+            if (target.length() > 0) target.append(' ');
+            target.append(s);
+        }
+        return new DogiV2Note(remark.length() == 0 ? null : remark.toString(),
+                desc.length() == 0 ? null : desc.toString());
+    }
+
+    private record DogiV2Note(String remark, String description) {
+        static final DogiV2Note EMPTY = new DogiV2Note(null, null);
+    }
+
+    /** 최신본 도기 시트의 컬럼 위치(헤더에서 읽는다). 없는 컬럼은 -1. */
+    private record DogiV2Cols(int divCol, int kindCol, int itemCol, int ksCol, int nameCol,
+                              int codeCol, int altCodeCol, int subCodeCol, int priceCol, int totalCol,
+                              int specCol, int waterCol, int noteCol) {}
+
+    /** 조립 중인 세트 1건(대표품목 + 부속 행들). */
+    private static final class DogiV2Set {
+        final int startRow;
+        final String repCode;
+        final String kind;
+        final String ksCode;
+        final String categoryLarge;
+        final List<VendorParsedItem> rows = new ArrayList<>();
+        BigDecimal partSum = BigDecimal.ZERO;
+        BigDecimal setPrice;
+        String description;
+        String remark;
+        String specs;
+
+        DogiV2Set(int startRow, String repCode, String kind, String ksCode, String categoryLarge) {
+            this.startRow = startRow;
+            this.repCode = repCode;
+            this.kind = kind;
+            this.ksCode = ksCode;
+            this.categoryLarge = categoryLarge;
+        }
+    }
+
+    // ============================================================
+    // (V2-액세사리) 최신본(2026) 액세사리류 — 헤더총가 세트형 + 일반품.
+    //
+    //   컬럼: A=제품(세트명) B=품번 C=전산코드 D=품명 E=규격 F=대리점가 G=수량/BOX H=비고
+    //         I=공급처 J~L=참고(대림비앤코)  ← I·J~L은 우리 데이터가 아니라 저장하지 않는다(R7 ④)
+    //   구본 '악세사리 단가표' 대비 컬럼이 2칸 왼쪽으로 밀렸다(구 A=품목·B=세부분류가 삭제).
+    //
+    //   · 세트 시작 = 규격(E)이 'SET'인 행. 세트가는 F.
+    //     "A열에 값이 있으면 세트"로 판정하면 100행 이후 시리즈 라벨(DT 20A…)이 전부 세트가 된다.
+    //   · 세트 구성 = 품명(D)의 'N품'이 말하는 만큼만. 그 뒤 옷걸이처럼 덤으로 붙는 행은
+    //     세트가에 안 들어가므로(AC8300G 4품 <PRICE> vs 옷걸이 포함 <PRICE>) 단일품으로 뺀다.
+    // ============================================================
+
+    private static final Pattern ACC_SET_COUNT = Pattern.compile("(\\d+)\\s*품");
+
+    private void parseAccessorySheetV2(Ctx c, List<VendorProductSet> out) {
+        int headerRow = findRow(c, r -> "품번".equals(noSpace(str(c, r, 1)))
+                && "전산코드".equals(noSpace(str(c, r, 2))));
+        if (headerRow < 0) {
+            logger.warn("[B][{}] 액세사리 헤더(품번/전산코드) 미발견 → 스킵", c.sheetName);
+            return;
+        }
+        int last = c.sheet.getLastRowNum();
+        Set<String> ambiguous = duplicateAccPartNos(c, headerRow, last);
+
+        VendorParsedItem setMain = null;
+        List<VendorParsedItem> parts = null;
+        String setCat = null;
+        BigDecimal setPrice = null;
+        int setRow = -1, remaining = 0;
+        String lastName = null;                    // 품명(D) 병합셀 carry-forward(165~186행 손잡이 구간)
+
+        for (int r = headerRow + 1; r <= last; r++) {
+            String pn = normalizeCode(str(c, r, 1));            // B=품번
+            String ecode = normalizeCode(str(c, r, 2));         // C=전산코드
+            if (pn == null && ecode == null) continue;
+
+            String name = stripSpace(str(c, r, 3));             // D=품명(병합)
+            if (name != null) lastName = name; else name = lastName;
+            String spec = stripSpace(str(c, r, 4));             // E=규격 또는 'SET'
+            BigDecimal price = dec(c, r, 5);                    // F=대리점가
+            DogiV2Note note = splitDogiV2Note(str(c, r, 7), false); // H=비고
+            String code = accCode(pn, ecode, ambiguous);
+            if (code == null) continue;
+
+            if (spec != null && spec.replace(" ", "").equalsIgnoreCase("SET")) {   // ── 세트 대표행
+                flushAccSetV2(c, out, setMain, parts, setCat, setPrice, setRow);
+                setCat = stripSpace(str(c, r, 0));              // A=세트명("AC8100 4품 세트")
+                setPrice = price;
+                setRow = r;
+                remaining = accSetCount(name, setCat);
+                // 세트가가 회계서식 0이면 DataFormatter가 '-'로 내주고 단가는 비게 된다(AC5300, 단종품).
+                String setName = orDefault(setCat, code) + (price == null ? " (가격없음)" : ""); // D8
+                setMain = new VendorParsedItem(code, setName, null, null,
+                        VendorParsedItem.RELATION_MAIN, nz(price), note.remark(), note.description());
+                parts = new ArrayList<>();
+                continue;
+            }
+
+            if (setMain != null && remaining > 0 && stripSpace(str(c, r, 0)) == null) {  // ── 세트 구성행
+                String pName = orDefault(name, code);
+                parts.add(new VendorParsedItem(partCode(setMain.productCode(), code), pName, null, null,
+                        pName, nz(price), note.remark(), note.description()));
+                remaining--;
+                continue;
+            }
+
+            // ── 단일품(세트 종료 포함). 세트 뒤에 덤으로 붙는 옵션행도 여기로 온다.
+            flushAccSetV2(c, out, setMain, parts, setCat, setPrice, setRow);
+            setMain = null; parts = null; setCat = null; setPrice = null; remaining = 0;
+
+            String descr = (spec != null && !spec.equals(name)) ? spec : null; // 규격이 품명과 같으면 중복이라 생략
+            String single = stripSpace(str(c, r, 0));           // A=시리즈/구분(DT 20A, 750mm…)
+            VendorParsedItem item = new VendorParsedItem(code, orDefault(name, code), null, null,
+                    VendorParsedItem.RELATION_MAIN, nz(price), note.remark(),
+                    joinNotes(descr, note.description()));
+            out.add(new VendorProductSet("B", "악세사리", single, item,
+                    new ArrayList<>(), nz(price), false, imageKeyOf(r), false, c.sheetName));
+        }
+        flushAccSetV2(c, out, setMain, parts, setCat, setPrice, setRow);
+    }
+
+    private void flushAccSetV2(Ctx c, List<VendorProductSet> out, VendorParsedItem main,
+                               List<VendorParsedItem> parts, String setCat, BigDecimal setPrice, int setRow) {
+        if (main == null) return;
+        // 대분류=악세사리 고정(C-1) — 시트명('액세사리류')을 대분류로 쓰지 않는다. 이미지 키는 시트명(D52).
+        out.add(new VendorProductSet("B", "악세사리", setCat, main,
+                parts != null ? parts : new ArrayList<>(), setPrice, false,
+                imageKeyOf(setRow), false, c.sheetName));
+    }
+
+    /** 세트 구성 품수 — 품명 "AC8100(4품)" 우선, 없으면 세트명 "AC8100 4품 세트". 못 읽으면 4로 본다. */
+    private int accSetCount(String name, String setLabel) {
+        for (String s : new String[]{name, setLabel}) {
+            if (s == null) continue;
+            Matcher m = ACC_SET_COUNT.matcher(s);
+            if (m.find()) return Integer.parseInt(m.group(1));
+        }
+        logger.warn("[B] 액세사리 세트 품수를 못 읽었다 (품명={}, 세트명={}) → 4품으로 본다", name, setLabel);
+        return 4;
+    }
+
+    /**
+     * 품번이 시트 안에서 유일하지 않으면 전산코드를 붙여 가른다.
+     * {@code AC9320}은 비누대·휴지걸이·수건걸이·컵대 4행이 같은 품번을 쓴다 — 그대로면 한 제품으로 병합된다.
+     * {@code U}로 시작하는 품번은 수전부속 품번 체계와 겹치므로(U9120) 시트 안에서 유일해도 갈라 둔다(구본 A1 정책).
+     */
+    private String accCode(String pn, String ecode, Set<String> ambiguous) {
+        if (pn == null) return ecode;
+        if (ecode != null && (ambiguous.contains(pn) || pn.startsWith("U"))) return pn + "-" + ecode;
+        return pn;
+    }
+
+    private Set<String> duplicateAccPartNos(Ctx c, int headerRow, int last) {
+        Map<String, String> firstCode = new HashMap<>();
+        Set<String> dup = new HashSet<>();
+        for (int r = headerRow + 1; r <= last; r++) {
+            String pn = normalizeCode(str(c, r, 1));
+            String ecode = normalizeCode(str(c, r, 2));
+            if (pn == null || ecode == null) continue;
+            String prev = firstCode.putIfAbsent(pn, ecode);
+            if (prev != null && !prev.equalsIgnoreCase(ecode)) dup.add(pn); // 완전 중복행은 upsert가 흡수한다
+        }
+        if (!dup.isEmpty()) {
+            logger.info("[B][{}] 품번이 겹치는 항목 {}건 → 전산코드를 붙여 구분 {}", c.sheetName, dup.size(), dup);
+        }
+        return dup;
+    }
+
+    // ============================================================
+    // (V2-부속류) 최신본(2026) 부속류 — 순수 부속 카탈로그.
+    //
+    //   컬럼: A=품명(그룹) B=품번 C=제품코드 D=단위 E=수량 F=단가 G=이미지 H=비고
+    //   구본 '수전 부속(세트)'와 레이아웃은 같지만 소계행이 하나도 없다 → 세트를 만들지 않는다(D-B5).
+    //   141행 아래에 니쁠 부표(B=품목 C=제품코드 D=단가 E=규격)가 다른 레이아웃으로 붙는다.
+    //
+    //   식별자는 품번(B)이 아니라 <b>전산코드(C)</b>다. 구·신 코드가 병존해
+    //   같은 품번이 서로 다른 전산코드를 갖는 쌍이 14개 있다(U9013c 냉수 → <CODE> 구버전 / <CODE> 신규).
+    //   품번을 코드로 쓰면 이 쌍이 한 제품으로 병합된다. T7의 품번표 조인 키도 전산코드다.
+    // ============================================================
+
+    private void parseFittingCatalogSheetV2(Ctx c, List<VendorProductSet> out) {
+        int headerRow = findRow(c, r -> "품명".equals(noSpace(str(c, r, 0)))
+                && "품번".equals(noSpace(str(c, r, 1))));
+        if (headerRow < 0) {
+            logger.warn("[B][{}] 부속류 헤더(품명/품번) 미발견 → 스킵", c.sheetName);
+            return;
+        }
+        int last = c.sheet.getLastRowNum();
+
+        boolean nipple = false;
+        String group = null;
+        Map<String, BigDecimal> emitted = new LinkedHashMap<>(); // 전산코드 → 처음 본 단가
+
+        for (int r = headerRow + 1; r <= last; r++) {
+            // 니쁠 부표 서브헤더 → 이 아래는 컬럼 배치가 다르다
+            if ("품목".equals(noSpace(str(c, r, 1))) && "제품코드".equals(noSpace(str(c, r, 2)))) {
+                nipple = true;
+                group = null;
+                continue;
+            }
+
+            String code = normalizeCode(str(c, r, 2));   // C=제품코드(전산코드)
+            if (code == null) continue;
+            code = code.toLowerCase();                    // 대소문자 오타 흡수(43U9113, 구본 P9)
+
+            String label = stripSpace(str(c, r, 1));      // 니쁠 부표는 B=품목, 본표는 B=품번
+            BigDecimal price;
+            String spec = null, remark = null;
+            if (nipple) {
+                if (label != null) group = label;         // '니쁠' (병합셀)
+                price = dec(c, r, 3);                     // D=단가
+                spec = stripSpace(str(c, r, 4));          // E=규격
+                label = null;                             // 니쁠 부표엔 품번이 없다
+            } else {
+                String aRaw = stripSpace(str(c, r, 0));   // A=품명(그룹, 병합셀)
+                if (aRaw != null) group = aRaw;
+                price = dec(c, r, 5);                     // F=단가
+                remark = stripSpace(str(c, r, 7));        // H=비고
+            }
+
+            // 같은 전산코드가 여러 그룹에 다시 등장한다(<CODE>은 6번). 단가는 전부 같으므로
+            // 처음 본 그룹의 이름을 canonical로 삼고 이후는 건너뛴다 — 안 그러면 upsert 순서에 따라
+            // '가로꼭지(2구)'가 '발코니수전 U9510'으로 덮인다.
+            BigDecimal prev = emitted.putIfAbsent(code, nz(price));
+            if (prev != null) {
+                if (prev.compareTo(nz(price)) != 0) {
+                    logger.warn("[B][{}] 같은 전산코드에 다른 단가 (코드={}, 처음={}, {}행={})",
+                            c.sheetName, code, prev, r + 1, price);
+                }
+                continue;
+            }
+
+            String name = orDefault(join(group, label), join(group, code));
+            if (spec != null) name = join(name, "(" + spec + ")");
+            out.add(fittingSingleV2(c, group, code, name, price, remark, spec, r));
+        }
+    }
+
+    /**
+     * 부속 카탈로그 1건 방출. 구본 {@link #fittingSingle}과 같은 모양이되 <b>규격을 받는다</b> —
+     * 니쁠 부표의 {@code 65mm}는 R7 ③에 따라 {@code specs}로 가야 하는데 구본 헬퍼는 비고에서만 규격을 뽑는다.
+     * (구본 헬퍼에 인자를 더하면 구본 호출부를 건드리게 되어 R2′에 걸린다.)
+     */
+    private VendorProductSet fittingSingleV2(Ctx c, String catSmall, String code, String name,
+                                             BigDecimal price, String remark, String spec, int row) {
+        if (price == null) name = name + " (가격없음)"; // D8
+        NoteSplit ns = splitFittingNote(remark);        // 단종→remark / 규격→specs / 매입처→미저장
+        VendorParsedItem main = new VendorParsedItem(code, name, null, null,
+                VendorParsedItem.RELATION_MAIN, nz(price), ns.remark(), ns.description(),
+                null, orDefault(spec, ns.specs()));
+        return new VendorProductSet("B", "수전부속", catSmall, main,
+                new ArrayList<>(), nz(price), false, imageKeyOf(row), false, c.sheetName);
+    }
+
+    // ============================================================
+    // (V2-수전금구) 최신본(2026) 수전금구류 — 단일 제품 목록.
+    //
+    //   컬럼(2단 헤더): B=시리즈 C=품목 D=이미지 E=품번 F=전산코드 | G=대리점가 H=박스 기준 I=비고
+    //
+    //   구본 `parseFaucetGeneralSheet`가 형태상 읽기는 하나 두 군데가 어긋난다.
+    //     · 시트명을 "수전금구"로 고정해 이미지 맵(키=실제 시트명 '수전금구류')과 안 맞는다 → 285장 유실
+    //     · 전산코드(F)를 버린다 → T7의 품번표 조인 키가 사라진다
+    //   구본 메서드는 그대로 두고(R2′) 여기서 새로 읽는다.
+    // ============================================================
+
+    private void parseFaucetSheetV2(Ctx c, List<VendorProductSet> out) {
+        int headerRow = findRow(c, r -> "시리즈".equals(noSpace(str(c, r, 1)))
+                && "품번".equals(noSpace(str(c, r, 4)))
+                && "전산코드".equals(noSpace(str(c, r, 5))));
+        if (headerRow < 0) {
+            logger.warn("[B][{}] 수전금구 헤더(시리즈/품번/전산코드) 미발견 → 스킵", c.sheetName);
+            return;
+        }
+        int last = c.sheet.getLastRowNum();
+        Set<String> ambiguous = duplicateFaucetPartNos(c, headerRow, last);
+
+        String series = null;
+        for (int r = headerRow + 1; r <= last; r++) {
+            String pn = normalizeCode(str(c, r, 4));            // E=품번
+            String ecode = normalizeCode(str(c, r, 5));         // F=전산코드
+            if (pn == null && ecode == null) continue;
+
+            String seriesRaw = stripSpace(str(c, r, 1));        // B=시리즈(병합셀)
+            if (seriesRaw != null) series = seriesRaw;
+            String kind = stripSpace(str(c, r, 2));             // C=품목
+            BigDecimal price = dec(c, r, 6);                    // G=대리점가
+            String box = stripSpace(str(c, r, 7));              // H=박스 기준
+            DogiV2Note note = splitDogiV2Note(str(c, r, 8), false); // I=비고(줄 단위로 단종/설명 분리)
+
+            // 품번이 겹치면(제조사 변경으로 같은 품번이 두 벌) 전산코드를 붙여 가른다.
+            String code = pn == null ? ecode
+                    : (ecode != null && ambiguous.contains(pn) ? pn + "-" + ecode : pn);
+            if (code == null) continue;
+
+            String name = orDefault(join(kind, code), code);
+            if (price == null) name = name + " (가격없음)";     // D8 — '26 신상품 12건은 단가가 비어 있다
+            String desc = joinNotes(box == null ? null : stripSpace(box.replaceAll("\\R", " ")),
+                    note.description());
+
+            // 전산코드는 subItemCode로 보존한다 — T7이 품번표와 조인하는 키이고, 화면에서도 보조 코드다.
+            VendorParsedItem main = new VendorParsedItem(code, name, null, ecode,
+                    VendorParsedItem.RELATION_MAIN, nz(price), note.remark(), desc);
+            out.add(new VendorProductSet("B", "수전금구", series, main,
+                    new ArrayList<>(), nz(price), false, imageKeyOf(r), false, c.sheetName));
+        }
+    }
+
+    /** 시트 안에서 서로 다른 전산코드를 갖는 같은 품번(제조사 변경 병존 6쌍). */
+    private Set<String> duplicateFaucetPartNos(Ctx c, int headerRow, int last) {
+        Map<String, String> first = new HashMap<>();
+        Set<String> dup = new HashSet<>();
+        for (int r = headerRow + 1; r <= last; r++) {
+            String pn = normalizeCode(str(c, r, 4));
+            String ecode = normalizeCode(str(c, r, 5));
+            if (pn == null || ecode == null) continue;
+            String prev = first.putIfAbsent(pn, ecode);
+            if (prev != null && !prev.equalsIgnoreCase(ecode)) dup.add(pn);
+        }
+        if (!dup.isEmpty()) {
+            logger.info("[B][{}] 품번이 겹치는 항목 {}건 → 전산코드를 붙여 구분 {}", c.sheetName, dup.size(), dup);
+        }
+        return dup;
+    }
+
+    // ============================================================
+    // (V2-바스) 최신본(2026) 바스 4시트(직영) — 선반 / 파티션·욕조 / 천정재 / 욕실장·거울.
+    //
+    //   2단 헤더이고 컬럼 규약이 같다. 다만 천정재만 이미지 컬럼이 없어 한 칸씩 왼쪽이라
+    //   위치를 하드코딩하지 않고 헤더에서 읽는다.
+    //     A=구분  [B=이미지]  전산코드  명  규격  단위|세트명  수량  판매점단가  인테리어가  소비자가  비고 …
+    //
+    //   가격은 3단이지만 <b>판매점 단가만</b> 저장한다(D-B3). 인테리어가·소비자가를 쓰려면
+    //   VendorItemPrice에 축이 필요해 모델 변경이 따른다.
+    // ============================================================
+
+    private void parseBathSheetV2(Ctx c, List<VendorProductSet> out) {
+        int headerRow = findRow(c, r -> findColByHeader(c, r, h -> h.contains("판매점")) >= 0);
+        if (headerRow < 0) {
+            logger.warn("[B][{}] 바스 헤더(판매점 단가) 미발견 → 스킵", c.sheetName);
+            return;
+        }
+        int priceCol = findColByHeader(c, headerRow, h -> h.contains("판매점"));
+        int imageCol = findColByHeader(c, headerRow, h -> h.equals("이미지"));
+        int noteCol = findColByHeader(c, headerRow, h -> h.contains("비고"));
+
+        int sub = headerRow + 1;
+        int codeCol = findColByHeader(c, sub, h -> h.equals("전산코드"));
+        int nameCol = findColByHeader(c, sub, h -> h.equals("명"));
+        int specCol = findColByHeader(c, sub, h -> h.equals("규격"));
+        int setNameCol = findColByHeader(c, sub, h -> h.equals("세트명"));  // 욕실장·거울만
+        if (codeCol < 0 || priceCol < 0) {
+            logger.warn("[B][{}] 바스 컬럼(전산코드/판매점 단가) 미발견 → 스킵", c.sheetName);
+            return;
+        }
+
+        String sheetGroup = bathCategorySmall(c.sheetName);
+        String group = sheetGroup;
+        Map<String, BigDecimal> emitted = new LinkedHashMap<>();
+
+        for (int r = sub + 1; r <= c.sheet.getLastRowNum(); r++) {
+            // 이미지 컬럼에 품목군 라벨이 섞여 온다(파티션·욕조의 '샤워파티션'/'민자형'). 그림은 글자가 없다.
+            if (imageCol >= 0) {
+                String label = stripSpace(str(c, r, imageCol));
+                if (label != null) group = label;
+            }
+            String code = normalizeCode(str(c, r, codeCol));
+            if (code == null) continue;
+            code = code.toLowerCase();                       // 대소문자 표기가 섞여 있다(45T1322S)
+
+            BigDecimal price = dec(c, r, priceCol);
+            BigDecimal prev = emitted.putIfAbsent(code, nz(price));
+            if (prev != null) {
+                if (prev.compareTo(nz(price)) != 0) {
+                    logger.warn("[B][{}] 같은 전산코드에 다른 단가 (코드={}, 처음={}, {}행={})",
+                            c.sheetName, code, prev, r + 1, price);
+                }
+                continue;
+            }
+
+            String name = nameCol >= 0 ? stripSpace(str(c, r, nameCol)) : null;
+            String specs = specCol >= 0 ? stripSpace(str(c, r, specCol)) : null;
+            DogiV2Note note = splitDogiV2Note(collectTrailingNotes(c, r, noteCol), false);
+
+            String descr = note.description();
+            if (setNameCol >= 0) {                            // '노블리젠시'처럼 세트명이 오지만 'ea'도 섞인다
+                String setName = stripSpace(str(c, r, setNameCol));
+                if (setName != null && !setName.equalsIgnoreCase("ea")) descr = joinNotes(setName, descr);
+            }
+
+            String display = orDefault(name, code);
+            if (price == null) display = display + " (가격없음)"; // D8
+            VendorParsedItem main = new VendorParsedItem(code, display, null, null,
+                    VendorParsedItem.RELATION_MAIN, nz(price), note.remark(), descr, null, specs);
+            out.add(new VendorProductSet("B", "바스", group, main,
+                    new ArrayList<>(), nz(price), false, imageKeyOf(r), false, c.sheetName));
+        }
+    }
+
+    /** 비고 컬럼부터 행 끝까지 모은다 — '단종'이 비고 오른쪽의 라벨 없는 컬럼에 따로 들어온다. */
+    private String collectTrailingNotes(Ctx c, int r, int noteCol) {
+        if (noteCol < 0) return null;
+        Row row = c.sheet.getRow(r);
+        if (row == null) return null;
+        StringBuilder sb = new StringBuilder();
+        for (int col = noteCol; col < row.getLastCellNum(); col++) {
+            String v = stripSpace(str(c, r, col));
+            if (v == null) continue;
+            if (sb.length() > 0) sb.append('\n');
+            sb.append(v);
+        }
+        return sb.length() == 0 ? null : sb.toString();
+    }
+
+    /** "바스 욕실장,거울(직영)" → "욕실장,거울". 대분류는 '바스'로 통일하고 시트별 품목군만 남긴다. */
+    private String bathCategorySmall(String sheetName) {
+        String s = sheetName.replaceAll("\\(.*?\\)", "").trim();
+        if (s.startsWith("바스")) s = s.substring(2).trim();
+        return s.isEmpty() ? sheetName : s;
+    }
+
+    /** 헤더 행에서 조건에 맞는 첫 컬럼. 없으면 -1. */
+    private int findColByHeader(Ctx c, int r, Predicate<String> match) {
+        Row row = c.sheet.getRow(r);
+        if (row == null) return -1;
+        for (int col = 0; col < row.getLastCellNum(); col++) {
+            String h = noSpace(str(c, r, col));
+            if (h != null && match.test(h)) return col;
+        }
+        return -1;
     }
 
     /**
