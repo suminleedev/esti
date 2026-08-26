@@ -95,8 +95,9 @@ public class VendorBExcelParser implements VendorExcelParser {
                     case SET_TOTAL  -> parseHeaderTotalSetSheet(ctx, result);
                     case SET_SUBTOTAL -> parseSubtotalSetSheet(ctx, result);
                     case SINGLE     -> parseSingleRowSheet(ctx, result);
-                    // 최신본(2026) 전용 — T1~T8에서 순차 구현. 그전까지는 오적재를 막기 위해 스킵한다.
-                    case TOILET_V2, WASHBASIN_V2, URINAL_SINK_V2, ACCESSORY_V2,
+                    case TOILET_V2  -> parseToiletSheetV2(ctx, result);
+                    // 최신본(2026) 전용 — T2~T8에서 순차 구현. 그전까지는 오적재를 막기 위해 스킵한다.
+                    case WASHBASIN_V2, URINAL_SINK_V2, ACCESSORY_V2,
                          FITTING_CATALOG_V2, FAUCET_V2, FAUCET_CODEMAP_V2, BATH_V2 ->
                             logger.warn("[B][{}] 최신본(2026) 양식 — 전용 파서 미구현 → 스킵", name);
                 }
@@ -1625,6 +1626,248 @@ public class VendorBExcelParser implements VendorExcelParser {
                     VendorParsedItem.RELATION_MAIN, nz(price), remark);
             out.add(new VendorProductSet("B", c.sheetName, name, main,
                     new ArrayList<>(), nz(price), false, imageKeyOf(r), false));
+        }
+    }
+
+    // ============================================================
+    // (V2-도기) 최신본(2026) 도기 3시트 공통 리더 — 양변기/세면기/소변기,수채.
+    //
+    //   구본은 부속이 열로 펼쳐지는 가로 슬롯형이었으나, 최신본은 부속이 행으로 내려오는 세로 나열형이다.
+    //   세트 1건 = 여러 행이며 컬럼 규약은 세 시트가 같다(헤더에서 위치를 읽으므로 하드코딩하지 않는다).
+    //
+    //     A=구분  B=품종  C=품목  D=KS품번  E=품명  F=제품코드  G=제품코드(대체)  H=단가  I=計  …  규격 … 비고
+    //
+    //   · 세트 시작 = C(품목)와 E(품명)가 모두 있는 행. 그 행이 대표품목(MAIN)이고 I=計가 세트가.
+    //   · 이후 C가 비고 E만 있는 행 = 부속. 빈 행이나 다음 품목에서 세트가 끝난다.
+    //   · N~P의 부속 서브테이블은 좌측 세트와 행이 정렬되지 않는 독립 옵션 목록이라 여기서 읽지 않는다
+    //     (계획서 §8 잔여 ①). 실제로 IC717E의 計는 E열 '양부속(대소구분)' <PRICE>을 쓰고
+    //     N열 '양부속(기본)' <PRICE>은 쓰지 않는다 — 서브테이블이 세트 구성이 아님을 보여준다.
+    // ============================================================
+
+    private void parseToiletSheetV2(Ctx c, List<VendorProductSet> out) {
+        parseDogiSheetV2(c, out);
+    }
+
+    private void parseDogiSheetV2(Ctx c, List<VendorProductSet> out) {
+        int headerRow = findRow(c, r -> "구분".equals(noSpace(str(c, r, 0)))
+                && "품목".equals(noSpace(str(c, r, 2))));
+        if (headerRow < 0) {
+            logger.warn("[B][{}] 최신본 도기 헤더(구분/품목) 미발견 → 스킵", c.sheetName);
+            return;
+        }
+        DogiV2Cols cols = readDogiV2Header(c, headerRow);
+        if (cols == null) {
+            logger.warn("[B][{}] 최신본 도기 2단 헤더(단가/計) 미발견 → 스킵", c.sheetName);
+            return;
+        }
+
+        int last = c.sheet.getLastRowNum();
+        Map<Integer, String> codeOverrides = computeDogiV2DuplicateCodes(c, cols, headerRow, last);
+
+        DogiV2Set cur = null;
+        String lastKind = null;
+        for (int r = headerRow + 2; r <= last; r++) {   // 헤더는 2행짜리
+            // 본표 아래에 성격이 다른 부록표가 붙는다(양변기 218행~: 구분/BOX/PLT/소프트개폐시트).
+            // 그 행들은 C에 값이 있어 세트 시작으로 오인되므로, 두 번째 '구분' 헤더에서 명시적으로 끝낸다.
+            if (r > headerRow && "구분".equals(noSpace(str(c, r, 0)))) break;
+
+            String item = stripSpace(str(c, r, cols.itemCol()));      // C=품목
+            String name = stripSpace(str(c, r, cols.nameCol()));      // E=품명
+            if (name == null) { cur = flushDogiV2(c, out, cur); continue; }  // 빈 행 → 세트 종료
+
+            if (item != null) {                                        // 세트 시작
+                cur = flushDogiV2(c, out, cur);
+                String kind = stripSpace(str(c, r, cols.kindCol()));   // B=품종(병합셀)
+                if (kind != null) lastKind = kind;
+                cur = startDogiV2Set(c, cols, r, item, lastKind, codeOverrides.get(r));
+            }
+            if (cur == null) continue;                                 // 세트 밖의 잔여 행
+            addDogiV2Row(c, cols, r, name, cur);
+        }
+        flushDogiV2(c, out, cur);
+    }
+
+    /** 세트 시작 행에서 대표품목의 뼈대를 만든다(부속 행은 {@link #addDogiV2Row}가 채운다). */
+    private DogiV2Set startDogiV2Set(Ctx c, DogiV2Cols cols, int r, String item, String kind, String codeOverride) {
+        String[] rep = splitParen(item);                       // "IC552EF⏎(구륙)" → 코드 + 설명
+        String repCode = rep[0];
+        if (repCode == null) return null;
+        String desc = rep[1];
+        if (codeOverride != null) {
+            // 같은 품목이 구성만 다르게 두 번 나온다(L352E 자폐수전 2종, U352E 감지기 색상 2종).
+            // 그대로 두면 upsert가 한 행으로 병합해 한쪽 구성이 사라지므로 접미로 갈라 둔다(§8 잔여 ⑤).
+            desc = joinNotes(desc, "동일 품번 변형 " + codeOverride.substring(codeOverride.lastIndexOf('-') + 1));
+            repCode = codeOverride;
+        }
+        String div = stripSpace(str(c, r, cols.divCol()));      // A=구분(상품/제품, 병합셀)
+        if (div != null) desc = joinNotes(desc, "구분: " + div);
+
+        DogiV2Set set = new DogiV2Set(r, repCode, kind, normalizeCode(str(c, r, cols.ksCol())));
+        set.description = desc;
+        set.specs = cols.specCol() >= 0 ? stripSpace(str(c, r, cols.specCol())) : null;
+        set.setPrice = cols.totalCol() >= 0 ? dec(c, r, cols.totalCol()) : null;
+        return set;
+    }
+
+    /** 세트에 속한 행 1개(대표품목 본품 또는 부속)를 담는다. */
+    private void addDogiV2Row(Ctx c, DogiV2Cols cols, int r, String name, DogiV2Set set) {
+        String code = normalizeCode(str(c, r, cols.codeCol()));         // F=제품코드
+        String altCode = cols.altCodeCol() >= 0 ? normalizeCode(str(c, r, cols.altCodeCol())) : null;
+        BigDecimal price = cols.priceCol() >= 0 ? dec(c, r, cols.priceCol()) : null;
+        DogiV2Note note = splitDogiV2Note(cols.noteCol() >= 0 ? str(c, r, cols.noteCol()) : null,
+                hasSubTableEntry(c, cols, r));
+
+        String label = normLabel(name);
+        boolean isMain = set.rows.isEmpty();                            // 세트 첫 행이 대표품목(도기/하부)
+        String desc = null;
+        if (altCode != null && !altCode.equalsIgnoreCase(code)) desc = "대체코드: " + altCode;
+        desc = joinNotes(desc, note.description());
+
+        if (isMain) {
+            set.description = joinNotes(set.description, note.description());
+            set.remark = joinNotes(set.remark, note.remark());
+            if (altCode != null && !altCode.equalsIgnoreCase(code)) {
+                set.description = joinNotes(set.description, "대체코드: " + altCode);
+            }
+            desc = null;
+        }
+        set.partSum = set.partSum.add(nz(price));
+        set.rows.add(new VendorParsedItem(partCode(set.repCode, code), label, null, null,
+                isMain ? VendorParsedItem.RELATION_MAIN : label,
+                nz(price), isMain ? null : note.remark(), desc));
+    }
+
+    private DogiV2Set flushDogiV2(Ctx c, List<VendorProductSet> out, DogiV2Set set) {
+        if (set == null || set.rows.isEmpty()) return null;
+
+        if (set.setPrice != null && set.partSum.compareTo(set.setPrice) != 0) {
+            logger.warn("[B][{}] 計≠구성합 (품목={}, 計={}, 합={})",
+                    c.sheetName, set.repCode, set.setPrice, set.partSum);
+        }
+        String repName = join(set.kind, set.repCode);
+        if (set.setPrice == null) repName = repName + " (가격없음)"; // D8
+
+        VendorParsedItem main = new VendorParsedItem(set.repCode, repName, null, set.ksCode,
+                VendorParsedItem.RELATION_MAIN, nz(set.setPrice), set.remark, set.description, null, set.specs);
+        out.add(new VendorProductSet("B", c.sheetName, set.kind, main, set.rows,
+                set.setPrice, false, imageKeyOf(set.startRow), false));
+        return null;
+    }
+
+    /**
+     * 같은 품목 코드가 시트 안에서 두 번 이상 세트로 나오면 2번째부터 {@code -2}, {@code -3}… 접미를 붙인다.
+     * (행 → 최종 코드) 맵을 돌려주며, 중복이 없으면 빈 맵이다.
+     */
+    private Map<Integer, String> computeDogiV2DuplicateCodes(Ctx c, DogiV2Cols cols, int headerRow, int last) {
+        Map<String, List<Integer>> byCode = new LinkedHashMap<>();
+        for (int r = headerRow + 2; r <= last; r++) {
+            if ("구분".equals(noSpace(str(c, r, 0)))) break;
+            String item = stripSpace(str(c, r, cols.itemCol()));
+            if (item == null || stripSpace(str(c, r, cols.nameCol())) == null) continue;
+            String code = splitParen(item)[0];
+            if (code != null) byCode.computeIfAbsent(code, k -> new ArrayList<>()).add(r);
+        }
+        Map<Integer, String> out = new HashMap<>();
+        byCode.forEach((code, rows) -> {
+            if (rows.size() < 2) return;
+            logger.warn("[B][{}] 동일 품번이 {}회 — 구성이 다른 별개 세트로 보고 접미를 붙인다 (품목={})",
+                    c.sheetName, rows.size(), code);
+            for (int i = 1; i < rows.size(); i++) out.put(rows.get(i), code + "-" + (i + 1));
+        });
+        return out;
+    }
+
+    /** 최신본 도기 2단 헤더에서 컬럼 위치를 읽는다. 단가·計를 못 찾으면 null. */
+    private DogiV2Cols readDogiV2Header(Ctx c, int headerRow) {
+        int kindCol = -1, itemCol = -1, ksCol = -1, nameCol = -1, specCol = -1, noteCol = -1;
+        short lastCell = c.sheet.getRow(headerRow).getLastCellNum();
+        for (int col = 0; col < lastCell; col++) {
+            String h = noSpace(str(c, headerRow, col));
+            if (h == null) continue;
+            if (h.equals("품종") && kindCol < 0) kindCol = col;
+            else if (h.equals("품목") && itemCol < 0) itemCol = col;
+            else if (h.contains("KS품번") && ksCol < 0) ksCol = col;
+            else if (h.equals("품명") && nameCol < 0) nameCol = col;
+            else if (h.equals("규격") && specCol < 0) specCol = col;
+            else if (h.contains("비고") && noteCol < 0) noteCol = col;
+        }
+        // 2단 헤더 아랫줄: 제품코드 / 제품코드(대체) / 단가 / 計 … 그리고 부속 서브테이블의 제품코드.
+        // '제품코드'가 세 번 나오면 세 번째가 N~P 부속 서브테이블의 것이다(세면기는 서브테이블이 없어 두 번).
+        int codeCol = -1, altCodeCol = -1, subCodeCol = -1, priceCol = -1, totalCol = -1;
+        Row sub = c.sheet.getRow(headerRow + 1);
+        short subLast = sub == null ? 0 : sub.getLastCellNum();
+        for (int col = 0; col < subLast; col++) {
+            String h = noSpace(str(c, headerRow + 1, col));
+            if (h == null) continue;
+            if (h.equals("제품코드")) {
+                if (codeCol < 0) codeCol = col;
+                else if (altCodeCol < 0) altCodeCol = col;
+                else if (subCodeCol < 0) subCodeCol = col;
+            }
+            else if (h.equals("단가") && priceCol < 0) priceCol = col;
+            else if ((h.equals("計") || h.equals("계")) && totalCol < 0) totalCol = col;
+        }
+        if (codeCol < 0 || priceCol < 0 || totalCol < 0 || itemCol < 0 || nameCol < 0) return null;
+        return new DogiV2Cols(0, kindCol, itemCol, ksCol, nameCol, codeCol, altCodeCol, subCodeCol,
+                priceCol, totalCol, specCol, noteCol);
+    }
+
+    /** 이 행이 N~P 부속 서브테이블에 항목을 갖고 있는가(= 비고가 그쪽 설명일 수 있는가). */
+    private boolean hasSubTableEntry(Ctx c, DogiV2Cols cols, int r) {
+        return cols.subCodeCol() >= 0 && str(c, r, cols.subCodeCol()) != null;
+    }
+
+    /**
+     * 최신본 도기 비고 분류(R7 / C-2 원칙) — 줄 단위로 나눠 상태 변동(단종)은 {@code remark},
+     * 나머지 설명은 {@code description}으로 보낸다. 한 셀에 "소진 후 단종"과 기능 설명이
+     * 줄바꿈으로 함께 들어오기 때문에 셀 전체를 한 덩어리로 판정하면 안 된다.
+     *
+     * <p><b>{@code hasSubTableEntry}가 참이면 설명은 버린다.</b> 비고(Q)는 구조상 행 전체 컬럼이지만
+     * (헤더 병합이 {@code N3:P3=부속} / {@code Q3:Q4=비고}로 갈려 있다), 실제 내용은 그 행에
+     * 부속 서브테이블 항목이 있으면 <b>그쪽</b>을 설명한다 — IC552EF 구간의 "막대형 일반 세척밸브, 3등급"은
+     * 좌측 스퍼드가 아니라 우측 F/V 옵션(<CODE>)의 설명이다. 서브테이블은 저장하지 않으므로(§8 잔여 ①)
+     * 이런 설명은 버리는 편이 좌측 부속에 잘못 붙이는 것보다 낫다.
+     * 단, {@code 단종}은 옵션이 아니라 제품 상태라 서브테이블 유무와 무관하게 남긴다.
+     */
+    private DogiV2Note splitDogiV2Note(String raw, boolean hasSubTableEntry) {
+        if (raw == null || raw.isBlank()) return DogiV2Note.EMPTY;
+        String remark = null, desc = null;
+        for (String line : raw.split("\\R")) {
+            String s = stripSpace(line);
+            if (s == null) continue;
+            if (s.replaceAll("\\s", "").contains("단종")) remark = joinNotes(remark, s);
+            else if (!hasSubTableEntry) desc = joinNotes(desc, s);
+        }
+        return new DogiV2Note(remark, desc);
+    }
+
+    private record DogiV2Note(String remark, String description) {
+        static final DogiV2Note EMPTY = new DogiV2Note(null, null);
+    }
+
+    /** 최신본 도기 시트의 컬럼 위치(헤더에서 읽는다). 없는 컬럼은 -1. */
+    private record DogiV2Cols(int divCol, int kindCol, int itemCol, int ksCol, int nameCol,
+                              int codeCol, int altCodeCol, int subCodeCol, int priceCol, int totalCol,
+                              int specCol, int noteCol) {}
+
+    /** 조립 중인 세트 1건(대표품목 + 부속 행들). */
+    private static final class DogiV2Set {
+        final int startRow;
+        final String repCode;
+        final String kind;
+        final String ksCode;
+        final List<VendorParsedItem> rows = new ArrayList<>();
+        BigDecimal partSum = BigDecimal.ZERO;
+        BigDecimal setPrice;
+        String description;
+        String remark;
+        String specs;
+
+        DogiV2Set(int startRow, String repCode, String kind, String ksCode) {
+            this.startRow = startRow;
+            this.repCode = repCode;
+            this.kind = kind;
+            this.ksCode = ksCode;
         }
     }
 
