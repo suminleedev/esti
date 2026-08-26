@@ -30,6 +30,16 @@ public class DefaultProductSyncHandler implements ManufacturerProductSyncHandler
         return 1000;
     }
 
+    /**
+     * 인터페이스 default 구현에 맡기면 this.save(crawled)가 프록시를 우회해
+     * @Transactional이 적용되지 않는다. 트랜잭션 경계 보존을 위해 명시적으로 오버라이드한다.
+     */
+    @Override
+    @Transactional
+    public void save(CrawledProduct crawled, Object context) {
+        save(crawled);
+    }
+
     @Override
     @Transactional
     public void save(CrawledProduct crawled) {

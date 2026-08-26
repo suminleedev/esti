@@ -35,9 +35,11 @@ public class ProductImageSyncService {
         List<CrawledProduct> products = crawler.crawlAllProducts();
         log.info("[{}] collected {} products", maker, products.size());
 
+        Object context = handler.prepare(crawler.vendorCode());
+
         for (CrawledProduct crawled : products) {
             try {
-                handler.save(crawled);
+                handler.save(crawled, context);
             } catch (Exception e) {
                 log.error("[{}] save failed. productUrl={}", maker, crawled.getProductUrl(), e);
             }
