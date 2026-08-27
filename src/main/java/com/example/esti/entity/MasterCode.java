@@ -34,8 +34,17 @@ public class MasterCode extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /** 컬럼명을 {@code type}이 아니라 {@code code_type}으로 둔다 — DB 예약어와 부딪히지 않게. */
-    @Enumerated(EnumType.STRING)
+    /**
+     * 컬럼명을 {@code type}이 아니라 {@code code_type}으로 둔다 — DB 예약어와 부딪히지 않게.
+     *
+     * <p><b>{@code @Enumerated}가 아니라 컨버터를 쓴다.</b> {@code @Enumerated(STRING)}이면 Hibernate가
+     * {@code check (code_type in ('APARTMENT_TYPE', ...))}를 함께 만드는데, {@code ddl-auto=update}는
+     * 이미 있는 check 제약을 갱신하지 못한다. 그래서 종류를 하나 추가하는 순간 기존 DB에서는
+     * 그 값을 <b>넣을 수 없다</b> — 기동은 멀쩡하고 insert에서만 터진다.
+     * "종류가 늘어도 row만 추가하면 된다"(M-7)를 지키려면 이 제약이 없어야 한다.
+     * 실제로 {@code APARTMENT_TYPE}을 추가할 때 이 경로로 한 번 깨졌다.
+     */
+    @Convert(converter = MasterCodeTypeConverter.class)
     @Column(name = "code_type", nullable = false, length = 30)
     private MasterCodeType type;
 

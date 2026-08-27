@@ -34,7 +34,7 @@
             <label class="form-label small mb-1" for="filter-apartmentType">평형</label>
             <select id="filter-apartmentType" v-model="filters.apartmentType" class="form-select form-select-sm">
               <option value="">전체</option>
-              <option v-for="t in APARTMENT_TYPES" :key="t" :value="t">{{ t }}</option>
+              <option v-for="t in apartmentTypeChoices" :key="t" :value="t">{{ t }}</option>
             </select>
           </div>
           <div class="col-md-3">
@@ -211,7 +211,7 @@
 </template>
 
 <script setup>
-import {ref, reactive, onMounted, watch} from 'vue'
+import {ref, reactive, computed, onMounted, watch} from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 
@@ -223,7 +223,8 @@ import { saveBlob } from "@/utils/download"
 import AppPagination from "@/components/AppPagination.vue";
 import StatusBadge from "@/components/common/StatusBadge.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
-import { PROPOSAL_STATUS, APARTMENT_TYPES } from "@/constants/labels";
+import { PROPOSAL_STATUS } from "@/constants/labels";
+import { useMasterCodes, withSaved } from "@/composables/useMasterCodes";
 
 const router = useRouter()
 const toast = useToast()
@@ -232,6 +233,9 @@ const { confirm } = useConfirm()
 const loading = ref(false)
 const proposals = ref([])
 
+const { apartmentTypes: masterApartmentTypes, load: loadMasterCodes } = useMasterCodes()
+
+
 // 필터 상태
 const filters = ref({
   keyword: '',
@@ -239,6 +243,18 @@ const filters = ref({
   templateFilter: '', // '', 'templated', 'manual'
   status: ''
 })
+
+/*
+ * 필터 선택지 = 마스터 + 지금 목록에 실제로 떠 있는 값 + 현재 선택값.
+ * 마스터에서 숨긴 평형을 든 제안서가 남아 있어도 그 값으로 걸러볼 수 있어야 하고,
+ * 마스터만 그리면 선택 중이던 값이 목록에서 사라져 필터가 저 혼자 풀린다.
+ */
+const apartmentTypeChoices = computed(() =>
+  withSaved(masterApartmentTypes.value, [
+    ...proposals.value.map((p) => p.apartmentType),
+    filters.value.apartmentType,
+  ]),
+)
 
 // 페이징
 const {
@@ -377,6 +393,7 @@ async function download(url, fallbackName) {
 }
 
 onMounted(() => {
+  loadMasterCodes()
   loadProposals()
 })
 </script>

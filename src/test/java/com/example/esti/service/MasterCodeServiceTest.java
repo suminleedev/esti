@@ -13,6 +13,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.TestPropertySource;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -31,6 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class MasterCodeServiceTest {
 
     @Autowired private MasterCodeService service;
+    @Autowired private DataSource dataSource;
 
     private MasterCodeRequest request(MasterCodeType type, String label) {
         MasterCodeRequest req = new MasterCodeRequest();
@@ -45,15 +50,37 @@ class MasterCodeServiceTest {
 
     @Test
     @Order(1)
-    void 기동_시_세_종류가_기본값으로_시딩되고_순서가_보존된다() {
+    void 기동_시_모든_종류가_기본값으로_시딩되고_순서가_보존된다() {
         // MasterCodeSeeder(ApplicationRunner)가 컨텍스트 기동 때 넣는다
         for (MasterCodeType type : MasterCodeType.values()) {
             assertThat(labels(type)).containsExactlyElementsOf(type.getDefaults());
         }
     }
 
+    /**
+     * {@code @Enumerated(STRING)}으로 되돌리면 Hibernate가 {@code check (code_type in (...))}를 붙이는데,
+     * {@code ddl-auto=update}는 이미 있는 check 제약을 갱신하지 못한다 — 종류를 하나 추가하는 순간
+     * 기존 DB에서 그 값의 insert가 터진다(기동은 멀쩡하다). 실제로 APARTMENT_TYPE 추가 때 한 번 겪었다.
+     * 인메모리 테스트는 매번 새로 만들어져 그 상황을 재현하지 못하므로, 제약의 부재 자체를 못박는다.
+     */
     @Test
     @Order(2)
+    void code_type에_check_제약이_붙지_않는다() throws Exception {
+        List<String> checks = new ArrayList<>();
+        try (Connection conn = dataSource.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(
+                     "select con.constraintname from sys.sysconstraints con "
+                             + "join sys.systables t on t.tableid = con.tableid "
+                             + "where t.tablename = 'MASTER_CODE' and con.type = 'C'")) {
+            while (rs.next()) checks.add(rs.getString(1));
+        }
+
+        assertThat(checks).isEmpty();
+    }
+
+    @Test
+    @Order(3)
     void 값을_추가하면_목록_맨_뒤에_붙는다() {
         MasterCodeResponse created = service.create(request(MasterCodeType.AREA, "  현관  "));
 
@@ -63,7 +90,7 @@ class MasterCodeServiceTest {
     }
 
     @Test
-    @Order(3)
+    @Order(4)
     void 같은_종류에_같은_이름은_추가할_수_없다() {
         String label = MasterCodeType.CATEGORY.getDefaults().get(0);
 
@@ -72,14 +99,14 @@ class MasterCodeServiceTest {
     }
 
     @Test
-    @Order(4)
+    @Order(5)
     void 이름이_비면_거부한다() {
         assertThrows(BadRequestException.class,
                 () -> service.create(request(MasterCodeType.AREA, "   ")));
     }
 
     @Test
-    @Order(5)
+    @Order(6)
     void 숨기면_드롭다운에서만_빠지고_설정_목록에는_남는다() {
         MasterCodeResponse created = service.create(request(MasterCodeType.BUILDING_TYPE, "지하주차장"));
 
@@ -91,7 +118,7 @@ class MasterCodeServiceTest {
     }
 
     @Test
-    @Order(6)
+    @Order(7)
     void 숨긴_값은_복원할_수_있다() {
         MasterCodeResponse created = service.create(request(MasterCodeType.BUILDING_TYPE, "관리동"));
         service.deactivate(created.getId());
@@ -104,7 +131,7 @@ class MasterCodeServiceTest {
     }
 
     @Test
-    @Order(7)
+    @Order(8)
     void 숨긴_이름과_같은_값을_새로_만들려_하면_복원하라고_막는다() {
         MasterCodeResponse created = service.create(request(MasterCodeType.AREA, "발코니"));
         service.deactivate(created.getId());
@@ -116,7 +143,7 @@ class MasterCodeServiceTest {
     }
 
     @Test
-    @Order(8)
+    @Order(9)
     void 이름을_바꿔도_다른_항목과_겹치면_거부한다() {
         MasterCodeResponse created = service.create(request(MasterCodeType.CATEGORY, "젠더세면기"));
 
@@ -127,7 +154,7 @@ class MasterCodeServiceTest {
     }
 
     @Test
-    @Order(9)
+    @Order(10)
     void 순서를_바꾸면_그_순서대로_다시_매겨진다() {
         List<MasterCodeResponse> before = service.list(MasterCodeType.CATEGORY);
         List<Long> reversed = new ArrayList<>(before.stream().map(MasterCodeResponse::getId).toList());
@@ -144,7 +171,7 @@ class MasterCodeServiceTest {
     }
 
     @Test
-    @Order(10)
+    @Order(11)
     void 정렬_요청이_전건이_아니면_거부한다() {
         List<Long> partial = List.of(service.list(MasterCodeType.AREA).get(0).getId());
 

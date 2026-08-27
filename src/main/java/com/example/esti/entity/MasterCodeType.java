@@ -10,6 +10,9 @@ import java.util.List;
  */
 public enum MasterCodeType {
 
+    /** 아파트 평형 — 제안서 단위 값이자 라인 단위 값(O-7). 현장 규모에 따라 달라진다. */
+    APARTMENT_TYPE(List.of("59㎡", "74㎡", "84㎡")),
+
     /** 건물 구분 — 견적서의 본동·부속동 섹션 분리 기준(O-5). 현장마다 값이 달라진다(M-3). */
     BUILDING_TYPE(List.of("본세대", "부속동", "상가")),
 

@@ -12,4 +12,18 @@
   /* 카탈로그 목록 카드 높이. 제안서 목록과 달리 위에 업로드 카드가 하나 더 있어
      64vh를 그대로 쓰면 세로가 넘친다. offset 340px = 헤더 + topbar + 업로드 카드. */
   --esti-catalog-list-card-height: max(480px, calc(100vh - 340px));
+
+  /* 안내문(placeholder) 색.
+     부트스트랩 기본값은 --bs-secondary-color(≈#4a4e52)라 본문 검정(#212529)과 거의 붙어 보인다.
+     입력값이 이미 들어있는 것처럼 읽히는 게 문제라 한 단계 밝은 회색으로 떼어 놓는다.
+     흰 배경 대비 4.6:1로 WCAG AA(4.5:1)는 지킨다 — 흐리게 하되 못 읽게 하지는 않는다. */
+  --esti-placeholder-color: #6c757d;
+}
+
+/* 부트스트랩이 .form-control에 직접 색을 주므로 같은 구체성으로 덮어쓴다. */
+.form-control::placeholder,
+.form-select::placeholder,
+textarea.form-control::placeholder {
+  color: var(--esti-placeholder-color);
+  opacity: 1; /* Firefox 기본 투명도 제거 — 색을 토큰 하나로만 통제한다 */
 }

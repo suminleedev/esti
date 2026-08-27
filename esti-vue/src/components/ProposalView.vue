@@ -220,7 +220,7 @@
           <div class="row g-3">
             <div class="col-md-6">
               <label class="form-label">현장명 *</label>
-              <input ref="projectNameRef" v-model.trim="form.projectName" class="form-control" placeholder="예) 신안 XX아파트 위생기구 납품" />
+              <input ref="projectNameRef" v-model.trim="form.projectName" class="form-control" placeholder="예) OO 아파트 위생기구 납품" />
             </div>
             <div class="col-md-3">
               <label class="form-label">담당자</label>
@@ -235,7 +235,7 @@
               <label class="form-label">아파트 평형 *</label>
               <select ref="apartmentTypeRef" v-model="form.apartmentType" class="form-select">
                 <option value="">선택하세요</option>
-                <option v-for="t in APARTMENT_TYPES" :key="t" :value="t">{{ t }}</option>
+                <option v-for="t in apartmentTypeChoices" :key="t" :value="t">{{ t }}</option>
               </select>
             </div>
             <div class="col-md-3">
@@ -248,7 +248,7 @@
             </div>
             <div class="col-md-6">
               <label class="form-label">제출처</label>
-              <input v-model.trim="form.clientName" class="form-control" placeholder="예) 대우건설" />
+              <input v-model.trim="form.clientName" class="form-control" placeholder="예) OO건설" />
               <div class="form-text">견적서 머리글의 <code>貴下</code> 앞에 들어갑니다.</div>
             </div>
             <div class="col-md-12">
@@ -431,7 +431,7 @@
                     <label class="form-label">평형</label>
                     <select v-model="lineInput.apartmentType" class="form-select">
                       <option value="">선택 안 함</option>
-                      <option v-for="t in APARTMENT_TYPES" :key="t" :value="t">{{ t }}</option>
+                      <option v-for="t in apartmentTypeChoices" :key="t" :value="t">{{ t }}</option>
                     </select>
                   </div>
                   <div class="col-6">
@@ -666,8 +666,8 @@ import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { usePrompt } from '@/composables/usePrompt'
 // UNITS는 여기서 쓰지 않는다 — 제안서의 단위는 사용자가 고르는 값이 아니라 카탈로그에서 스냅샷된다.
-import { APARTMENT_TYPES, UNIT_DEFAULT } from '@/constants/labels'
-import { useMasterCodes } from '@/composables/useMasterCodes'
+import { UNIT_DEFAULT } from '@/constants/labels'
+import { useMasterCodes, withSaved } from '@/composables/useMasterCodes'
 
 const route = useRoute()
 const router = useRouter()
@@ -701,8 +701,14 @@ const steps = ['기본 정보', '평형/적용부위/유형', '품목 채우기'
 const step = ref(0)
 
 /* ====== 폼/선택 데이터 ====== */
-// 평형은 labels.js 상수, 부위/카테고리/건물구분은 마스터(/settings/master)에서 받는다
-const { areas: masterAreas, categories: masterCategories, buildingTypes, load: loadMasterCodes } = useMasterCodes()
+// 평형·부위·카테고리·건물구분은 모두 마스터(/settings/master)에서 받는다
+const {
+  apartmentTypes: masterApartmentTypes,
+  areas: masterAreas,
+  categories: masterCategories,
+  buildingTypes,
+  load: loadMasterCodes,
+} = useMasterCodes()
 const marginOptions = [10, 15, 20, 25, 30] // 마진율
 
 const form = reactive({
@@ -719,14 +725,8 @@ const form = reactive({
   globalMarginRate: 10
 })
 
-/*
- * 체크박스 선택지 = 마스터의 현재 값 + 이 제안서가 이미 들고 있는 값.
- * 마스터에서 숨긴 뒤에도 저장된 제안서는 그 값을 그대로 보여야 한다(M-6) —
- * 마스터만 그리면 체크된 항목이 화면에서 사라져 저장 시 조용히 빠진다.
- */
-function withSaved (options, saved) {
-  return [...options, ...saved.filter((v) => v && !options.includes(v))]
-}
+// 선택지는 마스터 + 이 제안서가 이미 든 값의 합집합이다(withSaved 주석 참조)
+const apartmentTypeChoices = computed(() => withSaved(masterApartmentTypes.value, form.apartmentType))
 const areaChoices = computed(() => withSaved(masterAreas.value, form.areas))
 const categoryChoices = computed(() => withSaved(masterCategories.value, form.requiredCategories))
 
