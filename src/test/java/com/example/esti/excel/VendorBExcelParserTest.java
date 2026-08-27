@@ -10,6 +10,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.*;
 import static com.example.esti.support.TestSamples.requireSample;
 import static com.example.esti.support.ExpectedPrices.price;
+import static com.example.esti.support.ExpectedCodes.code;
 
 /**
  * P3 검증: B사 파서가 시트 양식 패밀리별로 대표품목 + 부속 + 관계를 정확히 묶는지.
@@ -156,9 +157,9 @@ class VendorBExcelParserTest {
         assertEquals(2, u9013.parts().size());
         assertTrue(u9013.parts().stream().anyMatch(p -> "U9013_c".equals(p.productCode())));
 
-        // "1.5m"은 품번패턴 아님(숫자 시작) → 제품코드(<CODE>)로 대체, B 전체가 description (P8)
-        VendorProductSet metal = findByMainCode(sets, "<CODE>")
-                .orElseThrow(() -> new AssertionError("<CODE>(메탈호스 1.5m) 미발견"));
+        // "1.5m"은 품번패턴 아님(숫자 시작) → 제품코드(메탈호스 전산코드)로 대체, B 전체가 description (P8)
+        VendorProductSet metal = findByMainCode(sets, code("수전부속.메탈호스"))
+                .orElseThrow(() -> new AssertionError("메탈호스 1.5m 미발견"));
         assertEquals("1.5m", metal.main().description());
         assertTrue(metal.parts().isEmpty());
     }

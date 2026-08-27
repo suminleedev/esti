@@ -64,7 +64,7 @@ class VendorB2026AccessorySheetTest {
         List<VendorProductSet> sets = parse();
 
         // AC8300G는 '4품'인데 뒤에 옷걸이(AC8305G)가 한 줄 더 붙는다.
-        // 세트가 <PRICE>은 4품 합(<PRICE>)에 대응하고 옷걸이(<PRICE>)를 포함하지 않는다.
+        // 세트가는 4품 합에 대응하고 옷걸이를 포함하지 않는다.
         VendorProductSet set = byCode(sets, "AC8300G");
         assertEquals(4, set.parts().size());
         assertTrue(set.parts().stream().noneMatch(p -> "옷걸이".equals(p.productName())));

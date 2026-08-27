@@ -12,6 +12,7 @@ import java.util.stream.Collectors;
 import static org.junit.jupiter.api.Assertions.*;
 import static com.example.esti.support.TestSamples.requireSample;
 import static com.example.esti.support.ExpectedPrices.price;
+import static com.example.esti.support.ExpectedCodes.code;
 
 /**
  * 세면기 시트 전용 검증(parseWashbasinSheet).
@@ -118,14 +119,14 @@ class VendorBWashbasinSheetTest {
     @Test
     void req3_슬롯코드의_괄호설명이_description으로_분리됨() {
         List<VendorProductSet> sets = washbasinSets();
-        // IL453: I=<CODE>(수전/배터리식), L=AE4002(물비누통)
+        // IL453: I=수전(배터리식) 전산코드, L=AE4002(물비누통)
         VendorProductSet il453 = byCode(sets, "IL453");
         assertEquals(0, price("VendorBWashbasinSheetTest.req3_슬롯코드의_괄호설명이_description으로_분리됨").compareTo(il453.setPrice()),
                 "도기원홀50000+반다리90000+앙카볼트20000");
 
         VendorParsedItem bandari = part(il453, "반다리");
         assertEquals("수전/배터리식", bandari.description(), "괄호 설명 분리");
-        assertTrue(bandari.productCode().contains("<CODE>"), "코드는 괄호 제거: " + bandari.productCode());
+        assertTrue(bandari.productCode().contains(code("세면기.수전.배터리식")), "코드는 괄호 제거: " + bandari.productCode());
 
         VendorParsedItem anka = part(il453, "앙카볼트");
         assertEquals("물비누통", anka.description());
@@ -146,7 +147,7 @@ class VendorBWashbasinSheetTest {
         assertEquals(0, price("VendorBWashbasinSheetTest.req1_3_도자종류만_다른_동일품번은_도기코드_구분글자로_분기되고_도자명은description").compareTo(hwa.setPrice()));
         assertEquals(0, price("VendorBWashbasinSheetTest.req1_3_도자종류만_다른_동일품번은_도기코드_구분글자로_분기되고_도자명은description.2").compareTo(cle.setPrice()));
 
-        // IL674E(모노피) <CODE> / IL674E(길마위욕) 4jl674awt → IL674Em / IL674Ej
+        // IL674E(모노피) / IL674E(길마위욕) — 도기 전산코드 첫 글자로 갈라 IL674Em / IL674Ej
         VendorProductSet mono = byCode(sets, "IL674Em");
         VendorProductSet gil = byCode(sets, "IL674Ej");
         assertTrue(mono.main().description().startsWith("모노피"), mono.main().description());

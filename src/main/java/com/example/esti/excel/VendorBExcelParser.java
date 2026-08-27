@@ -933,7 +933,7 @@ public class VendorBExcelParser implements VendorExcelParser {
     // (A-5) 분계표 — 완성수전 부속분계(§11 P1~P4). 본품은 §10 수전금구와 동일 제품(표기만 다름) →
     //   품번 정규화(G 0130/T0130 → G-0130/T-0130) 후 대분류=수전금구로 병합, 대리점가는 priceBasis=시트명으로 분리(P1).
     //   부속(몸체/편심/…)은 같은 전산코드가 세트별 단가 상이 → 코드={품번}_{전산코드} 프리픽스, categorySmall=분계(P2).
-    //   대리점가 없는 블록(싱크수전 등)은 구성만 의미(가격 0, P3). 같은 품번 재등장(S 0346 변형 3종)은 첫 블록만 + 검수필요(P4).
+    //   대리점가 없는 블록(싱크수전 등)은 구성만 의미(가격 0, P3). 같은 품번 재등장(변형 3종)은 첫 블록만 + 검수필요(P4).
     //   컬럼: A=매입처 B=품번 C=품명 D=세트 전산코드(미저장, S7) F=부속 전산코드 G=부속명 H=기준단가 I=대리점가.
     // ============================================================
 
@@ -1273,8 +1273,8 @@ public class VendorBExcelParser implements VendorExcelParser {
      * 같은 시트의 단품 행이나 `부속 단가표` 시트에 따로 있어, 그 둘을 미리 훑어 인덱스로 만든다.
      *
      * <p>`부속 단가표`를 나중에 넣어 충돌 시 그쪽이 이긴다 — 부속 카탈로그의 단일 출처이기 때문이다(D13).
-     * 예: `<CODE>`(스프레이건 단품)은 부속 단가표에만 <PRICE>으로 있고, 같은 품번 `U9310`은
-     * 수전 부속(세트)에서 행거를 포함한 세트가 <PRICE>이라 세트 시트 값을 쓰면 안 된다.
+     * 예: 스프레이건 단품은 부속 단가표에만 단품가로 있고, 같은 품번(`U9310`)은
+     * 수전 부속(세트)에서는 행거를 포함한 세트가라 세트 시트 값을 쓰면 안 된다.
      */
     private Map<String, BigDecimal> buildFittingCodePriceIndex(Workbook wb, DataFormatter fmt, FormulaEvaluator ev) {
         Map<String, BigDecimal> idx = new HashMap<>();
@@ -1437,7 +1437,7 @@ public class VendorBExcelParser implements VendorExcelParser {
 
         List<VendorParsedItem> parts = new ArrayList<>();
         for (String piece : m.cRaw().split("\\+")) {
-            String[] pc = splitParen(piece);               // "<CODE>(건)" → [<CODE>, 건]
+            String[] pc = splitParen(piece);               // "<전산코드>(건)" → [전산코드, 건]
             String pcode = pc[0] != null ? pc[0].toLowerCase() : pc[1]; // '니쁠' 같은 비코드 구성도 보존
             if (pcode == null) continue;
             parts.add(new VendorParsedItem(partCode(pn, pcode), orDefault(pc[1], pcode), null, null,
@@ -1646,8 +1646,8 @@ public class VendorBExcelParser implements VendorExcelParser {
     //   · 세트 시작 = C(품목)와 E(품명)가 모두 있는 행. 그 행이 대표품목(MAIN)이고 I=計가 세트가.
     //   · 이후 C가 비고 E만 있는 행 = 부속. 빈 행이나 다음 품목에서 세트가 끝난다.
     //   · N~P의 부속 서브테이블은 좌측 세트와 행이 정렬되지 않는 독립 옵션 목록이라 여기서 읽지 않는다
-    //     (계획서 §8 잔여 ①). 실제로 IC717E의 計는 E열 '양부속(대소구분)' <PRICE>을 쓰고
-    //     N열 '양부속(기본)' <PRICE>은 쓰지 않는다 — 서브테이블이 세트 구성이 아님을 보여준다.
+    //     (계획서 §8 잔여 ①). 실제로 計는 E열 '양부속(대소구분)' 값을 쓰고
+    //     N열 '양부속(기본)'은 쓰지 않는다 — 서브테이블이 세트 구성이 아님을 보여준다.
     // ============================================================
 
     private void parseToiletSheetV2(Ctx c, List<VendorProductSet> out) {
@@ -1917,14 +1917,14 @@ public class VendorBExcelParser implements VendorExcelParser {
      * <p><b>{@code hasSubTableEntry}가 참이면 설명은 버린다.</b> 비고(Q)는 구조상 행 전체 컬럼이지만
      * (헤더 병합이 {@code N3:P3=부속} / {@code Q3:Q4=비고}로 갈려 있다), 실제 내용은 그 행에
      * 부속 서브테이블 항목이 있으면 <b>그쪽</b>을 설명한다 — IC552EF 구간의 "막대형 일반 세척밸브, 3등급"은
-     * 좌측 스퍼드가 아니라 우측 F/V 옵션(<CODE>)의 설명이다. 서브테이블은 저장하지 않으므로(§8 잔여 ①)
+     * 좌측 스퍼드가 아니라 우측 F/V 옵션의 설명이다. 서브테이블은 저장하지 않으므로(§8 잔여 ①)
      * 이런 설명은 버리는 편이 좌측 부속에 잘못 붙이는 것보다 낫다.
      * 단, {@code 단종}은 옵션이 아니라 제품 상태라 서브테이블 유무와 무관하게 남긴다.
      */
     private DogiV2Note splitDogiV2Note(String raw, boolean hasSubTableEntry) {
         if (raw == null || raw.isBlank()) return DogiV2Note.EMPTY;
         // 같은 셀 안의 줄바꿈은 대부분 좁은 컬럼에서 문장이 접힌 것이라 공백으로 잇는다
-        // ("NB 모델은⏎<CODE>만⏎가능"). ' / '로 이으면 한 문장이 조각나 보인다.
+        // ("NB 모델은⏎<전산코드>만⏎가능"). ' / '로 이으면 한 문장이 조각나 보인다.
         StringBuilder remark = new StringBuilder(), desc = new StringBuilder();
         for (String line : raw.split("\\R")) {
             String s = stripSpace(line);
@@ -1983,7 +1983,7 @@ public class VendorBExcelParser implements VendorExcelParser {
     //   · 세트 시작 = 규격(E)이 'SET'인 행. 세트가는 F.
     //     "A열에 값이 있으면 세트"로 판정하면 100행 이후 시리즈 라벨(DT 20A…)이 전부 세트가 된다.
     //   · 세트 구성 = 품명(D)의 'N품'이 말하는 만큼만. 그 뒤 옷걸이처럼 덤으로 붙는 행은
-    //     세트가에 안 들어가므로(AC8300G 4품 <PRICE> vs 옷걸이 포함 <PRICE>) 단일품으로 뺀다.
+    //     세트가에 안 들어가므로(4품 합과 옷걸이 포함 합이 다르다) 단일품으로 뺀다.
     // ============================================================
 
     private static final Pattern ACC_SET_COUNT = Pattern.compile("(\\d+)\\s*품");
@@ -2110,7 +2110,7 @@ public class VendorBExcelParser implements VendorExcelParser {
     //   141행 아래에 니쁠 부표(B=품목 C=제품코드 D=단가 E=규격)가 다른 레이아웃으로 붙는다.
     //
     //   식별자는 품번(B)이 아니라 <b>전산코드(C)</b>다. 구·신 코드가 병존해
-    //   같은 품번이 서로 다른 전산코드를 갖는 쌍이 14개 있다(U9013c 냉수 → <CODE> 구버전 / <CODE> 신규).
+    //   같은 품번이 서로 다른 전산코드를 갖는 쌍이 14개 있다(예: 냉수용 한 품번에 구버전·신규 코드가 따로).
     //   품번을 코드로 쓰면 이 쌍이 한 제품으로 병합된다. T7의 품번표 조인 키도 전산코드다.
     // ============================================================
 
@@ -2118,7 +2118,7 @@ public class VendorBExcelParser implements VendorExcelParser {
      * 부속류 D열 단위를 정규화한다. 알려진 토큰만 받고 나머지는 null(→ 기본값 SET).
      *
      * <p>화이트리스트인 이유는 D열이 깨끗하지 않기 때문이다 — 실측하면 {@code ea} 118건·{@code SET} 13건·
-     * {@code 조} 4건 외에 단가 숫자(3000·1800…)와 {@code '단가'} 머리글이 섞여 있다(부표 헤더가 밀려 들어온 행).
+     * {@code 조} 4건 외에 단가 숫자와 {@code '단가'} 머리글이 섞여 있다(부표 헤더가 밀려 들어온 행).
      * 이 값들을 그대로 저장하면 단위 자리에 금액이 들어간다.
      */
     private static String normalizeUnit(String raw) {
@@ -2171,7 +2171,7 @@ public class VendorBExcelParser implements VendorExcelParser {
                 unit = normalizeUnit(str(c, r, 3));       // D=단위 (니쁠 부표는 D가 단가라 본표에서만 읽는다)
             }
 
-            // 같은 전산코드가 여러 그룹에 다시 등장한다(<CODE>은 6번). 단가는 전부 같으므로
+            // 같은 전산코드가 여러 그룹에 다시 등장한다(메탈호스는 6번). 단가는 전부 같으므로
             // 처음 본 그룹의 이름을 canonical로 삼고 이후는 건너뛴다 — 안 그러면 upsert 순서에 따라
             // '가로꼭지(2구)'가 '발코니수전 U9510'으로 덮인다.
             BigDecimal prev = emitted.putIfAbsent(code, nz(price));
@@ -2289,7 +2289,7 @@ public class VendorBExcelParser implements VendorExcelParser {
     /**
      * 바스 시트에서 건너뛸 전산코드 — 같은 제품이 {@code 액세사리류} 시트에도 실려 있다(§8 잔여 ⑦).
      *
-     * <p>두 시트가 서로 다른 코드 축을 쓴다 — 액세사리류는 품번({@code AT1322S}), 바스는 전산코드({@code <CODE>}).
+     * <p>두 시트가 서로 다른 코드 축을 쓴다 — 액세사리류는 품번, 바스는 전산코드다.
      * 그래서 upsert가 병합하지 못하고 <b>같은 제품이 대분류만 다르게 2건</b> 생긴다(단가는 4건 모두 동일).
      * 수건선반·유리 코너선반은 성격상 액세사리이고, 액세사리류가 228코드짜리 종합 카탈로그라 그쪽을 정본으로 삼는다
      * (2026-08-27 결정).

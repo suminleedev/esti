@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import static org.assertj.core.api.Assertions.assertThat;
 import static com.example.esti.support.TestSamples.requireSample;
 import static com.example.esti.support.ExpectedPrices.price;
+import static com.example.esti.support.ExpectedCodes.code;
 
 /**
  * 수전부속 3-시트 <b>DB 적재</b> 검증(§11). 파싱은 {@code VendorBFittingSheetTest}.
@@ -72,7 +73,7 @@ class VendorBFittingDbTest extends AbstractVendorBSheetDbVerification {
         assertThat(dbSetPriceByBasis(u9310, SET_BASIS)).isEqualByComparingTo(price("VendorBFittingDbTest.공통품번은_제품1행에_시트명basis_가격2행.3"));
         assertThat(dbSetPriceByBasis(u9310, PRICE_BASIS)).isEqualByComparingTo(price("VendorBFittingDbTest.공통품번은_제품1행에_시트명basis_가격2행.4"));
         // 행거는 품번 재사용 → 전산코드 폴백 단품(P8)
-        assertThat(dbSetPriceByBasis(dbSetProduct("수전부속", "<CODE>"), PRICE_BASIS))
+        assertThat(dbSetPriceByBasis(dbSetProduct("수전부속", code("수전부속.행거")), PRICE_BASIS))
                 .isEqualByComparingTo(price("VendorBFittingDbTest.공통품번은_제품1행에_시트명basis_가격2행.5"));
     }
 
@@ -92,7 +93,7 @@ class VendorBFittingDbTest extends AbstractVendorBSheetDbVerification {
     @Test
     void OEM단가표_공유품번은_basis_3행째로_병합되고_단종신규도_적재() {
         ensureFittingLoaded();
-        // U-942245 → U942245(P9) — 세트 시트 OEM 항목과 1행 병합, 가격은 basis 2행(둘 다 <PRICE>)
+        // U-942245 → U942245(P9) — 세트 시트 OEM 항목과 1행 병합, 가격은 basis 2행(단가 동일)
         VendorProduct valve = dbSetProduct("수전부속", "U942245");
         assertThat(dbSetPriceByBasis(valve, SET_BASIS)).isEqualByComparingTo(price("VendorBFittingDbTest.OEM단가표_공유품번은_basis_3행째로_병합되고_단종신규도_적재"));
         assertThat(dbSetPriceByBasis(valve, OEM_BASIS)).isEqualByComparingTo(price("VendorBFittingDbTest.OEM단가표_공유품번은_basis_3행째로_병합되고_단종신규도_적재.2"));
