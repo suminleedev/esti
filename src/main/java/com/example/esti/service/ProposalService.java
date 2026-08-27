@@ -306,7 +306,12 @@ public class ProposalService {
 
             // 단위는 카탈로그에서 담을 때 스냅샷된다. 값이 없으면 기본값 SET(O-1b).
             line.setUnit(VendorProduct.unitOrDefault(lineReq.getUnit()));
-            line.setApartmentType(lineReq.getApartmentType());
+            // 평형은 요청 값이 아니라 제안서 값을 그대로 넣는다.
+            // 한 제안서 = 한 평형으로 운영하기로 해서(2026-08-27) 화면에서 라인별 선택을 없앴다.
+            // 필드 자체는 남긴다 — 견적서가 이 값으로 대상을 가르기 때문이다(O-7, QuoteTarget).
+            // 여기서 채워 두면 STEP 1의 평형을 바꿔도 라인이 따라오고, 견적서 대상 이름이
+            // '본세대 (평형 미지정)' 대신 평형으로 뜬다.
+            line.setApartmentType(p.getApartmentType());
             line.setBuildingType(lineReq.getBuildingType());
             line.setCategorySmall(lineReq.getCategorySmall());
             line.setOptional(Boolean.TRUE.equals(lineReq.getOptional()));

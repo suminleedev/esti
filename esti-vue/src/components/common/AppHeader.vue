@@ -9,6 +9,9 @@
         <li class="nav-item">
           <router-link to="/proposal/list" class="nav-link">제안서 목록</router-link>
         </li>
+        <li class="nav-item">
+          <router-link to="/settings/master" class="nav-link">마스터 관리</router-link>
+        </li>
       </ul>
       <router-link :to="{ name: 'proposal-new' }" class="btn btn-primary btn-sm">
         + 새 제안서

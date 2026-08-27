@@ -37,25 +37,27 @@ class ProposalExcelServiceTest {
     @Autowired private ProposalExcelService excelService;
 
     @Test
-    @DisplayName("대상 목록 — 평형마다 본세대 한 부, 부속동·상가는 합쳐 한 부")
+    @DisplayName("대상 목록 — 본세대 한 부, 부속동·상가는 합쳐 한 부")
     void 대상_목록() throws Exception {
         Long id = sentProposal();
 
         List<QuoteTargetView> targets = excelService.listQuoteTargets(id);
 
+        // 한 제안서 = 한 평형이라(2026-08-27) 본세대는 언제나 한 부다.
+        // 평형 축 자체는 QuoteTarget에 남아 있고 QuoteTargetTest가 따로 검증한다.
         assertThat(targets).extracting(QuoteTargetView::label)
-                .containsExactly("59㎡", "84㎡", "부속동·상가");
+                .containsExactly("59㎡", "부속동·상가");
         assertThat(targets).extracting(QuoteTargetView::kind)
-                .containsExactly("MAIN", "MAIN", "ANNEX");
+                .containsExactly("MAIN", "ANNEX");
+        assertThat(targets.get(0).lineCount()).isEqualTo(3);   // 본세대 3건
         // 부속동 1건 + 상가 1건이 한 대상으로 합쳐진다
-        assertThat(targets.get(2).lineCount()).isEqualTo(2);
-        assertThat(targets.get(0).lineCount()).isEqualTo(2);   // 59㎡ 본세대 2건
+        assertThat(targets.get(1).lineCount()).isEqualTo(2);
     }
 
     @Test
     @DisplayName("품목이 없는 대상은 목록에 넣지 않는다 — 빈 견적서를 받게 되면 안 된다")
     void 빈_대상_제외() throws Exception {
-        Long id = sentProposal(line("본세대", "59㎡", "양변기", 100_000));
+        Long id = sentProposal(line("본세대", "양변기", 100_000));
 
         assertThat(excelService.listQuoteTargets(id))
                 .extracting(QuoteTargetView::label)
@@ -78,7 +80,7 @@ class ProposalExcelServiceTest {
     @Test
     @DisplayName("발송완료가 아니면 출력할 수 없다")
     void 상태_가드() throws Exception {
-        ProposalResponse draft = proposalService.createDraft(request(line("본세대", "59㎡", "양변기", 100_000)));
+        ProposalResponse draft = proposalService.createDraft(request(line("본세대", "양변기", 100_000)));
 
         assertThatThrownBy(() -> excelService.exportProposal(draft.getId()))
                 .isInstanceOf(InvalidStateException.class)
@@ -101,11 +103,11 @@ class ProposalExcelServiceTest {
 
     private Long sentProposal() throws Exception {
         return sentProposal(
-                line("본세대", "59㎡", "양변기", 152_000),
-                line("본세대", "59㎡", "세면기", 69_000),
-                line("본세대", "84㎡", "양변기", 216_000),
-                line("부속동", "59㎡", "양변기", 145_000),
-                line("상가", "59㎡", "악세사리", 12_000));
+                line("본세대", "양변기", 152_000),
+                line("본세대", "세면기", 69_000),
+                line("본세대", "양변기", 216_000),
+                line("부속동", "양변기", 145_000),
+                line("상가", "악세사리", 12_000));
     }
 
     private Long sentProposal(ProposalRequest.Line... lines) throws Exception {
@@ -127,7 +129,8 @@ class ProposalExcelServiceTest {
         return req;
     }
 
-    private ProposalRequest.Line line(String buildingType, String apartmentType, String category, int price) {
+    // 평형은 인자로 받지 않는다 — 서버가 제안서 평형(59㎡)으로 채운다
+    private ProposalRequest.Line line(String buildingType, String category, int price) {
         ProposalRequest.Line l = new ProposalRequest.Line();
         l.setProductId(1L);
         l.setProductName(category);
@@ -135,7 +138,6 @@ class ProposalExcelServiceTest {
         l.setCategorySmall(category);
         l.setArea("공용욕실");
         l.setBuildingType(buildingType);
-        l.setApartmentType(apartmentType);
         l.setCatalogUnitPrice(BigDecimal.valueOf(price));
         l.setQty(1);
         return l;

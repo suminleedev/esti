@@ -190,9 +190,7 @@
                   </td>
                   <td>
                     {{ r.area }}
-                    <div v-if="r.apartmentType || r.buildingType" class="small text-muted">
-                      {{ [r.apartmentType, r.buildingType].filter(Boolean).join(' · ') }}
-                    </div>
+                    <div v-if="r.buildingType" class="small text-muted">{{ r.buildingType }}</div>
                   </td>
                   <td class="text-end">{{ number(r.qty) }}<span class="text-muted small ms-1">{{ r.unit }}</span></td>
                   <td class="text-end">{{ getAppliedMarginRate(r) }}%</td>
@@ -220,7 +218,7 @@
           <div class="row g-3">
             <div class="col-md-6">
               <label class="form-label">현장명 *</label>
-              <input ref="projectNameRef" v-model.trim="form.projectName" class="form-control" placeholder="예) 신안 XX아파트 위생기구 납품" />
+              <input ref="projectNameRef" v-model.trim="form.projectName" class="form-control" placeholder="예) OO 아파트 위생기구 납품" />
             </div>
             <div class="col-md-3">
               <label class="form-label">담당자</label>
@@ -235,7 +233,7 @@
               <label class="form-label">아파트 평형 *</label>
               <select ref="apartmentTypeRef" v-model="form.apartmentType" class="form-select">
                 <option value="">선택하세요</option>
-                <option v-for="t in APARTMENT_TYPES" :key="t" :value="t">{{ t }}</option>
+                <option v-for="t in apartmentTypeChoices" :key="t" :value="t">{{ t }}</option>
               </select>
             </div>
             <div class="col-md-3">
@@ -248,7 +246,7 @@
             </div>
             <div class="col-md-6">
               <label class="form-label">제출처</label>
-              <input v-model.trim="form.clientName" class="form-control" placeholder="예) 대우건설" />
+              <input v-model.trim="form.clientName" class="form-control" placeholder="예) OO건설" />
               <div class="form-text">견적서 머리글의 <code>貴下</code> 앞에 들어갑니다.</div>
             </div>
             <div class="col-md-12">
@@ -289,7 +287,7 @@
                 </div>
                 <div class="card-body">
                   <div class="row">
-                    <div class="col-6" v-for="area in AREAS" :key="area">
+                    <div class="col-6" v-for="area in areaChoices" :key="area">
                       <div class="form-check">
                         <input class="form-check-input" type="checkbox" :id="`chk-area-${area}`" :value="area" v-model="form.areas" />
                         <label class="form-check-label" :for="`chk-area-${area}`">{{ area }}</label>
@@ -309,7 +307,7 @@
                 </div>
                 <div class="card-body">
                   <div class="row">
-                    <div class="col-12" v-for="cat in CATEGORIES" :key="cat">
+                    <div class="col-12" v-for="cat in categoryChoices" :key="cat">
                       <div class="form-check">
                         <input class="form-check-input" type="checkbox" :id="`chk-cat-${cat}`" :value="cat" v-model="form.requiredCategories" />
                         <label class="form-check-label" :for="`chk-cat-${cat}`">{{ cat }}</label>
@@ -427,14 +425,8 @@
                   </select>
                 </div>
                 <div class="row g-2 mb-2">
-                  <div class="col-6">
-                    <label class="form-label">평형</label>
-                    <select v-model="lineInput.apartmentType" class="form-select">
-                      <option value="">선택 안 함</option>
-                      <option v-for="t in APARTMENT_TYPES" :key="t" :value="t">{{ t }}</option>
-                    </select>
-                  </div>
-                  <div class="col-6">
+                  <!-- 평형은 라인에서 고르지 않는다 — 한 제안서 = 한 평형이라 STEP 1 값이 서버에서 자동으로 들어간다 -->
+                  <div class="col-12">
                     <label class="form-label">건물 구분</label>
                     <input
                       v-model.trim="lineInput.buildingType"
@@ -443,7 +435,7 @@
                       placeholder="선택 또는 직접 입력"
                     />
                     <datalist id="building-type-options">
-                      <option v-for="b in BUILDING_TYPES" :key="b" :value="b" />
+                      <option v-for="b in buildingTypes" :key="b" :value="b" />
                     </datalist>
                   </div>
                 </div>
@@ -533,9 +525,7 @@
                         {{ r.vendorItemName }}
                         <div class="small text-muted">{{ r.mainItemCode }} · {{ r.vendorName }}</div>
                         <div class="small text-muted">{{ r.category }} · {{ r.area }}</div>
-                        <div v-if="r.apartmentType || r.buildingType" class="small text-muted">
-                          {{ [r.apartmentType, r.buildingType].filter(Boolean).join(' · ') }}
-                        </div>
+                        <div v-if="r.buildingType" class="small text-muted">{{ r.buildingType }}</div>
                         <div class="small text-muted">원가 {{ won(r.catalogUnitPrice) }} · 단위 {{ r.unit }}</div>
                         <span v-if="r.optional" class="badge bg-warning-subtle text-warning-emphasis">유상옵션</span>
                       </td>
@@ -666,7 +656,8 @@ import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { usePrompt } from '@/composables/usePrompt'
 // UNITS는 여기서 쓰지 않는다 — 제안서의 단위는 사용자가 고르는 값이 아니라 카탈로그에서 스냅샷된다.
-import { APARTMENT_TYPES, AREAS, CATEGORIES, BUILDING_TYPES, UNIT_DEFAULT } from '@/constants/labels'
+import { UNIT_DEFAULT } from '@/constants/labels'
+import { useMasterCodes, withSaved } from '@/composables/useMasterCodes'
 
 const route = useRoute()
 const router = useRouter()
@@ -700,7 +691,14 @@ const steps = ['기본 정보', '평형/적용부위/유형', '품목 채우기'
 const step = ref(0)
 
 /* ====== 폼/선택 데이터 ====== */
-// 평형/부위/카테고리 목록은 @/constants/labels 에서 import (단일 출처)
+// 평형·부위·카테고리·건물구분은 모두 마스터(/settings/master)에서 받는다
+const {
+  apartmentTypes: masterApartmentTypes,
+  areas: masterAreas,
+  categories: masterCategories,
+  buildingTypes,
+  load: loadMasterCodes,
+} = useMasterCodes()
 const marginOptions = [10, 15, 20, 25, 30] // 마진율
 
 const form = reactive({
@@ -716,6 +714,11 @@ const form = reactive({
   requiredCategories: [],
   globalMarginRate: 10
 })
+
+// 선택지는 마스터 + 이 제안서가 이미 든 값의 합집합이다(withSaved 주석 참조)
+const apartmentTypeChoices = computed(() => withSaved(masterApartmentTypes.value, form.apartmentType))
+const areaChoices = computed(() => withSaved(masterAreas.value, form.areas))
+const categoryChoices = computed(() => withSaved(masterCategories.value, form.requiredCategories))
 
 /* ====== 카탈로그 ====== */
 const search = ref('')
@@ -803,7 +806,7 @@ const candidate = reactive({
 // 평형·건물구분은 라인마다 다를 수 있어(O-5, O-7) 담을 때 함께 고른다.
 // 부위·카테고리와 달리 필수는 아니다 — 기존 제안서에 없던 값이라 비워 둔 채로도 저장된다.
 const lineInput = reactive({
-  area: '', category: '', qty: 1, note: '', apartmentType: '', buildingType: '', optional: false
+  area: '', category: '', qty: 1, note: '', buildingType: '', optional: false
 })
 
 const lineValid = computed(() =>
@@ -874,7 +877,7 @@ function resetLine () {
     unit: UNIT_DEFAULT,
     categorySmall: ''
   })
-  Object.assign(lineInput, { area: '', category: '', qty: 1, note: '', apartmentType: '', buildingType: '', optional: false })
+  Object.assign(lineInput, { area: '', category: '', qty: 1, note: '', buildingType: '', optional: false })
 }
 
 /* ====== 마진 계산 ====== */
@@ -974,7 +977,8 @@ function addLine() {
     note: lineInput.note,
 
     unit: candidate.unit,
-    apartmentType: lineInput.apartmentType,
+    // 서버가 제안서 평형으로 덮어쓴다. 여기서도 같은 값을 넣어 저장 전후 표시가 흔들리지 않게 한다.
+    apartmentType: form.apartmentType,
     buildingType: lineInput.buildingType,
     categorySmall: candidate.categorySmall,
     optional: lineInput.optional
@@ -1601,6 +1605,7 @@ watch(
 onMounted(() => {
   loadCatalog()
   fetchTemplates()
+  loadMasterCodes()
   if (isNew.value) isEditMode.value = true // 신규 작성과 상세/수정 모드 구분
 })
 </script>

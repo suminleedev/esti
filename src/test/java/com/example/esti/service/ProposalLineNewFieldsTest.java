@@ -17,6 +17,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * P1 검증: 제안서 라인에 새로 붙인 <b>단위·평형·건물구분</b>이 저장·조회·복제를 거쳐 살아남는지 본다.
  *
+ * <p>평형만 규칙이 다르다 — 요청 값을 쓰지 않고 <b>제안서 평형</b>으로 채운다(2026-08-27).
+ * 한 제안서 = 한 평형으로 운영하기로 해서 화면에서 라인별 선택을 없앴다.
+ *
  * <p>세 필드는 Phase 6 출력물(제안서 카드 / 견적서 표)이 읽을 값이라, 어느 한 경로에서
  * 조용히 누락되면 P2·P3에서 빈칸으로 나타난다. 경로별로 못을 박아 둔다.
  */
@@ -33,28 +36,41 @@ class ProposalLineNewFieldsTest {
     private ProposalService proposalService;
 
     @Test
-    @DisplayName("단위·평형·건물구분이 저장 후 조회에서 그대로 돌아온다")
+    @DisplayName("단위·건물구분이 저장 후 조회에서 그대로 돌아온다")
     void 신규_필드_왕복() throws Exception {
         ProposalResponse saved = proposalService.createDraft(
-                request(line("59㎡", "본세대", "EA"), line("84㎡", "부속동", "SET")));
+                request(line("본세대", "EA"), line("부속동", "SET")));
 
         ProposalResponse loaded = proposalService.get(saved.getId());
 
         assertThat(loaded.getLines()).hasSize(2);
         assertThat(loaded.getLines())
-                .extracting(ProposalResponse.Line::getApartmentType,
-                        ProposalResponse.Line::getBuildingType,
-                        ProposalResponse.Line::getUnit)
+                .extracting(ProposalResponse.Line::getBuildingType, ProposalResponse.Line::getUnit)
                 .containsExactly(
-                        org.assertj.core.groups.Tuple.tuple("59㎡", "본세대", "EA"),
-                        org.assertj.core.groups.Tuple.tuple("84㎡", "부속동", "SET"));
+                        org.assertj.core.groups.Tuple.tuple("본세대", "EA"),
+                        org.assertj.core.groups.Tuple.tuple("부속동", "SET"));
+    }
+
+    @Test
+    @DisplayName("라인 평형은 요청 값이 아니라 제안서 평형이 된다 — 한 제안서 = 한 평형")
+    void 라인_평형은_제안서_평형으로_채워진다() throws Exception {
+        ProposalRequest req = request(line("본세대", "EA"), line("부속동", "SET"));
+        // 화면에서 라인별 평형 선택을 없앴지만, 옛 클라이언트가 값을 보내와도 제안서 평형이 이긴다
+        req.getLines().get(0).setApartmentType("59㎡");
+        req.getLines().get(1).setApartmentType(null);
+
+        ProposalResponse loaded = proposalService.get(proposalService.createDraft(req).getId());
+
+        assertThat(loaded.getLines())
+                .extracting(ProposalResponse.Line::getApartmentType)
+                .containsOnly(PROPOSAL_APARTMENT_TYPE);
     }
 
     @Test
     @DisplayName("단위가 비어 오면 기본값 SET으로 접힌다 (견적서 C열이 빈칸이 되면 안 된다)")
     void 단위_기본값_폴백() throws Exception {
-        ProposalRequest.Line nullUnit = line("59㎡", "본세대", null);
-        ProposalRequest.Line blankUnit = line("59㎡", "본세대", "   ");
+        ProposalRequest.Line nullUnit = line("본세대", null);
+        ProposalRequest.Line blankUnit = line("본세대", "   ");
 
         ProposalResponse saved = proposalService.createDraft(request(nullUnit, blankUnit));
         ProposalResponse loaded = proposalService.get(saved.getId());
@@ -68,13 +84,13 @@ class ProposalLineNewFieldsTest {
     @DisplayName("제안서를 복제해도 세 필드가 따라온다")
     void 복제시_필드_유지() throws Exception {
         ProposalResponse origin = proposalService.createDraft(
-                request(line("74㎡", "상가", "EA")));
+                request(line("상가", "EA")));
 
         ProposalResponse copy = proposalService.copyToDraft(origin.getId());
 
         assertThat(copy.getLines()).hasSize(1);
         ProposalResponse.Line copied = copy.getLines().get(0);
-        assertThat(copied.getApartmentType()).isEqualTo("74㎡");
+        assertThat(copied.getApartmentType()).isEqualTo(PROPOSAL_APARTMENT_TYPE);
         assertThat(copied.getBuildingType()).isEqualTo("상가");
         assertThat(copied.getUnit()).isEqualTo("EA");
     }
@@ -89,15 +105,19 @@ class ProposalLineNewFieldsTest {
         assertThat(VendorProduct.unitOrDefault("조")).isEqualTo("조");
     }
 
+    /** 제안서 단위 평형 — 라인 평형은 전부 이 값으로 채워진다. */
+    private static final String PROPOSAL_APARTMENT_TYPE = "84㎡";
+
     private ProposalRequest request(ProposalRequest.Line... lines) {
         ProposalRequest req = new ProposalRequest();
         req.setProjectName("P1 필드 검증 현장");
+        req.setApartmentType(PROPOSAL_APARTMENT_TYPE);
         req.setGlobalMarginRate(new BigDecimal("10"));
         req.setLines(List.of(lines));
         return req;
     }
 
-    private ProposalRequest.Line line(String apartmentType, String buildingType, String unit) {
+    private ProposalRequest.Line line(String buildingType, String unit) {
         ProposalRequest.Line l = new ProposalRequest.Line();
         l.setProductId(1L);
         l.setProductName("검증용 품목");
@@ -105,7 +125,6 @@ class ProposalLineNewFieldsTest {
         l.setQty(1);
         l.setArea("욕실1");
         l.setCategory("양변기");
-        l.setApartmentType(apartmentType);
         l.setBuildingType(buildingType);
         l.setUnit(unit);
         return l;
