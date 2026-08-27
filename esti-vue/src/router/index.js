@@ -5,6 +5,7 @@ import EstimateView from '../components/EstimateView.vue'
 import UploadCatalog from '../components/UploadCatalog.vue'
 import ProposalView from "@/components/ProposalView.vue";
 import ProposalList from "@/components/ProposalList.vue";
+import MasterSettingsView from "@/components/MasterSettingsView.vue";
 
 const routes = [
   { path: "/", name: "home", component: HomeView, meta: { title: '홈' } },
@@ -13,6 +14,8 @@ const routes = [
   { path: '/proposal', name: 'proposal-new', component: ProposalView, meta: { title: '새 제안서' } },
   { path: '/proposal/list', name: 'proposal-list', component: ProposalList, meta: { title: '제안서 목록' } },
   { path: '/proposal/:id', name: 'proposal-detail', component: ProposalView, props: true, meta: { title: '제안서 상세' } }, // 같은 화면 재사용 (id 있으면 조회 모드)
+  // 설정은 기존 화면을 건드리지 않는 별도 라우트다(M-8). 향후 설정이 늘면 /settings 아래로 모은다.
+  { path: '/settings/master', name: 'settings-master', component: MasterSettingsView, meta: { title: '마스터 관리' } },
 ]
 
 const router = createRouter({

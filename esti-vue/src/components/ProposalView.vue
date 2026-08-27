@@ -289,7 +289,7 @@
                 </div>
                 <div class="card-body">
                   <div class="row">
-                    <div class="col-6" v-for="area in AREAS" :key="area">
+                    <div class="col-6" v-for="area in areaChoices" :key="area">
                       <div class="form-check">
                         <input class="form-check-input" type="checkbox" :id="`chk-area-${area}`" :value="area" v-model="form.areas" />
                         <label class="form-check-label" :for="`chk-area-${area}`">{{ area }}</label>
@@ -309,7 +309,7 @@
                 </div>
                 <div class="card-body">
                   <div class="row">
-                    <div class="col-12" v-for="cat in CATEGORIES" :key="cat">
+                    <div class="col-12" v-for="cat in categoryChoices" :key="cat">
                       <div class="form-check">
                         <input class="form-check-input" type="checkbox" :id="`chk-cat-${cat}`" :value="cat" v-model="form.requiredCategories" />
                         <label class="form-check-label" :for="`chk-cat-${cat}`">{{ cat }}</label>
@@ -443,7 +443,7 @@
                       placeholder="선택 또는 직접 입력"
                     />
                     <datalist id="building-type-options">
-                      <option v-for="b in BUILDING_TYPES" :key="b" :value="b" />
+                      <option v-for="b in buildingTypes" :key="b" :value="b" />
                     </datalist>
                   </div>
                 </div>
@@ -666,7 +666,8 @@ import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { usePrompt } from '@/composables/usePrompt'
 // UNITS는 여기서 쓰지 않는다 — 제안서의 단위는 사용자가 고르는 값이 아니라 카탈로그에서 스냅샷된다.
-import { APARTMENT_TYPES, AREAS, CATEGORIES, BUILDING_TYPES, UNIT_DEFAULT } from '@/constants/labels'
+import { APARTMENT_TYPES, UNIT_DEFAULT } from '@/constants/labels'
+import { useMasterCodes } from '@/composables/useMasterCodes'
 
 const route = useRoute()
 const router = useRouter()
@@ -700,7 +701,8 @@ const steps = ['기본 정보', '평형/적용부위/유형', '품목 채우기'
 const step = ref(0)
 
 /* ====== 폼/선택 데이터 ====== */
-// 평형/부위/카테고리 목록은 @/constants/labels 에서 import (단일 출처)
+// 평형은 labels.js 상수, 부위/카테고리/건물구분은 마스터(/settings/master)에서 받는다
+const { areas: masterAreas, categories: masterCategories, buildingTypes, load: loadMasterCodes } = useMasterCodes()
 const marginOptions = [10, 15, 20, 25, 30] // 마진율
 
 const form = reactive({
@@ -716,6 +718,17 @@ const form = reactive({
   requiredCategories: [],
   globalMarginRate: 10
 })
+
+/*
+ * 체크박스 선택지 = 마스터의 현재 값 + 이 제안서가 이미 들고 있는 값.
+ * 마스터에서 숨긴 뒤에도 저장된 제안서는 그 값을 그대로 보여야 한다(M-6) —
+ * 마스터만 그리면 체크된 항목이 화면에서 사라져 저장 시 조용히 빠진다.
+ */
+function withSaved (options, saved) {
+  return [...options, ...saved.filter((v) => v && !options.includes(v))]
+}
+const areaChoices = computed(() => withSaved(masterAreas.value, form.areas))
+const categoryChoices = computed(() => withSaved(masterCategories.value, form.requiredCategories))
 
 /* ====== 카탈로그 ====== */
 const search = ref('')
@@ -1601,6 +1614,7 @@ watch(
 onMounted(() => {
   loadCatalog()
   fetchTemplates()
+  loadMasterCodes()
   if (isNew.value) isEditMode.value = true // 신규 작성과 상세/수정 모드 구분
 })
 </script>
