@@ -7,6 +7,7 @@ import java.util.List;
 
 import static com.example.esti.support.TestSamples.requireSample;
 import static org.junit.jupiter.api.Assertions.*;
+import static com.example.esti.support.ExpectedCodes.code;
 
 /**
  * §8 잔여 ⑥ 회귀 잠금 — 최신본(2026) 부속류 시트의 단위(D열) 저장.
@@ -40,10 +41,10 @@ class VendorB2026FittingUnitTest {
     void 본표_단위가_그대로_저장된다() {
         List<VendorProductSet> sets = parse();
 
-        assertEquals("EA", byCode(sets, "43u9013c").unit(), "5행 ea");
-        assertEquals("EA", byCode(sets, "43ds1500").unit(), "50행 ea");
-        assertEquals("SET", byCode(sets, "43u9111").unit(), "55행 SET");
-        assertEquals("조", byCode(sets, "43u0520cr").unit(), "122행 조");
+        assertEquals("EA", byCode(sets, code("수전부속.냉수.구형")).unit(), "5행 ea");
+        assertEquals("EA", byCode(sets, code("수전부속.메탈호스")).unit(), "50행 ea");
+        assertEquals("SET", byCode(sets, code("수전부속.SET단위")).unit(), "55행 SET");
+        assertEquals("조", byCode(sets, code("수전부속.조단위")).unit(), "122행 조");
     }
 
     @Test
@@ -51,8 +52,8 @@ class VendorB2026FittingUnitTest {
         // 89행만 'EA' 대문자다. 정규화하지 않으면 같은 단위가 두 값으로 갈린다.
         List<VendorProductSet> sets = parse();
 
-        assertEquals("EA", byCode(sets, "43u0662").unit(), "89행 EA");
-        assertEquals(byCode(sets, "43u9013c").unit(), byCode(sets, "43u0662").unit());
+        assertEquals("EA", byCode(sets, code("수전부속.EA대문자")).unit(), "89행 EA");
+        assertEquals(byCode(sets, code("수전부속.냉수.구형")).unit(), byCode(sets, code("수전부속.EA대문자")).unit());
     }
 
     @Test
@@ -60,7 +61,7 @@ class VendorB2026FittingUnitTest {
         // 143행 D=3000(단가). 이 값이 단위로 새면 단위 자리에 금액이 들어간다.
         List<VendorProductSet> sets = parse();
 
-        assertNull(byCode(sets, "43u94p65").unit(), "니쁠 부표는 단위 미상 → null");
+        assertNull(byCode(sets, code("수전부속.니쁠.65")).unit(), "니쁠 부표는 단위 미상 → null");
     }
 
     @Test

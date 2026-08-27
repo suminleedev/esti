@@ -102,7 +102,7 @@ class VendorBFaucetSheetTest {
 
     @Test
     void 품번없이_제품코드만_있는_부속도_유실없이_적재() {
-        // G-0113 국산: 후렉시블호스(냉/온)은 품번(C) 없이 제품코드(D=43sw154hl)만 → D를 코드로, 냉/온 c/h 분리
+        // G-0113 국산: 후렉시블호스(냉/온)은 품번(C) 없이 제품코드(D)만 → D를 코드로, 냉/온 c/h 분리
         VendorProductSet kor = byCode(faucetByBasis(KOR), "G-0113");
         assertEquals("G-0113_43sw154hlc", part(kor, "후렉시블호스(냉)").productCode());
         assertEquals("G-0113_43sw154hlh", part(kor, "후렉시블호스(온)").productCode());
@@ -151,7 +151,7 @@ class VendorBFaucetSheetTest {
 
     @Test
     void OEM_소계가_빈_S0146은_본품단가로_폴백() {
-        // S 0146(단종)은 소계 G가 비어 세트가를 못 만들던 유일 케이스 → 본품 단가(윗 셀 165,000)로 폴백(D2).
+        // S 0146(단종)은 소계 G가 비어 세트가를 못 만들던 유일 케이스 → 본품 단가(윗 셀)로 폴백(D2).
         VendorProductSet s0146 = byCode(oemSets(), "S 0146");
         assertEquals(0, price("VendorBFaucetSheetTest.OEM_소계가_빈_S0146은_본품단가로_폴백").compareTo(s0146.setPrice()), "소계 누락 → 본품 단가 폴백");
         assertEquals("단종", s0146.main().remark());

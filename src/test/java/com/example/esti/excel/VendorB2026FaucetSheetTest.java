@@ -10,6 +10,7 @@ import java.util.Map;
 import static com.example.esti.support.TestSamples.requireSample;
 import static org.junit.jupiter.api.Assertions.*;
 import static com.example.esti.support.ExpectedPrices.price;
+import static com.example.esti.support.ExpectedCodes.text;
 
 /**
  * T6 검증 — 최신본(2026) 수전금구류 시트.
@@ -91,8 +92,7 @@ class VendorB2026FaucetSheetTest {
         List<VendorProductSet> sets = parse();
 
         // 박스 기준은 여러 줄이어도 한 줄로 이어 description으로 간다.
-        assertEquals("샤워 헤드 포함 1Box=8ea / 고압호스: 43sw154hl(1,600원)x2",
-                byCode(sets, "G-0814").main().description());
+        assertEquals(text("텍스트.수전금구.박스기준"), byCode(sets, "G-0814").main().description());
         // 비고 한 셀에 설명과 단종이 섞이면 줄 단위로 갈라진다.
         assertEquals("소진 후 단종", byCode(sets, "G-0530").main().remark());
         assertEquals("단종", byCode(sets, "IBF-0146").main().remark());

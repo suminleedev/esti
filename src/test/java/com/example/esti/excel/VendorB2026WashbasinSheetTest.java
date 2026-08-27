@@ -9,6 +9,7 @@ import java.util.List;
 import static com.example.esti.support.TestSamples.requireSample;
 import static org.junit.jupiter.api.Assertions.*;
 import static com.example.esti.support.ExpectedPrices.price;
+import static com.example.esti.support.ExpectedCodes.text;
 
 /**
  * T2 검증 — 최신본(2026) 세면기 시트.
@@ -84,9 +85,9 @@ class VendorB2026WashbasinSheetTest {
 
     @Test
     void 셀_안의_줄바꿈은_한_문장으로_잇는다() {
-        // P열 원본은 "NB 모델은⏎43hy582만 ⏎가능" — 좁은 컬럼에서 접힌 한 문장이다.
+        // P열 원본은 "NB 모델은⏎<전산코드>만 ⏎가능" — 좁은 컬럼에서 접힌 한 문장이다.
         VendorProductSet s = byCode(parse(), "L554");
-        assertEquals("NB 모델은 43hy582만 가능", s.main().description());
+        assertEquals(text("텍스트.세면기.지정모델"), s.main().description());
         assertEquals("소진 후 단종", s.main().remark(), "단종은 같은 셀에 있어도 remark로 갈라진다");
     }
 

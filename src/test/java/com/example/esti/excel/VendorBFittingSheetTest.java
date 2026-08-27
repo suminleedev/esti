@@ -9,6 +9,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 import static com.example.esti.support.TestSamples.requireSample;
 import static com.example.esti.support.ExpectedPrices.price;
+import static com.example.esti.support.ExpectedCodes.code;
 
 /**
  * 수전부속 3-시트 전용 검증(§11): parseBreakdownSheet / parseFittingSetSheet / parseFittingPriceSheet.
@@ -121,7 +122,7 @@ class VendorBFittingSheetTest {
     @Test
     void 세트시트_조합행은_구성부속과_함께_세트화() {
         List<VendorProductSet> sets = parseFixture();
-        // U9510 = 43u9023c + 43ds1500 + 43u9310n + 43u0630 (P7)
+        // U9510 = 몸통 + 메탈호스 + 스프레이건 + 행거 (P7)
         VendorProductSet u9510 = one(sets, "U9510", SET_BASIS);
         assertEquals(0, price("VendorBFittingSheetTest.세트시트_조합행은_구성부속과_함께_세트화").compareTo(u9510.setPrice()));
         assertEquals(4, u9510.parts().size());
@@ -138,12 +139,12 @@ class VendorBFittingSheetTest {
         List<VendorProductSet> sets = parseFixture();
 
         // 조합행에는 세트가만 있다. 구성 단가는 단품 행·부속 단가표에서 전산코드로 찾아온다(후속 ②).
-        // U9510 20,000 = 43u9023c 10,000 + 43ds1500 5,000 + 43u9310n 4,500 + 43u0630 500
+        // U9510 세트가 = 몸통 + 메탈호스 + 스프레이건 + 행거 단가 합
         VendorProductSet u9510 = one(sets, "U9510", SET_BASIS);
         assertEquals(0, price("VendorBFittingSheetTest.U9510_43u9023c").compareTo(part(u9510, "U9510_43u9023c").unitPrice()));
         assertEquals(0, price("VendorBFittingSheetTest.U9510_43ds1500").compareTo(part(u9510, "U9510_43ds1500").unitPrice()));
         assertEquals(0, price("VendorBFittingSheetTest.U9510_43u0630").compareTo(part(u9510, "U9510_43u0630").unitPrice()));
-        // 43u9310n은 부속 단가표에만 있다(4,500). 같은 품번 U9310이 세트 시트에서는 행거 포함 5,000이라
+        // 스프레이건은 부속 단가표에만 단품으로 있다. 같은 품번 U9310이 세트 시트에서는 행거 포함이라
         // 세트 시트 값을 쓰면 안 된다 — 부속 단가표가 이겨야 한다.
         assertEquals(0, price("VendorBFittingSheetTest.U9510_43u9310n").compareTo(part(u9510, "U9510_43u9310n").unitPrice()));
         assertEquals(0, price("VendorBFittingSheetTest.조합행_부속단가는_전산코드로_해석된다").compareTo(partsSum(u9510)), "부속 합 = 세트가");
@@ -157,22 +158,22 @@ class VendorBFittingSheetTest {
 
     /**
      * 원본에 자기 단가 행이 없는 구성은 0으로 남는다 — 파서가 아니라 데이터의 한계다.
-     * `43u9340n`·`43u0631`·`43u9360n`·`43u0660`은 조합 셀 안에만 등장하고 단품 행이 없다.
+     * 조합 전용 부속 4종은 조합 셀 안에만 등장하고 단품 행이 없다.
      */
     @Test
     void 조합행_원본에_단가없는_구성은_0으로_남는다() {
         List<VendorProductSet> sets = parseFixture();
 
-        // 구성이 둘 다 미상 → 부속 합 0 (세트가 3,000·4,000은 그대로 유지)
+        // 구성이 둘 다 미상 → 부속 합 0 (세트가는 그대로 유지)
         assertEquals(0, BigDecimal.ZERO.compareTo(partsSum(one(sets, "U9360", SET_BASIS))));
         assertEquals(0, BigDecimal.ZERO.compareTo(partsSum(one(sets, "U9340", SET_BASIS))));
 
         // 일부만 미상 → 해석된 것만 더해진다.
-        // U9530: 9,000 + 5,000 + 3,500 + 500 = 18,000 (한글 '니쁠' 2,000 미상)
+        // U9530: 구성 4건 합이 세트가와 맞는다 (한글 '니쁠' 1건은 단가 미상)
         VendorProductSet u9530 = one(sets, "U9530", SET_BASIS);
         assertEquals(0, BigDecimal.ZERO.compareTo(part(u9530, "U9530_니쁠").unitPrice()));
         assertEquals(0, price("VendorBFittingSheetTest.조합행_원본에_단가없는_구성은_0으로_남는다").compareTo(partsSum(u9530)));
-        // U9550: 5,000 + 8,000 = 13,000 (건·행거 3,000 미상)
+        // U9550: 구성 2건 합이 세트가와 맞는다 (건·행거는 단가 미상)
         assertEquals(0, price("VendorBFittingSheetTest.U9550").compareTo(partsSum(one(sets, "U9550", SET_BASIS))));
     }
 
@@ -187,7 +188,7 @@ class VendorBFittingSheetTest {
         List<VendorProductSet> sets = parseFixture();
         // OEM 하이픈·소문자 품번 정규화(P9): U-9110150a → U9110150A
         assertEquals(0, price("VendorBFittingSheetTest.U9110150A").compareTo(one(sets, "U9110150A", SET_BASIS).setPrice()));
-        // 품번패턴 아님("1.5m(OEM)") → 제품코드 폴백(P8). 단 품번 매핑이 있는 43u04110은 U04110으로(P14 병합)
+        // 품번패턴 아님("1.5m(OEM)") → 제품코드 폴백(P8). 단 품번 매핑이 있는 코드는 품번으로(P14 병합)
         assertEquals(0, price("VendorBFittingSheetTest.U04110").compareTo(one(sets, "U04110", SET_BASIS).setPrice()));
         // 가격 없는 행은 0 + "(가격없음)" 표기(D8)
         VendorProductSet pipe = one(sets, "43u91p300", SET_BASIS);
@@ -205,12 +206,12 @@ class VendorBFittingSheetTest {
         assertEquals("수동폽업", u9111.categorySmall());
         assertEquals(0, price("VendorBFittingSheetTest.단가표_단품과_품번재사용_전산코드폴백").compareTo(u9111.setPrice()));
 
-        // U9310이 건(43u9310n)·행거(43u0630) 두 행에 재사용 → 행거는 전산코드 폴백(P8)
+        // U9310이 건·행거 두 행에 재사용 → 행거는 전산코드 폴백(P8)
         assertEquals(0, price("VendorBFittingSheetTest.U9310.2").compareTo(one(sets, "U9310", PRICE_BASIS).setPrice()));
-        assertEquals(0, price("VendorBFittingSheetTest.43u0630").compareTo(one(sets, "43u0630", PRICE_BASIS).setPrice()));
+        assertEquals(0, price("VendorBFittingSheetTest.수전부속.행거").compareTo(one(sets, code("수전부속.행거"), PRICE_BASIS).setPrice()));
 
         // 니쁠 꼬리 블록(품번 없음 → 전산코드, P8)
-        assertEquals(0, price("VendorBFittingSheetTest.43u94p65").compareTo(one(sets, "43u94p65", PRICE_BASIS).setPrice()));
+        assertEquals(0, price("VendorBFittingSheetTest.수전부속.니쁠.65").compareTo(one(sets, code("수전부속.니쁠.65"), PRICE_BASIS).setPrice()));
     }
 
     // ===== C-2 비고 내용별 분류 (규격=specs / 상태=remark / 속성=description / 매입처=미저장) =====
@@ -247,10 +248,10 @@ class VendorBFittingSheetTest {
         List<VendorProductSet> sets = parseFixture();
 
         // 세트 시트 욕조왕 블록 비고 "한양"/"E.L" → 미저장 (B 잔여 description은 유지)
-        VendorProductSet wang = one(sets, "43u0520cr", SET_BASIS);
+        VendorProductSet wang = one(sets, code("수전부속.조단위"), SET_BASIS);
         assertNull(wang.main().remark());
         assertNull(wang.main().specs());
-        assertNull(one(sets, "43udscr65", SET_BASIS).main().remark());
+        assertNull(one(sets, code("수전부속.비고없음"), SET_BASIS).main().remark());
 
         // 분계표 A열 매입처(한양/킴스코) → remark 미저장
         assertNull(one(sets, "G-0130", "분계표").main().remark());
@@ -282,7 +283,7 @@ class VendorBFittingSheetTest {
                 .filter(s -> OEM_BASIS.equals(s.priceBasis())).toList();
         assertEquals(21, sets.size(), "항목 21종(하단 조합 예시 6행 스킵, P16)");
         assertTrue(sets.stream().noneMatch(s -> s.setPrice().compareTo(price("VendorBFittingSheetTest.OEM단가표_21종적재_조합예시스킵_검수플래그없음")) == 0),
-                "조합 예시(19,200 등) 미적재");
+                "조합 예시 행은 미적재");
         // 코드 엇갈림 2종은 세트 시트 폴백을 품번으로 매핑해 병합(P14 병합 결정) → 검수플래그 없음
         assertTrue(sets.stream().noneMatch(VendorProductSet::needsReview));
     }
@@ -290,11 +291,11 @@ class VendorBFittingSheetTest {
     @Test
     void P14병합_세트시트_폴백행도_품번코드로_적재된다() {
         List<VendorProductSet> sets = parseFixture();
-        // 종전 43u04110/43u944265(전산코드 폴백) → U04110/U944265(품번) — OEM 시트 행과 upsert 자연 병합
+        // 종전 전산코드 폴백 → 품번(U04110/U944265) — OEM 시트 행과 upsert 자연 병합
         assertEquals(0, price("VendorBFittingSheetTest.U04110.2").compareTo(one(sets, "U04110", SET_BASIS).setPrice()));
         assertNotNull(one(sets, "U944265", SET_BASIS));
-        assertTrue(byCode(sets, "43u04110").isEmpty(), "구 전산코드 폴백행 잔존 없음");
-        assertTrue(byCode(sets, "43u944265").isEmpty());
+        assertTrue(byCode(sets, code("수전부속.품번매핑.A")).isEmpty(), "구 전산코드 폴백행 잔존 없음");
+        assertTrue(byCode(sets, code("수전부속.품번매핑.B")).isEmpty());
     }
 
     @Test

@@ -9,6 +9,7 @@ import java.util.List;
 import static com.example.esti.support.TestSamples.requireSample;
 import static org.junit.jupiter.api.Assertions.*;
 import static com.example.esti.support.ExpectedPrices.price;
+import static com.example.esti.support.ExpectedCodes.code;
 
 /**
  * T5 검증 — 최신본(2026) 부속류 시트.
@@ -46,20 +47,20 @@ class VendorB2026FittingCatalogSheetTest {
         // 'U9013c 냉수' 한 품번에 전산코드가 둘이다 — 품번을 식별자로 쓰면 한 제품으로 병합된다.
         List<VendorProductSet> sets = parse();
 
-        assertEquals(price("VendorB2026FittingCatalogSheetTest.43u9013c"), byCode(sets, "43u9013c").setPrice());
-        assertEquals(price("VendorB2026FittingCatalogSheetTest.43dbu9013c"), byCode(sets, "43dbu9013c").setPrice());
-        assertEquals("구버전", byCode(sets, "43u9013c").main().description());
-        assertEquals("신규", byCode(sets, "43dbu9013c").main().description());
+        assertEquals(price("VendorB2026FittingCatalogSheetTest.수전부속.냉수.구형"), byCode(sets, code("수전부속.냉수.구형")).setPrice());
+        assertEquals(price("VendorB2026FittingCatalogSheetTest.수전부속.냉수.신형"), byCode(sets, code("수전부속.냉수.신형")).setPrice());
+        assertEquals("구버전", byCode(sets, code("수전부속.냉수.구형")).main().description());
+        assertEquals("신규", byCode(sets, code("수전부속.냉수.신형")).main().description());
     }
 
     @Test
     void 여러_그룹에_다시_나오는_전산코드는_처음_것만_남는다() {
-        // 43ds1500(메탈호스 1.5m)은 발코니수전·청소용수전 구성으로 6번 등장한다. 단가는 전부 같다.
+        // 메탈호스는 발코니수전·청소용수전 구성으로 6번 등장한다. 단가는 전부 같다.
         List<VendorProductSet> sets = parse();
 
         assertEquals(1, sets.stream()
-                .filter(s -> "43ds1500".equals(s.main().productCode())).count());
-        assertEquals("메탈호스", byCode(sets, "43ds1500").categorySmall(),
+                .filter(s -> code("수전부속.메탈호스").equals(s.main().productCode())).count());
+        assertEquals("메탈호스", byCode(sets, code("수전부속.메탈호스")).categorySmall(),
                 "뒤에 나오는 '발코니수전' 그룹이 처음 그룹을 덮으면 안 된다");
     }
 
@@ -69,7 +70,7 @@ class VendorB2026FittingCatalogSheetTest {
         List<VendorProductSet> sets = parse();
 
         assertEquals(8, sets.stream().filter(s -> "니쁠".equals(s.categorySmall())).count());
-        VendorProductSet n = byCode(sets, "43u94p65");
+        VendorProductSet n = byCode(sets, code("수전부속.니쁠.65"));
         assertEquals(price("VendorB2026FittingCatalogSheetTest.니쁠_부표는_다른_컬럼_배치로_읽고_규격은_specs로_간다"), n.setPrice(), "D열을 단가로 읽어야 한다");
         assertEquals("65mm", n.main().specs(), "규격은 specs (R7 ③)");
     }
@@ -78,10 +79,10 @@ class VendorB2026FittingCatalogSheetTest {
     void 비고는_내용별로_갈라지고_매입처는_버린다() {
         List<VendorProductSet> sets = parse();
 
-        assertEquals("재고 소진 후 단종", byCode(sets, "43u9113").main().remark());
-        assertEquals("3기능", byCode(sets, "43u9310n").main().description());
+        assertEquals("재고 소진 후 단종", byCode(sets, code("수전부속.단종")).main().remark());
+        assertEquals("3기능", byCode(sets, code("수전부속.스프레이건")).main().description());
         // H=한양(매입처)은 저장하지 않는다 (R7 ④).
-        VendorProductSet hanyang = byCode(sets, "43u0520cr");
+        VendorProductSet hanyang = byCode(sets, code("수전부속.조단위"));
         assertNull(hanyang.main().description());
         assertNull(hanyang.main().remark());
     }
@@ -89,7 +90,7 @@ class VendorB2026FittingCatalogSheetTest {
     @Test
     void 대문자_전산코드도_소문자로_모은다() {
         // 57행 C열은 43U9113 — 같은 코드가 대소문자만 다르게 들어오는 오타를 흡수한다(구본 P9).
-        assertNotNull(byCode(parse(), "43u9113"));
+        assertNotNull(byCode(parse(), code("수전부속.단종")));
     }
 
     @Test
