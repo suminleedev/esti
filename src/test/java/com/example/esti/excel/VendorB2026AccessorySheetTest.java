@@ -8,6 +8,7 @@ import java.util.List;
 
 import static com.example.esti.support.TestSamples.requireSample;
 import static org.junit.jupiter.api.Assertions.*;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * T4 검증 — 최신본(2026) 액세사리류 시트.
@@ -38,7 +39,7 @@ class VendorB2026AccessorySheetTest {
         List<VendorProductSet> sets = parse();
         VendorProductSet s = byCode(sets, "AC8100");
 
-        assertEquals(new BigDecimal("<PRICE>"), s.setPrice());
+        assertEquals(price("VendorB2026AccessorySheetTest.세트는_규격SET으로_판정한다"), s.setPrice());
         assertEquals(List.of("수건걸이", "휴지걸이", "컵대", "비누대"),
                 s.parts().stream().map(VendorParsedItem::productName).toList());
         assertEquals("AC8100_AC8101", s.parts().get(0).productCode());
@@ -71,14 +72,14 @@ class VendorB2026AccessorySheetTest {
         // 빠진 옷걸이는 유실되지 않고 단일품으로 남는다.
         VendorProductSet coat = byCode(sets, "AC8305G");
         assertTrue(coat.parts().isEmpty());
-        assertEquals(new BigDecimal("<PRICE>"), coat.setPrice());
+        assertEquals(price("VendorB2026AccessorySheetTest.세트_구성은_선언된_품수만큼만_묶는다"), coat.setPrice());
     }
 
     @Test
     void 품수는_5품_세트도_읽는다() {
         VendorProductSet s = byCode(parse(), "AC1100");
         assertEquals(5, s.parts().size());
-        assertEquals(new BigDecimal("<PRICE>"), s.setPrice());
+        assertEquals(price("VendorB2026AccessorySheetTest.품수는_5품_세트도_읽는다"), s.setPrice());
     }
 
     @Test

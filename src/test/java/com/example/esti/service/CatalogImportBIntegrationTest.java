@@ -16,6 +16,7 @@ import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static com.example.esti.support.TestSamples.requireSample;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * P4 검증: B사 샘플을 실제 DB(인메모리 Derby)에 적재 → 대표품목/부속/관계/가격이 들어가고,
@@ -64,7 +65,7 @@ class CatalogImportBIntegrationTest {
                 .as("MC921 부속 관계 3건").hasSize(3);
         assertThat(priceRepository.findByVendorAndVendorProductAndProposalItemCode(b, mc921, "MC921"))
                 .get()
-                .satisfies(p -> assertThat(p.getUnitPrice()).isEqualByComparingTo(new BigDecimal("<PRICE>")));
+                .satisfies(p -> assertThat(p.getUnitPrice()).isEqualByComparingTo(price("CatalogImportBIntegrationTest.B사_적재_후_관계_가격_저장되고_재업로드는_멱등")));
         // 임베디드 이미지 연결(D15)
         assertThat(mc921.getImageUrl()).as("MC921 이미지 연결")
                 .isNotNull().startsWith("/uploads/product-images/");
@@ -75,11 +76,11 @@ class CatalogImportBIntegrationTest {
         assertThat(priceRepository
                 .findByVendorAndVendorProductAndProposalItemCodeAndPriceBasis(b, g0110, "G-0110", "수전금구"))
                 .as("수입 부속 기준 대리점가").get()
-                .satisfies(p -> assertThat(p.getUnitPrice()).isEqualByComparingTo(new BigDecimal("<PRICE>")));
+                .satisfies(p -> assertThat(p.getUnitPrice()).isEqualByComparingTo(price("CatalogImportBIntegrationTest.B사_적재_후_관계_가격_저장되고_재업로드는_멱등.2")));
         assertThat(priceRepository
                 .findByVendorAndVendorProductAndProposalItemCodeAndPriceBasis(b, g0110, "G-0110", "수전금구(국산 부속 기준)"))
                 .as("국산 부속 기준 소계").get()
-                .satisfies(p -> assertThat(p.getUnitPrice()).isEqualByComparingTo(new BigDecimal("<PRICE>")));
+                .satisfies(p -> assertThat(p.getUnitPrice()).isEqualByComparingTo(price("CatalogImportBIntegrationTest.B사_적재_후_관계_가격_저장되고_재업로드는_멱등.3")));
 
         // 3) 재업로드 → 멱등(행 수 불변)
         int sets2 = service.importVendorCatalog("B", SAMPLE);

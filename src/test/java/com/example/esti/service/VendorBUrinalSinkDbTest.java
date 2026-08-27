@@ -7,6 +7,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * 소변기·수채 시트 <b>DB 적재</b> 검증(기존 ij 삭제 → 재기동 → DBeaver 수동확인을 대체).
@@ -50,7 +51,7 @@ class VendorBUrinalSinkDbTest extends AbstractVendorBSheetDbVerification {
     @Test
     void 소변기_U135_스퍼드_후렌지_세트가95500() {
         VendorProduct u135 = dbSetProduct(URINAL, "U135");
-        assertThat(dbSetPrice(URINAL, u135)).isEqualByComparingTo(new BigDecimal("<PRICE>"));
+        assertThat(dbSetPrice(URINAL, u135)).isEqualByComparingTo(price("VendorBUrinalSinkDbTest.소변기_U135_스퍼드_후렌지_세트가95500"));
         assertThat(dbPartsOf(u135)).extracting(VendorProduct::getProductName)
                 .contains("스퍼드", "후렌지");
     }
@@ -58,10 +59,10 @@ class VendorBUrinalSinkDbTest extends AbstractVendorBSheetDbVerification {
     @Test
     void req2_수채_SS131_수채가랑_수채트랩_세트가122000_소변기슬롯_오염없음() {
         VendorProduct ss131 = dbSetProduct(SINK, "SS131");
-        assertThat(dbSetPrice(SINK, ss131)).isEqualByComparingTo(new BigDecimal("<PRICE>"));
+        assertThat(dbSetPrice(SINK, ss131)).isEqualByComparingTo(price("VendorBUrinalSinkDbTest.req2_수채_SS131_수채가랑_수채트랩_세트가122000_소변기슬롯_오염없음"));
 
-        assertThat(dbPartPrice(dbPart(ss131, "수채가랑"))).isEqualByComparingTo(new BigDecimal("<PRICE>"));
-        assertThat(dbPartPrice(dbPart(ss131, "수채트랩"))).isEqualByComparingTo(new BigDecimal("<PRICE>"));
+        assertThat(dbPartPrice(dbPart(ss131, "수채가랑"))).isEqualByComparingTo(price("VendorBUrinalSinkDbTest.req2_수채_SS131_수채가랑_수채트랩_세트가122000_소변기슬롯_오염없음.2"));
+        assertThat(dbPartPrice(dbPart(ss131, "수채트랩"))).isEqualByComparingTo(price("VendorBUrinalSinkDbTest.req2_수채_SS131_수채가랑_수채트랩_세트가122000_소변기슬롯_오염없음.3"));
         assertThat(dbPartsOf(ss131)).extracting(VendorProduct::getProductName)
                 .doesNotContain("스퍼드", "후렌지");
 

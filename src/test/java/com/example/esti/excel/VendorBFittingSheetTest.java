@@ -8,6 +8,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static com.example.esti.support.TestSamples.requireSample;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * 수전부속 3-시트 전용 검증(§11): parseBreakdownSheet / parseFittingSetSheet / parseFittingPriceSheet.
@@ -64,17 +65,17 @@ class VendorBFittingSheetTest {
         VendorProductSet g0130 = one(sets, "G-0130", "분계표");
         assertEquals("수전금구", g0130.categoryLarge());
         assertEquals("G-01", g0130.categorySmall());
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(g0130.setPrice()), "대리점가=49800");
+        assertEquals(0, price("VendorBFittingSheetTest.분계표_품번정규화_수전금구병합_basis분리").compareTo(g0130.setPrice()), "대리점가=49800");
 
         // 부속 = {품번}_{전산코드} 프리픽스(P2), 출처 categorySmall=분계
         assertEquals(4, g0130.parts().size(), "몸체+편심+메탈호스+샤워헤드");
         VendorParsedItem body = part(g0130, "G-0130_46dsg0130n");
         assertEquals("몸체", body.productName());
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(body.unitPrice()));
+        assertEquals(0, price("VendorBFittingSheetTest.분계표_품번정규화_수전금구병합_basis분리.2").compareTo(body.unitPrice()));
         assertTrue(g0130.parts().stream().allMatch(p -> "분계".equals(p.categorySmall())), "부속 출처=분계");
 
         // "T0130"(무구분형) → T-0130 정규화, "G-0121"(하이픈형) 유지
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(one(sets, "T-0130", "분계표").setPrice()));
+        assertEquals(0, price("VendorBFittingSheetTest.T-0130").compareTo(one(sets, "T-0130", "분계표").setPrice()));
         assertEquals(1, byCode(sets, "G-0121").stream().filter(s -> "분계표".equals(s.priceBasis())).count());
     }
 
@@ -85,7 +86,7 @@ class VendorBFittingSheetTest {
         List<VendorProductSet> s0346 = byCode(sets, "S-0346");
         assertEquals(1, s0346.size(), "첫 블록만 적재");
         assertTrue(s0346.get(0).needsReview(), "중복 품번 → 검수필요");
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(s0346.get(0).setPrice()));
+        assertEquals(0, price("VendorBFittingSheetTest.분계표_중복품번_S0346은_첫블록만_검수필요").compareTo(s0346.get(0).setPrice()));
     }
 
     @Test
@@ -107,14 +108,14 @@ class VendorBFittingSheetTest {
         // U9013c/h + 소계 10000 → 합성 세트 U9013(main) + 부속 U9013_c/h(P6)
         VendorProductSet u9013 = one(sets, "U9013", SET_BASIS);
         assertEquals("수전부속", u9013.categoryLarge());
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(u9013.setPrice()), "세트가=소계");
+        assertEquals(0, price("VendorBFittingSheetTest.세트시트_냉온소계는_합성세트_품번생성").compareTo(u9013.setPrice()), "세트가=소계");
         assertEquals(2, u9013.parts().size());
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(part(u9013, "U9013_c").unitPrice()));
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(part(u9013, "U9013_h").unitPrice()));
+        assertEquals(0, price("VendorBFittingSheetTest.U9013_c").compareTo(part(u9013, "U9013_c").unitPrice()));
+        assertEquals(0, price("VendorBFittingSheetTest.U9013_h").compareTo(part(u9013, "U9013_h").unitPrice()));
 
         // 제품코드 없는 신형(U9015MC/MH)도 품번만으로 합성 세트 생성
         VendorProductSet u9015m = one(sets, "U9015M", SET_BASIS);
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(u9015m.setPrice()));
+        assertEquals(0, price("VendorBFittingSheetTest.세트시트_냉온소계는_합성세트_품번생성.2").compareTo(u9015m.setPrice()));
     }
 
     @Test
@@ -122,13 +123,13 @@ class VendorBFittingSheetTest {
         List<VendorProductSet> sets = parseFixture();
         // U9510 = <CODE> + <CODE> + <CODE> + <CODE> (P7)
         VendorProductSet u9510 = one(sets, "U9510", SET_BASIS);
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(u9510.setPrice()));
+        assertEquals(0, price("VendorBFittingSheetTest.세트시트_조합행은_구성부속과_함께_세트화").compareTo(u9510.setPrice()));
         assertEquals(4, u9510.parts().size());
         assertNotNull(part(u9510, "U9510_<CODE>"));
 
         // U9310(건+행거)도 조합 → main=U9310(5000) + 부속 2건. 단가표의 건 단품(4500)과 basis로 분리 보존
         VendorProductSet u9310 = one(sets, "U9310", SET_BASIS);
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(u9310.setPrice()));
+        assertEquals(0, price("VendorBFittingSheetTest.세트시트_조합행은_구성부속과_함께_세트화.2").compareTo(u9310.setPrice()));
         assertEquals(2, u9310.parts().size());
     }
 
@@ -139,19 +140,19 @@ class VendorBFittingSheetTest {
         // 조합행에는 세트가만 있다. 구성 단가는 단품 행·부속 단가표에서 전산코드로 찾아온다(후속 ②).
         // U9510 <PRICE> = <CODE> <PRICE> + <CODE> <PRICE> + <CODE> <PRICE> + <CODE> 500
         VendorProductSet u9510 = one(sets, "U9510", SET_BASIS);
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(part(u9510, "U9510_<CODE>").unitPrice()));
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(part(u9510, "U9510_<CODE>").unitPrice()));
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(part(u9510, "U9510_<CODE>").unitPrice()));
+        assertEquals(0, price("VendorBFittingSheetTest.U9510_<CODE>").compareTo(part(u9510, "U9510_<CODE>").unitPrice()));
+        assertEquals(0, price("VendorBFittingSheetTest.U9510_<CODE>").compareTo(part(u9510, "U9510_<CODE>").unitPrice()));
+        assertEquals(0, price("VendorBFittingSheetTest.U9510_<CODE>").compareTo(part(u9510, "U9510_<CODE>").unitPrice()));
         // <CODE>은 부속 단가표에만 있다(<PRICE>). 같은 품번 U9310이 세트 시트에서는 행거 포함 <PRICE>이라
         // 세트 시트 값을 쓰면 안 된다 — 부속 단가표가 이겨야 한다.
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(part(u9510, "U9510_<CODE>").unitPrice()));
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(partsSum(u9510)), "부속 합 = 세트가");
+        assertEquals(0, price("VendorBFittingSheetTest.U9510_<CODE>").compareTo(part(u9510, "U9510_<CODE>").unitPrice()));
+        assertEquals(0, price("VendorBFittingSheetTest.조합행_부속단가는_전산코드로_해석된다").compareTo(partsSum(u9510)), "부속 합 = 세트가");
 
         // 나머지 완전 해석 건: 부속 합이 세트가와 1원 단위까지 맞는다.
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(partsSum(one(sets, "U9520", SET_BASIS))));
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(partsSum(one(sets, "U9540", SET_BASIS))));
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(partsSum(one(sets, "U9310", SET_BASIS))));
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(partsSum(one(sets, "U9320", SET_BASIS))));
+        assertEquals(0, price("VendorBFittingSheetTest.U9520").compareTo(partsSum(one(sets, "U9520", SET_BASIS))));
+        assertEquals(0, price("VendorBFittingSheetTest.U9540").compareTo(partsSum(one(sets, "U9540", SET_BASIS))));
+        assertEquals(0, price("VendorBFittingSheetTest.U9310").compareTo(partsSum(one(sets, "U9310", SET_BASIS))));
+        assertEquals(0, price("VendorBFittingSheetTest.U9320").compareTo(partsSum(one(sets, "U9320", SET_BASIS))));
     }
 
     /**
@@ -170,9 +171,9 @@ class VendorBFittingSheetTest {
         // U9530: <PRICE> + <PRICE> + <PRICE> + 500 = <PRICE> (한글 '니쁠' <PRICE> 미상)
         VendorProductSet u9530 = one(sets, "U9530", SET_BASIS);
         assertEquals(0, BigDecimal.ZERO.compareTo(part(u9530, "U9530_니쁠").unitPrice()));
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(partsSum(u9530)));
+        assertEquals(0, price("VendorBFittingSheetTest.조합행_원본에_단가없는_구성은_0으로_남는다").compareTo(partsSum(u9530)));
         // U9550: <PRICE> + <PRICE> = <PRICE> (건·행거 <PRICE> 미상)
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(partsSum(one(sets, "U9550", SET_BASIS))));
+        assertEquals(0, price("VendorBFittingSheetTest.U9550").compareTo(partsSum(one(sets, "U9550", SET_BASIS))));
     }
 
     private BigDecimal partsSum(VendorProductSet set) {
@@ -185,9 +186,9 @@ class VendorBFittingSheetTest {
     void 세트시트_단품_품번정규화와_제품코드폴백() {
         List<VendorProductSet> sets = parseFixture();
         // OEM 하이픈·소문자 품번 정규화(P9): U-9110150a → U9110150A
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(one(sets, "U9110150A", SET_BASIS).setPrice()));
+        assertEquals(0, price("VendorBFittingSheetTest.U9110150A").compareTo(one(sets, "U9110150A", SET_BASIS).setPrice()));
         // 품번패턴 아님("1.5m(OEM)") → 제품코드 폴백(P8). 단 품번 매핑이 있는 <CODE>은 U04110으로(P14 병합)
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(one(sets, "U04110", SET_BASIS).setPrice()));
+        assertEquals(0, price("VendorBFittingSheetTest.U04110").compareTo(one(sets, "U04110", SET_BASIS).setPrice()));
         // 가격 없는 행은 0 + "(가격없음)" 표기(D8)
         VendorProductSet pipe = one(sets, "43u91p300", SET_BASIS);
         assertEquals(0, BigDecimal.ZERO.compareTo(pipe.setPrice()));
@@ -202,14 +203,14 @@ class VendorBFittingSheetTest {
         VendorProductSet u9111 = one(sets, "U9111", PRICE_BASIS);
         assertEquals("수전부속", u9111.categoryLarge());
         assertEquals("수동폽업", u9111.categorySmall());
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(u9111.setPrice()));
+        assertEquals(0, price("VendorBFittingSheetTest.단가표_단품과_품번재사용_전산코드폴백").compareTo(u9111.setPrice()));
 
         // U9310이 건(<CODE>)·행거(<CODE>) 두 행에 재사용 → 행거는 전산코드 폴백(P8)
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(one(sets, "U9310", PRICE_BASIS).setPrice()));
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(one(sets, "<CODE>", PRICE_BASIS).setPrice()));
+        assertEquals(0, price("VendorBFittingSheetTest.U9310.2").compareTo(one(sets, "U9310", PRICE_BASIS).setPrice()));
+        assertEquals(0, price("VendorBFittingSheetTest.<CODE>").compareTo(one(sets, "<CODE>", PRICE_BASIS).setPrice()));
 
         // 니쁠 꼬리 블록(품번 없음 → 전산코드, P8)
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(one(sets, "<CODE>", PRICE_BASIS).setPrice()));
+        assertEquals(0, price("VendorBFittingSheetTest.<CODE>").compareTo(one(sets, "<CODE>", PRICE_BASIS).setPrice()));
     }
 
     // ===== C-2 비고 내용별 분류 (규격=specs / 상태=remark / 속성=description / 매입처=미저장) =====
@@ -265,13 +266,13 @@ class VendorBFittingSheetTest {
         VendorProductSet valve = one(sets, "U942245", OEM_BASIS);
         assertEquals("수전부속", valve.categoryLarge());
         assertEquals("일체형 앵글밸브", valve.categorySmall(), "소분류=품명 괄호 앞(P15)");
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(valve.setPrice()));
+        assertEquals(0, price("VendorBFittingSheetTest.OEM단가표_품번정규화_소분류유도_비고보존").compareTo(valve.setPrice()));
         assertEquals("1차 입고분", valve.main().remark(), "비고 보존(R7 잠정)");
         assertFalse(valve.needsReview());
 
         // 단종 10종도 적재 + 비고 '단종' 보존(P16)
         VendorProductSet trap = one(sets, "U9240D", OEM_BASIS);
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(trap.setPrice()));
+        assertEquals(0, price("VendorBFittingSheetTest.OEM단가표_품번정규화_소분류유도_비고보존.2").compareTo(trap.setPrice()));
         assertEquals("단종", trap.main().remark());
     }
 
@@ -280,7 +281,7 @@ class VendorBFittingSheetTest {
         List<VendorProductSet> sets = parseOemFixture().stream()
                 .filter(s -> OEM_BASIS.equals(s.priceBasis())).toList();
         assertEquals(21, sets.size(), "항목 21종(하단 조합 예시 6행 스킵, P16)");
-        assertTrue(sets.stream().noneMatch(s -> s.setPrice().compareTo(new BigDecimal("<PRICE>")) == 0),
+        assertTrue(sets.stream().noneMatch(s -> s.setPrice().compareTo(price("VendorBFittingSheetTest.OEM단가표_21종적재_조합예시스킵_검수플래그없음")) == 0),
                 "조합 예시(<PRICE> 등) 미적재");
         // 코드 엇갈림 2종은 세트 시트 폴백을 품번으로 매핑해 병합(P14 병합 결정) → 검수플래그 없음
         assertTrue(sets.stream().noneMatch(VendorProductSet::needsReview));
@@ -290,7 +291,7 @@ class VendorBFittingSheetTest {
     void P14병합_세트시트_폴백행도_품번코드로_적재된다() {
         List<VendorProductSet> sets = parseFixture();
         // 종전 <CODE>/<CODE>(전산코드 폴백) → U04110/U944265(품번) — OEM 시트 행과 upsert 자연 병합
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(one(sets, "U04110", SET_BASIS).setPrice()));
+        assertEquals(0, price("VendorBFittingSheetTest.U04110.2").compareTo(one(sets, "U04110", SET_BASIS).setPrice()));
         assertNotNull(one(sets, "U944265", SET_BASIS));
         assertTrue(byCode(sets, "<CODE>").isEmpty(), "구 전산코드 폴백행 잔존 없음");
         assertTrue(byCode(sets, "<CODE>").isEmpty());

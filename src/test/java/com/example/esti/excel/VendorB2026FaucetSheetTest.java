@@ -9,6 +9,7 @@ import java.util.Map;
 
 import static com.example.esti.support.TestSamples.requireSample;
 import static org.junit.jupiter.api.Assertions.*;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * T6 검증 — 최신본(2026) 수전금구류 시트.
@@ -60,7 +61,7 @@ class VendorB2026FaucetSheetTest {
         VendorProductSet s = byCode(parse(), "G-0110");
 
         assertEquals("46dsg0110", s.main().subItemCode());
-        assertEquals(new BigDecimal("<PRICE>"), s.setPrice());
+        assertEquals(price("VendorB2026FaucetSheetTest.전산코드를_보조품번으로_보존한다"), s.setPrice());
         assertEquals("G-01", s.categorySmall(), "소분류 = 시리즈(병합셀 이어쓰기)");
         assertEquals("수전금구", s.categoryLarge());
     }
@@ -70,8 +71,8 @@ class VendorB2026FaucetSheetTest {
         // K-0310B는 제조사가 바뀌며 같은 품번으로 두 벌이 실렸다(46drk / 46kfk). 단가도 다르다.
         List<VendorProductSet> sets = parse();
 
-        assertEquals(new BigDecimal("<PRICE>"), byCode(sets, "K-0310B-46drk0310b").setPrice());
-        assertEquals(new BigDecimal("<PRICE>"), byCode(sets, "K-0310B-46kfk0310b").setPrice());
+        assertEquals(price("VendorB2026FaucetSheetTest.K-0310B-46drk0310b"), byCode(sets, "K-0310B-46drk0310b").setPrice());
+        assertEquals(price("VendorB2026FaucetSheetTest.K-0310B-46kfk0310b"), byCode(sets, "K-0310B-46kfk0310b").setPrice());
         assertEquals("소진 후 단종(제조사 변경)", byCode(sets, "K-0310B-46drk0310b").main().remark());
     }
 

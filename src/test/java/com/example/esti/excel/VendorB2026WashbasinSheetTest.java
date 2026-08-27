@@ -8,6 +8,7 @@ import java.util.List;
 
 import static com.example.esti.support.TestSamples.requireSample;
 import static org.junit.jupiter.api.Assertions.*;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * T2 검증 — 최신본(2026) 세면기 시트.
@@ -45,8 +46,8 @@ class VendorB2026WashbasinSheetTest {
 
         // 계(101100) = 도기 64100 + 반다리 32600 + 하프고리 2400 + 앙카볼트 2000.
         // 대체 도기(64100)와 긴다리(47300)는 빠진다 — 구성합 212500과 다른 게 정상이다.
-        assertEquals(new BigDecimal("<PRICE>"), s.setPrice());
-        assertEquals(new BigDecimal("<PRICE>"), sumOf(s));
+        assertEquals(price("VendorB2026WashbasinSheetTest.세트가는_구성합이_아니라_기본_조합가다"), s.setPrice());
+        assertEquals(price("VendorB2026WashbasinSheetTest.세트가는_구성합이_아니라_기본_조합가다.2"), sumOf(s));
         assertEquals(6, s.parts().size(), "택일 항목도 전부 구성으로 보존한다");
         assertEquals("도기", s.parts().get(0).productName());
         assertEquals(VendorParsedItem.RELATION_MAIN, s.parts().get(0).relationType());
@@ -60,7 +61,7 @@ class VendorB2026WashbasinSheetTest {
 
         assertEquals(List.of("도기", "도기(비누대+독립폽업)", "반다리", "긴다리", "하프고리", "앙카볼트"),
                 s.parts().stream().map(VendorParsedItem::productName).toList());
-        assertEquals(new BigDecimal("<PRICE>"), s.setPrice(), "세트가는 시작 행의 計만 쓴다");
+        assertEquals(price("VendorB2026WashbasinSheetTest.세트_중간의_計는_다른_조합가라_세트를_끊지_않는다"), s.setPrice(), "세트가는 시작 행의 計만 쓴다");
     }
 
     @Test
@@ -70,7 +71,7 @@ class VendorB2026WashbasinSheetTest {
         List<String> names = s.parts().stream().map(VendorParsedItem::productName).toList();
         assertEquals(List.of("도기(독립폽업)", "도기(103비누대)", "도기(103/102비누대)",
                 "비누대(SP103)", "비누대"), names);
-        assertEquals(new BigDecimal("<PRICE>"), s.setPrice(), "기본 조합 = 도기 단독");
+        assertEquals(price("VendorB2026WashbasinSheetTest.도기_변형이_여러_개면_전부_구성으로_남는다"), s.setPrice(), "기본 조합 = 도기 단독");
         // 대체 도기의 G열 코드는 그 구성행의 description으로 보존한다.
         assertEquals("대체코드: 33553anbnwt", s.parts().get(1).description());
     }
@@ -113,7 +114,7 @@ class VendorB2026WashbasinSheetTest {
         VendorProductSet last = byCode(sets, "L953-2");
         assertTrue(last.parts().stream().noneMatch(p -> "브라켓".equals(p.productName())),
                 "부록표 항목이 직전 세트의 부속으로 붙으면 안 된다");
-        assertEquals(new BigDecimal("<PRICE>"), last.setPrice());
+        assertEquals(price("VendorB2026WashbasinSheetTest.시트_하단_부속_부록표는_적재되지_않는다"), last.setPrice());
     }
 
     @Test
@@ -121,9 +122,9 @@ class VendorB2026WashbasinSheetTest {
         List<VendorProductSet> sets = parse();
 
         // IL672는 클레이탄·롱하우·독립폽업 3종으로 세 번 나온다.
-        assertEquals(new BigDecimal("<PRICE>"), byCode(sets, "IL672").setPrice());
-        assertEquals(new BigDecimal("<PRICE>"), byCode(sets, "IL672-2").setPrice());
-        assertEquals(new BigDecimal("<PRICE>"), byCode(sets, "IL672-3").setPrice());
+        assertEquals(price("VendorB2026WashbasinSheetTest.IL672"), byCode(sets, "IL672").setPrice());
+        assertEquals(price("VendorB2026WashbasinSheetTest.IL672-2"), byCode(sets, "IL672-2").setPrice());
+        assertEquals(price("VendorB2026WashbasinSheetTest.IL672-3"), byCode(sets, "IL672-3").setPrice());
     }
 
     @Test

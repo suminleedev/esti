@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * 갈라시아 시트 <b>DB 적재</b> 검증. 파싱 정확성은 {@code VendorBGalaxiaSheetTest},
@@ -41,7 +42,7 @@ class VendorBGalaxiaDbTest extends AbstractVendorBSheetDbVerification {
     @Test
     void 세트가_도기부속합_430000() {
         VendorProduct art = dbSetProduct(CAT, "art6103");
-        assertThat(dbSetPriceByBasis(art, BASIS)).isEqualByComparingTo(new BigDecimal("<PRICE>"));
+        assertThat(dbSetPriceByBasis(art, BASIS)).isEqualByComparingTo(price("VendorBGalaxiaDbTest.세트가_도기부속합_430000"));
         assertThat(dbPartsOf(art)).hasSize(2);
     }
 }

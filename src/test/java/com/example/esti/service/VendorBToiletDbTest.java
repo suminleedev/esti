@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * 양변기 시트 <b>DB 적재</b> 검증(기존 ij 삭제 → 재기동 → DBeaver 수동확인을 대체).
@@ -24,7 +25,7 @@ class VendorBToiletDbTest extends AbstractVendorBSheetDbVerification {
     @Test
     void MC921_도기_FV_스퍼드_3부속_세트가77200() {
         VendorProduct mc921 = dbSetProduct(CAT, "MC921");
-        assertThat(dbSetPrice(CAT, mc921)).isEqualByComparingTo(new BigDecimal("<PRICE>"));
+        assertThat(dbSetPrice(CAT, mc921)).isEqualByComparingTo(price("VendorBToiletDbTest.MC921_도기_FV_스퍼드_3부속_세트가77200"));
         assertThat(dbPartsOf(mc921)).extracting(VendorProduct::getProductName)
                 .contains("F/V", "스퍼드");
         assertThat(dbPartsOf(mc921)).hasSize(3);
@@ -34,7 +35,7 @@ class VendorBToiletDbTest extends AbstractVendorBSheetDbVerification {
     void C752_투피스_세트가가_부속합과_일치() {
         VendorProduct c752 = dbSetProduct(CAT, "C752");
         BigDecimal setPrice = dbSetPrice(CAT, c752);
-        assertThat(setPrice).isEqualByComparingTo(new BigDecimal("<PRICE>"));
+        assertThat(setPrice).isEqualByComparingTo(price("VendorBToiletDbTest.C752_투피스_세트가가_부속합과_일치"));
 
         BigDecimal partSum = dbPartsOf(c752).stream()
                 .map(this::dbPartPrice)

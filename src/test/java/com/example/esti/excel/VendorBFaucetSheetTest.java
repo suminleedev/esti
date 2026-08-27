@@ -8,6 +8,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static com.example.esti.support.TestSamples.requireSample;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * 수전금구 3-시트 전용 검증(parseFaucetGeneralSheet / parseFaucetPartsSheet).
@@ -73,22 +74,22 @@ class VendorBFaucetSheetTest {
     void 일반시트_본품은_부속없이_대리점가만() {
         VendorProductSet gen = byCode(faucetByBasis("수전금구"), "G-0110");
         assertEquals(0, gen.parts().size(), "일반=본품 1건(부속 없음)");
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(gen.setPrice()), "본품 대리점가 31000");
+        assertEquals(0, price("VendorBFaucetSheetTest.일반시트_본품은_부속없이_대리점가만").compareTo(gen.setPrice()), "본품 대리점가 31000");
     }
 
     @Test
     void 국산세트_소계가_본품_부속합이고_부속출처는_국산() {
         VendorProductSet kor = byCode(faucetByBasis(KOR), "G-0110");
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(kor.setPrice()), "국산 소계=세트가");
+        assertEquals(0, price("VendorBFaucetSheetTest.국산세트_소계가_본품_부속합이고_부속출처는_국산").compareTo(kor.setPrice()), "국산 소계=세트가");
 
         // 본품 31000 + 부속 합(8800+8000+3300+3300=23400) = 54400
         BigDecimal partSum = kor.parts().stream().map(VendorParsedItem::unitPrice)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        assertEquals(0, new BigDecimal("<PRICE>").add(partSum).compareTo(kor.setPrice()), "본품+부속=소계");
+        assertEquals(0, price("VendorBFaucetSheetTest.국산세트_소계가_본품_부속합이고_부속출처는_국산.2").add(partSum).compareTo(kor.setPrice()), "본품+부속=소계");
 
         assertEquals(4, kor.parts().size());
         assertTrue(kor.parts().stream().allMatch(p -> "국산".equals(p.categorySmall())), "부속 출처=국산");
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(part(kor, "폽업").unitPrice()));
+        assertEquals(0, price("VendorBFaucetSheetTest.국산세트_소계가_본품_부속합이고_부속출처는_국산.3").compareTo(part(kor, "폽업").unitPrice()));
     }
 
     @Test
@@ -127,7 +128,7 @@ class VendorBFaucetSheetTest {
         // G-0510은 시리즈 병합(A147:A151)이 한 행 늦게 시작해 본품 A가 빔 → 정상 적재
         VendorProductSet g0510 = byCode(oem, "G-0510");
         assertEquals("원홀 세면기 수전", g0510.main().productName());
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(g0510.setPrice()), "소계=세트가");
+        assertEquals(0, price("VendorBFaucetSheetTest.OEM_시리즈_병합으로_A가_빈_본품도_유실없이_적재").compareTo(g0510.setPrice()), "소계=세트가");
     }
 
     @Test
@@ -152,7 +153,7 @@ class VendorBFaucetSheetTest {
     void OEM_소계가_빈_S0146은_본품단가로_폴백() {
         // S 0146(단종)은 소계 G가 비어 세트가를 못 만들던 유일 케이스 → 본품 단가(윗 셀 <PRICE>)로 폴백(D2).
         VendorProductSet s0146 = byCode(oemSets(), "S 0146");
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(s0146.setPrice()), "소계 누락 → 본품 단가 폴백");
+        assertEquals(0, price("VendorBFaucetSheetTest.OEM_소계가_빈_S0146은_본품단가로_폴백").compareTo(s0146.setPrice()), "소계 누락 → 본품 단가 폴백");
         assertEquals("단종", s0146.main().remark());
     }
 

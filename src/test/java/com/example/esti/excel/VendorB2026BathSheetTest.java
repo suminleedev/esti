@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 
 import static com.example.esti.support.TestSamples.requireSample;
 import static org.junit.jupiter.api.Assertions.*;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * T8 검증 — 최신본(2026) 바스 4시트(직영). 최신본에서 새로 생긴 카테고리다.
@@ -53,7 +54,7 @@ class VendorB2026BathSheetTest {
     void 판매점_단가만_저장한다() {
         // 선반 5행: 판매점 <PRICE> / 인테리어 <PRICE> / 소비자 <PRICE>
         VendorProductSet s = byCode(parse(), "<CODE>");
-        assertEquals(new BigDecimal("<PRICE>"), s.setPrice());
+        assertEquals(price("VendorB2026BathSheetTest.판매점_단가만_저장한다"), s.setPrice());
     }
 
     @Test
@@ -62,7 +63,7 @@ class VendorB2026BathSheetTest {
         VendorProductSet s = byCode(parse(), "<CODE>");
 
         assertEquals("천정재 메인판(평판/1300*1750)-거광이앤지", s.main().productName());
-        assertEquals(new BigDecimal("<PRICE>"), s.setPrice());
+        assertEquals(price("VendorB2026BathSheetTest.이미지_컬럼이_없는_천정재도_한_칸_밀려_읽힌다"), s.setPrice());
         assertEquals("평판/1300*1750", s.main().specs());
         assertEquals("천정재", s.categorySmall());
     }
