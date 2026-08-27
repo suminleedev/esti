@@ -108,7 +108,7 @@ class VendorB2026SheetFamilyTest {
                 Map.entry("액세사리류", 175L),  // T4
                 Map.entry("부속류", 124L),      // T5
                 Map.entry("수전금구류", 264L),  // T6
-                Map.entry("바스 선반(직영)", 18L),          // T8
+                Map.entry("바스 선반(직영)", 14L),          // T8
                 Map.entry("바스 파티션,욕조(직영)", 10L),
                 Map.entry("바스 천정재(직영)", 7L),
                 Map.entry("바스 욕실장,거울(직영)", 35L)

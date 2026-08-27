@@ -45,7 +45,7 @@ class CatalogImport2026IntegrationTest {
         requireSample(BOOK);
 
         int sets1 = service.importVendorCatalog("B", BOOK);
-        assertThat(sets1).as("파싱된 세트/제품 수").isEqualTo(767);
+        assertThat(sets1).as("파싱된 세트/제품 수").isEqualTo(763); // §8 잔여 ⑦로 바스 중복 4건 제외
 
         long products1 = productRepository.count();
         long prices1 = priceRepository.count();

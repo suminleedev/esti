@@ -40,8 +40,9 @@ class VendorB2026BathSheetTest {
         List<VendorProductSet> sets = parse();
 
         assertTrue(sets.stream().allMatch(s -> "바스".equals(s.categoryLarge())));
+        // 선반은 원본 18행이지만 4건이 액세사리류와 중복이라 여기서 빠진다(§8 잔여 ⑦, 액세사리류가 정본)
         assertEquals(Map.of(
-                "바스 선반(직영)", 18L,
+                "바스 선반(직영)", 14L,
                 "바스 파티션,욕조(직영)", 10L,
                 "바스 천정재(직영)", 7L,
                 "바스 욕실장,거울(직영)", 35L
@@ -95,10 +96,23 @@ class VendorB2026BathSheetTest {
     }
 
     @Test
+    void 액세사리류와_중복인_4건은_바스에서_빠진다() {
+        // 같은 제품이 두 시트에 실려 있는데 코드 축이 달라(액세사리류=품번 AT1322S, 바스=전산코드 45t1322s)
+        // upsert가 병합하지 못하고 대분류만 다른 2건이 생긴다. 액세사리류를 정본으로 삼는다(§8 잔여 ⑦).
+        List<VendorProductSet> sets = parse();
+
+        for (String code : List.of("45t1322s", "45f1421g", "45f1521g", "45f1622g")) {
+            assertTrue(sets.stream().noneMatch(s -> s.main() != null && code.equals(s.main().productCode())),
+                    "액세사리류 정본과 중복 → 바스에서 제외되어야 한다: " + code);
+        }
+    }
+
+    @Test
     void 전체_회귀_기준값() {
         List<VendorProductSet> sets = parse();
 
-        assertEquals(70, sets.size(), "4시트 71행 - 중복 전산코드 1건");
+        // 4시트 71행 - 시트 내 중복 전산코드 1건 - 액세사리류 중복 4건(§8 잔여 ⑦)
+        assertEquals(66, sets.size(), "4시트 71행 - 중복 1건 - 액세사리류 중복 4건");
         assertTrue(sets.stream().allMatch(s -> s.parts().isEmpty()), "부속 없는 단일 제품");
         assertEquals(sets.size(), sets.stream().map(s -> s.main().productCode()).distinct().count());
     }

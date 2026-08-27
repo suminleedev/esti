@@ -32,4 +32,17 @@ public class VendorProductRelation extends BaseEntity {
     // 예: MAIN, ACCESSORY, SEAT_COVER, TANK
     @Column(name = "relation_type", nullable = false, length = 50)
     private String relationType;
+
+    /**
+     * 세트에 들어가는 개수. 기본 1.
+     *
+     * <p>원본은 같은 부속이 2개 들어갈 때 <b>행을 두 번 적는다</b>
+     * (`소변기수채` 시트 54·55행이 둘 다 `수채가량 43bf141 18000`).
+     * 관계 유일키가 {@code (source, target, type)}이라 그대로 두면 한 건으로 접혀 부속 합계가 세트가에 못 미친다.
+     * 중복 행을 세어 여기 담으면 {@code S132E}·{@code L352E}·{@code L352E-2} 3건이 세트가와 정확히 일치한다.
+     * ({@code plan-b-format-2026.md} §8 잔여 ②)
+     */
+    @Column(name = "quantity", nullable = false)
+    @Builder.Default
+    private Integer quantity = 1;
 }

@@ -97,6 +97,7 @@ public class VendorCatalogQueryService {
                 part.getProductName(),
                 relation.getRelationType(),
                 unitPrice,
+                relation.getQuantity() != null ? relation.getQuantity() : 1,
                 part.getImageUrl()
         );
     }
