@@ -4,7 +4,7 @@ import { BASE_URL } from '@/config/api'
 import axios from 'axios'
 
 import { usePagination } from "@/composables/usePagination"
-import Pagination from "@/components/Pagination.vue";
+import AppPagination from "@/components/AppPagination.vue";
 import EmptyState from "@/components/common/EmptyState.vue"
 import { useToast } from "@/composables/useToast"
 import { useConfirm } from "@/composables/useConfirm"
@@ -606,7 +606,8 @@ onMounted(() => {
                         <th style="width:18%">구분</th>
                         <th style="width:22%">품번</th>
                         <th>부속명</th>
-                        <th style="width:16%" class="text-end">단가</th>
+                        <th style="width:8%" class="text-end">수량</th>
+                        <th style="width:16%" class="text-end">금액</th>
                       </tr>
                       </thead>
                       <tbody>
@@ -614,15 +615,25 @@ onMounted(() => {
                         <td><span class="badge text-bg-light">{{ part.relationType }}</span></td>
                         <td>{{ part.productCode ?? '-' }}</td>
                         <td>{{ part.productName }}</td>
+                        <!-- 수량 2 이상은 원본이 같은 부속을 두 행에 적은 것이라 눈에 띄어야 한다(§8 잔여 ②) -->
+                        <td class="text-end" :class="{ 'fw-semibold': (part.quantity ?? 1) > 1 }">
+                          ×{{ part.quantity ?? 1 }}
+                        </td>
                         <td class="text-end">
-                          {{ part.unitPrice != null ? Number(part.unitPrice).toLocaleString() : '-' }}
+                          <template v-if="part.unitPrice != null">
+                            {{ (Number(part.unitPrice) * (part.quantity ?? 1)).toLocaleString() }}
+                            <div v-if="(part.quantity ?? 1) > 1" class="text-muted small">
+                              {{ Number(part.unitPrice).toLocaleString() }} × {{ part.quantity }}
+                            </div>
+                          </template>
+                          <template v-else>-</template>
                         </td>
                       </tr>
                       </tbody>
                       <tfoot>
                       <tr class="border-top">
                         <td colspan="2" class="fw-semibold">부속 합계</td>
-                        <td class="text-muted small">
+                        <td colspan="2" class="text-muted small">
                           세트가 {{ p.unitPrice?.toLocaleString() }}
                           <template v-if="partsStatus(p)">
                             <span
@@ -656,7 +667,7 @@ onMounted(() => {
 
       <div class="card-footer">
         <!-- Pagination -->
-        <Pagination
+        <AppPagination
           :page="page"
           :size="size"
           :totalPages="totalPages"

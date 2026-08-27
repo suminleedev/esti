@@ -10,6 +10,9 @@
 //   - 시트에 따라 부속 목록에 본품이 없다 — 세트가와 비교 대상이 다르다
 //   - 원본에 세트가가 아예 없다(분계표)
 // 이 넷은 "확인 필요"가 아니라 **비교 불가**로 표시해야 실제 오류가 묻히지 않는다.
+//
+// 부속 수량은 `quantity`로 온다(§8 잔여 ② 해소). 원본이 같은 부속을 두 행에 적는 경우가 있어
+// 합계는 반드시 `단가 × 수량`으로 낸다 — 안 그러면 `S132E`·`L352E` 같은 세트가 실제보다 적게 잡힌다.
 
 /** 문자열/숫자/null → 숫자. 변환 불가 시 null. */
 function toNum(v) {
@@ -18,9 +21,15 @@ function toNum(v) {
   return Number.isFinite(n) ? n : null
 }
 
-/** 부속 단가 합. 단가 미상(null)은 0으로 본다. */
+/** 부속 수량. 없거나 이상값이면 1. */
+function qtyOf(part) {
+  const q = toNum(part.quantity)
+  return q != null && q >= 1 ? Math.trunc(q) : 1
+}
+
+/** 부속 금액 합. 단가 미상(null)은 0으로 보고, 수량을 곱한다. */
 export function sumParts(parts) {
-  return (parts ?? []).reduce((sum, part) => sum + (toNum(part.unitPrice) ?? 0), 0)
+  return (parts ?? []).reduce((sum, part) => sum + (toNum(part.unitPrice) ?? 0) * qtyOf(part), 0)
 }
 
 /** 본품 성격의 부속 건수 — MAIN 슬롯 또는 몸체/도기 계열. */
@@ -51,10 +60,16 @@ function declaredPieceCount(productName) {
   return m ? Number(m[1]) : null
 }
 
-/** 차액이 부속 1건의 단가와 정확히 일치하는가 — 택1 옵션이 함께 계상된 신호. */
-function diffMatchesOnePart(parts, diff) {
-  if (diff <= 0) return false
-  return parts.some((part) => toNum(part.unitPrice) === diff)
+/**
+ * 단가가 `amount`와 정확히 일치하는 부속을 찾는다. 없으면 null.
+ *
+ * 차액이 특정 부속 1건의 단가와 딱 맞아떨어지는 것은 우연이 아니라 신호다.
+ * 부호에 따라 뜻이 반대다 — 초과(+)는 택1 옵션이 둘 다 계상된 것이고,
+ * 부족(−)은 그 부속이 세트에 2개 들어가는데 관계가 1건으로 접힌 것이다.
+ */
+function partPricedAt(parts, amount) {
+  if (amount <= 0) return null
+  return parts.find((part) => (toNum(part.unitPrice) ?? 0) * qtyOf(part) === amount) ?? null
 }
 
 /**
@@ -128,13 +143,28 @@ export function partsSumStatus(setPrice, parts, productName) {
     }
   }
 
-  // F. 택1 옵션이 둘 다 계상됐다 — 차액이 부속 1건 단가와 정확히 맞아떨어진다.
-  if (diffMatchesOnePart(list, diff)) {
+  // F. 택1 옵션이 둘 다 계상됐다 — 초과분이 부속 1건 단가와 정확히 맞아떨어진다.
+  const excessPart = partPricedAt(list, diff)
+  if (excessPart) {
     return {
       level: 'info',
       code: 'OPTION_PICK_ONE',
       label: '택1 옵션 포함',
-      detail: '차액이 부속 1건의 단가와 같습니다. 둘 중 하나만 고르는 옵션으로 보입니다.',
+      detail: `차액이 부속 1건(${excessPart.productName})의 단가와 같습니다. 둘 중 하나만 고르는 옵션으로 보입니다.`,
+      diff,
+    }
+  }
+
+  // F''. 부족분이 부속 1건 금액과 정확히 맞아떨어진다 — 그 부속이 한 번 더 들어가야 하는데
+  //      수량에 반영되지 않았다. §8 잔여 ② 해소로 정상 경로에서는 나오지 않아야 하고,
+  //      나온다면 파싱이 반복 행을 놓쳤다는 뜻이다. 안전망으로 남긴다.
+  const doubledPart = partPricedAt(list, -diff)
+  if (doubledPart) {
+    return {
+      level: 'info',
+      code: 'PART_COUNTED_ONCE',
+      label: '부속 수량 미반영',
+      detail: `부족분이 부속 1건(${doubledPart.productName})의 단가와 같습니다. 이 부속이 2개 들어가지만 구성 목록에는 1건으로만 잡힙니다.`,
       diff,
     }
   }
