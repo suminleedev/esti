@@ -9,6 +9,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static com.example.esti.support.TestSamples.requireSample;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * 비데·기타 시트 전용 검증(parseBidetEtcSheet).
@@ -72,7 +73,7 @@ class VendorBBidetEtcSheetTest {
         assertEquals("비데", dsb.categoryLarge());
         assertEquals("비데", dsb.categorySmall());
         assertEquals("비데 DSB-5420", dsb.main().productName(), "제품명 앞 '비데' 부기");
-        assertEquals(0, new BigDecimal("120000").compareTo(dsb.setPrice()));
+        assertEquals(0, price("VendorBBidetEtcSheetTest.req2_비데는_소분류도_비데").compareTo(dsb.setPrice()));
     }
 
     @Test
@@ -93,8 +94,8 @@ class VendorBBidetEtcSheetTest {
         // 품번 E102가 전기(46ts201e)/배터리(46ts201b) 두 행으로 나뉘어 e/b 접미 → 둘 다 존재(유실 0)
         VendorProductSet electric = byCode(etc, "E102e");
         VendorProductSet battery = byCode(etc, "E102b");
-        assertEquals(0, new BigDecimal("77000").compareTo(electric.setPrice()), "전기 77000");
-        assertEquals(0, new BigDecimal("76000").compareTo(battery.setPrice()), "배터리 76000");
+        assertEquals(0, price("VendorBBidetEtcSheetTest.req3_기타_전기배터리는_품번뒤_구분글자로_둘다보존").compareTo(electric.setPrice()), "전기 77000");
+        assertEquals(0, price("VendorBBidetEtcSheetTest.req3_기타_전기배터리는_품번뒤_구분글자로_둘다보존.2").compareTo(battery.setPrice()), "배터리 76000");
 
         // 원본 품번(E102)이 그대로 코드로 남아 충돌하지 않아야 함
         assertTrue(etc.stream().noneMatch(s -> "E102".equals(s.main().productCode())),

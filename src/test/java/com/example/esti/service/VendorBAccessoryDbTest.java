@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * 악세사리 단가표 <b>DB 적재</b> 검증(§12). 파싱은 {@code VendorBAccessorySheetTest}.
@@ -26,18 +27,18 @@ class VendorBAccessoryDbTest extends AbstractVendorBSheetDbVerification {
     @Test
     void 세트는_대표_부속_관계와_세트가로_적재() {
         VendorProduct ac8100 = dbSetProduct(LARGE, "AC8100");
-        assertThat(dbSetPriceByBasis(ac8100, BASIS)).isEqualByComparingTo(new BigDecimal("60000"));
+        assertThat(dbSetPriceByBasis(ac8100, BASIS)).isEqualByComparingTo(price("VendorBAccessoryDbTest.세트는_대표_부속_관계와_세트가로_적재"));
         assertThat(dbPartsOf(ac8100)).hasSize(4);
         VendorProduct towel = dbPart(ac8100, "수건걸이");
         assertThat(towel.getProductCode()).isEqualTo("AC8100_AC8101");
-        assertThat(dbPartPrice(towel)).isEqualByComparingTo(new BigDecimal("20500"));
+        assertThat(dbPartPrice(towel)).isEqualByComparingTo(price("VendorBAccessoryDbTest.세트는_대표_부속_관계와_세트가로_적재.2"));
     }
 
     @Test
     void U접두_필터는_결합코드로_적재되어_맨품번_미생성() {
         // {품번}-{전산코드} 결합(A1) — 수전부속 U9120(자동폽업)과 별개 행 보장
         VendorProduct filter = dbSetProduct(LARGE, "U9120-43u0120");
-        assertThat(dbSetPriceByBasis(filter, BASIS)).isEqualByComparingTo(new BigDecimal("6500"));
+        assertThat(dbSetPriceByBasis(filter, BASIS)).isEqualByComparingTo(price("VendorBAccessoryDbTest.U접두_필터는_결합코드로_적재되어_맨품번_미생성"));
         assertThat(dbSetProductsOf(LARGE).stream()
                 .anyMatch(p -> "U9120".equals(p.getProductCode()))).isFalse();
     }

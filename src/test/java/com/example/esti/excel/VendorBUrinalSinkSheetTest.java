@@ -9,6 +9,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static com.example.esti.support.TestSamples.requireSample;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * 소변기·수채 시트 전용 검증(parseUrinalSinkSheet).
@@ -71,10 +72,10 @@ class VendorBUrinalSinkSheetTest {
         List<VendorProductSet> urinals = setsOf("소변기");
         VendorProductSet u135 = byCode(urinals, "U135");
 
-        assertEquals(0, new BigDecimal("95500").compareTo(u135.setPrice()), "計=95500");
+        assertEquals(0, price("VendorBUrinalSinkSheetTest.소변기_U135는_스퍼드_후렌지_부속과_세트가95500").compareTo(u135.setPrice()), "計=95500");
         // 도기 80000 + 스퍼드 3500 + 후렌지 12000 = 95500
-        assertEquals(0, new BigDecimal("3500").compareTo(part(u135, "스퍼드").unitPrice()));
-        assertEquals(0, new BigDecimal("12000").compareTo(part(u135, "후렌지").unitPrice()));
+        assertEquals(0, price("VendorBUrinalSinkSheetTest.소변기_U135는_스퍼드_후렌지_부속과_세트가95500.2").compareTo(part(u135, "스퍼드").unitPrice()));
+        assertEquals(0, price("VendorBUrinalSinkSheetTest.소변기_U135는_스퍼드_후렌지_부속과_세트가95500.3").compareTo(part(u135, "후렌지").unitPrice()));
 
         // 도기는 본품(세트가 주축)
         assertTrue(u135.parts().stream().anyMatch(p ->
@@ -88,11 +89,11 @@ class VendorBUrinalSinkSheetTest {
         VendorProductSet ss131 = byCode(sinks, "SS131");
 
         // 計(J)=122000 정확 반영 (이전엔 計 컬럼이 M으로 어긋나 (가격없음) 처리되던 버그)
-        assertEquals(0, new BigDecimal("122000").compareTo(ss131.setPrice()), "計=122000");
+        assertEquals(0, price("VendorBUrinalSinkSheetTest.req2_수채_SS131은_수채가랑_수채트랩부속_계122000이고_소변기슬롯_오염없음").compareTo(ss131.setPrice()), "計=122000");
 
         // 수채 전용 부속명/단가 (소변기 헤더의 스퍼드/후렌지가 아니어야 함)
-        assertEquals(0, new BigDecimal("12000").compareTo(part(ss131, "수채가랑").unitPrice()));
-        assertEquals(0, new BigDecimal("20000").compareTo(part(ss131, "수채트랩").unitPrice()));
+        assertEquals(0, price("VendorBUrinalSinkSheetTest.req2_수채_SS131은_수채가랑_수채트랩부속_계122000이고_소변기슬롯_오염없음.2").compareTo(part(ss131, "수채가랑").unitPrice()));
+        assertEquals(0, price("VendorBUrinalSinkSheetTest.req2_수채_SS131은_수채가랑_수채트랩부속_계122000이고_소변기슬롯_오염없음.3").compareTo(part(ss131, "수채트랩").unitPrice()));
         List<String> names = ss131.parts().stream().map(VendorParsedItem::productName).toList();
         assertFalse(names.contains("스퍼드"), "소변기 슬롯 오염: " + names);
         assertFalse(names.contains("후렌지"), "소변기 슬롯 오염: " + names);
@@ -114,7 +115,7 @@ class VendorBUrinalSinkSheetTest {
         List<String> names = iu302.parts().stream().map(VendorParsedItem::productName).toList();
         assertFalse(names.contains("스퍼드"), "설명 텍스트가 부속으로 잘못 적재됨: " + names);
         // 도기(4su302wt 95000)만 부속, 計=95000
-        assertEquals(0, new BigDecimal("95000").compareTo(iu302.setPrice()));
+        assertEquals(0, price("VendorBUrinalSinkSheetTest.소변기_IU302E_슬롯의_설명텍스트는_부속이아니라_description에_저장").compareTo(iu302.setPrice()));
     }
 
     @Test
@@ -137,7 +138,7 @@ class VendorBUrinalSinkSheetTest {
     void 수채_SS132_세트가134000_품종_수채_carryforward() {
         List<VendorProductSet> sinks = setsOf("수채");
         VendorProductSet ss132 = byCode(sinks, "SS132");
-        assertEquals(0, new BigDecimal("134000").compareTo(ss132.setPrice()));
+        assertEquals(0, price("VendorBUrinalSinkSheetTest.수채_SS132_세트가134000_품종_수채_carryforward").compareTo(ss132.setPrice()));
         // B열 품종(수채)이 SS132행엔 비어 있어 carry-forward로 채워져야 함
         assertEquals("수채", ss132.categorySmall());
     }

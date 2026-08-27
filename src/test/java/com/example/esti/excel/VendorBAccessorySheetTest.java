@@ -8,6 +8,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static com.example.esti.support.TestSamples.requireSample;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * 악세사리 단가표 전용 검증(§12 A1~A7): parseHeaderTotalSetSheet 고도화.
@@ -46,7 +47,7 @@ class VendorBAccessorySheetTest {
         assertEquals("악세사리", ac8100.categoryLarge(), "C-1: '단가표' 제거");
         assertEquals(BASIS, ac8100.priceBasis(), "가격은 시트명 basis");
         assertEquals(BASIS, ac8100.sheetName(), "대분류≠시트명 → 이미지는 sheetName으로 매칭(§13)");
-        assertEquals(0, new BigDecimal("60000").compareTo(ac8100.setPrice()));
+        assertEquals(0, price("VendorBAccessorySheetTest.대분류_악세사리_basis_시트명_이미지_시트명키").compareTo(ac8100.setPrice()));
         assertEquals(4, ac8100.parts().size());
     }
 
@@ -92,9 +93,9 @@ class VendorBAccessorySheetTest {
     void U접두_필터는_품번_전산코드_결합으로_수전부속과_분리() {
         List<VendorProductSet> sets = parseFixture();
         // U9120(수전부속=자동폽업)과 다른 실물(핸드스프레이 필터) → {품번}-{전산코드}(A1, 사용자 결정)
-        assertEquals(0, new BigDecimal("6500").compareTo(one(sets, "U9120-43u0120").setPrice()));
-        assertEquals(0, new BigDecimal("5300").compareTo(one(sets, "U9120B-43u0120b").setPrice()));
-        assertEquals(0, new BigDecimal("3000").compareTo(one(sets, "U9120SF-43u0120sf").setPrice()));
+        assertEquals(0, price("VendorBAccessorySheetTest.U9120-43u0120").compareTo(one(sets, "U9120-43u0120").setPrice()));
+        assertEquals(0, price("VendorBAccessorySheetTest.U9120B-43u0120b").compareTo(one(sets, "U9120B-43u0120b").setPrice()));
+        assertEquals(0, price("VendorBAccessorySheetTest.U9120SF-43u0120sf").compareTo(one(sets, "U9120SF-43u0120sf").setPrice()));
         assertTrue(sets.stream().noneMatch(s -> "U9120".equals(s.main().productCode())),
                 "악세사리 시트에서 맨 품번 U9120 미생성(충돌 차단)");
     }

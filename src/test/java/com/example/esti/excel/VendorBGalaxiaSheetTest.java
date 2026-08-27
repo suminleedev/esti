@@ -8,6 +8,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static com.example.esti.support.TestSamples.requireSample;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * 갈라시아 시트 전용 검증(parseGalaxiaSheet).
@@ -60,7 +61,7 @@ class VendorBGalaxiaSheetTest {
     void 세트가는_도기_부속_합이고_부속2개_도기는_본품() {
         VendorProductSet art = byCode(galaxiaSets(), "art6103");
         // 도기 367000 + 부속 63000 = 430000
-        assertEquals(0, new BigDecimal("430000").compareTo(art.setPrice()));
+        assertEquals(0, price("VendorBGalaxiaSheetTest.세트가는_도기_부속_합이고_부속2개_도기는_본품").compareTo(art.setPrice()));
         assertEquals(2, art.parts().size());
         assertTrue(art.parts().stream()
                 .anyMatch(p -> VendorParsedItem.RELATION_MAIN.equals(p.relationType())), "도기=본품");

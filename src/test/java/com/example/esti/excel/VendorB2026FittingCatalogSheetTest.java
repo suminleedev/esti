@@ -8,6 +8,7 @@ import java.util.List;
 
 import static com.example.esti.support.TestSamples.requireSample;
 import static org.junit.jupiter.api.Assertions.*;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * T5 검증 — 최신본(2026) 부속류 시트.
@@ -45,8 +46,8 @@ class VendorB2026FittingCatalogSheetTest {
         // 'U9013c 냉수' 한 품번에 전산코드가 둘이다 — 품번을 식별자로 쓰면 한 제품으로 병합된다.
         List<VendorProductSet> sets = parse();
 
-        assertEquals(new BigDecimal("10000"), byCode(sets, "43u9013c").setPrice());
-        assertEquals(new BigDecimal("10500"), byCode(sets, "43dbu9013c").setPrice());
+        assertEquals(price("VendorB2026FittingCatalogSheetTest.43u9013c"), byCode(sets, "43u9013c").setPrice());
+        assertEquals(price("VendorB2026FittingCatalogSheetTest.43dbu9013c"), byCode(sets, "43dbu9013c").setPrice());
         assertEquals("구버전", byCode(sets, "43u9013c").main().description());
         assertEquals("신규", byCode(sets, "43dbu9013c").main().description());
     }
@@ -69,7 +70,7 @@ class VendorB2026FittingCatalogSheetTest {
 
         assertEquals(8, sets.stream().filter(s -> "니쁠".equals(s.categorySmall())).count());
         VendorProductSet n = byCode(sets, "43u94p65");
-        assertEquals(new BigDecimal("3000"), n.setPrice(), "D열을 단가로 읽어야 한다");
+        assertEquals(price("VendorB2026FittingCatalogSheetTest.니쁠_부표는_다른_컬럼_배치로_읽고_규격은_specs로_간다"), n.setPrice(), "D열을 단가로 읽어야 한다");
         assertEquals("65mm", n.main().specs(), "규격은 specs (R7 ③)");
     }
 

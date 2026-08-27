@@ -9,6 +9,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static com.example.esti.support.TestSamples.requireSample;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * P3 검증: B사 파서가 시트 양식 패밀리별로 대표품목 + 부속 + 관계를 정확히 묶는지.
@@ -39,7 +40,7 @@ class VendorBExcelParserTest {
         VendorProductSet mc921 = findByMainCode(sets, "MC921")
                 .orElseThrow(() -> new AssertionError("MC921 대표품목 미발견"));
 
-        assertEquals(0, new BigDecimal("77200").compareTo(mc921.setPrice()), "計=부속합");
+        assertEquals(0, price("VendorBExcelParserTest.양변기_슬롯세트는_計와_부속합이_일치하고_도기는_MAIN관계").compareTo(mc921.setPrice()), "計=부속합");
         assertEquals(3, mc921.parts().size(), "부속 3개(도기/F/V/스퍼드)");
         assertFalse(mc921.selectable());
 
@@ -66,7 +67,7 @@ class VendorBExcelParserTest {
                 .orElseThrow(() -> new AssertionError("IL451B 대표품목 미발견"));
 
         assertFalse(il451.selectable(), "세면기도 기본구성으로 세트가 산정");
-        assertEquals(0, new BigDecimal("69000").compareTo(il451.setPrice()), "도기원홀+반다리=69000");
+        assertEquals(0, price("VendorBExcelParserTest.세면기는_기본구성_도기원홀_반다리로_세트가_산정").compareTo(il451.setPrice()), "도기원홀+반다리=69000");
 
         // 기본 도기(원홀)=MAIN, 대체 도기(4")는 remark=대체옵션
         assertTrue(il451.parts().stream().anyMatch(p ->
@@ -86,7 +87,7 @@ class VendorBExcelParserTest {
         VendorProductSet art = findByMainCode(sets, "art6103")
                 .orElseThrow(() -> new AssertionError("art6103 대표품목 미발견"));
 
-        assertEquals(0, new BigDecimal("430000").compareTo(art.setPrice()));
+        assertEquals(0, price("VendorBExcelParserTest.갈라시아_4행형은_도기와_부속을_묶고_합계가_세트가").compareTo(art.setPrice()));
         assertEquals(2, art.parts().size());
         assertTrue(art.parts().stream()
                 .anyMatch(p -> VendorParsedItem.RELATION_MAIN.equals(p.relationType())));
@@ -100,7 +101,7 @@ class VendorBExcelParserTest {
         VendorProductSet ac = findByMainCode(sets, "AC8100")
                 .orElseThrow(() -> new AssertionError("AC8100 세트 미발견"));
 
-        assertEquals(0, new BigDecimal("60000").compareTo(ac.setPrice()));
+        assertEquals(0, price("VendorBExcelParserTest.악세사리_소계세트는_부속합이_세트가와_일치").compareTo(ac.setPrice()));
         assertEquals(4, ac.parts().size(), "4품 부속");
 
         BigDecimal partSum = ac.parts().stream()
@@ -117,7 +118,7 @@ class VendorBExcelParserTest {
                 .orElseThrow(() -> new AssertionError("DSB-5420 미발견"));
 
         assertTrue(bidet.parts().isEmpty(), "단일행은 부속 없음");
-        assertEquals(0, new BigDecimal("120000").compareTo(bidet.setPrice()));
+        assertEquals(0, price("VendorBExcelParserTest.단일행형_비데는_부속없이_대리점가로_저장").compareTo(bidet.setPrice()));
     }
 
     @Test
@@ -127,14 +128,14 @@ class VendorBExcelParserTest {
         // AC8300G: A열이 비었지만 G="SET"인 진짜 5품 세트 (이전엔 윗 세트 부속으로 흡수됨)
         VendorProductSet ac8300 = findByMainCode(sets, "AC8300G")
                 .orElseThrow(() -> new AssertionError("AC8300G 세트 미발견"));
-        assertEquals(0, new BigDecimal("85000").compareTo(ac8300.setPrice()));
+        assertEquals(0, price("VendorBExcelParserTest.악세사리_A빈_세트도_G_SET_기준으로_세트화_되고_단일품은_독립저장").compareTo(ac8300.setPrice()));
         assertEquals(5, ac8300.parts().size(), "AC8300G는 5품 세트");
 
         // 단일품 구간(AT0111S)은 부속 없는 독립 제품으로 저장
         VendorProductSet single = findByMainCode(sets, "AT0111S")
                 .orElseThrow(() -> new AssertionError("AT0111S 단일품 미발견"));
         assertTrue(single.parts().isEmpty(), "단일품은 부속 없음");
-        assertEquals(0, new BigDecimal("4800").compareTo(single.setPrice()));
+        assertEquals(0, price("VendorBExcelParserTest.악세사리_A빈_세트도_G_SET_기준으로_세트화_되고_단일품은_독립저장.2").compareTo(single.setPrice()));
     }
 
     @Test
@@ -151,7 +152,7 @@ class VendorBExcelParserTest {
         // 냉/온+소계 블록(U9013c/h) → 합성 세트 U9013(main) + 부속 U9013_c/h (§11 P6)
         VendorProductSet u9013 = findByMainCode(sets, "U9013")
                 .orElseThrow(() -> new AssertionError("U9013 합성 세트 미발견"));
-        assertEquals(0, new BigDecimal("10000").compareTo(u9013.setPrice()), "세트가=소계");
+        assertEquals(0, price("VendorBExcelParserTest.수전부속은_대분류_수전부속과_시트명basis로_적재되고_냉온블록은_합성세트").compareTo(u9013.setPrice()), "세트가=소계");
         assertEquals(2, u9013.parts().size());
         assertTrue(u9013.parts().stream().anyMatch(p -> "U9013_c".equals(p.productCode())));
 

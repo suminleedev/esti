@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static com.example.esti.support.TestSamples.requireSample;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * 세면기 시트 전용 검증(parseWashbasinSheet).
@@ -77,7 +78,7 @@ class VendorBWashbasinSheetTest {
         VendorProductSet il451 = byCode(sets, "IL451B");
 
         // 도기(원홀)65000 + 반다리4000 = 69000 (도기4"는 제외)
-        assertEquals(0, new BigDecimal("69000").compareTo(il451.setPrice()));
+        assertEquals(0, price("VendorBWashbasinSheetTest.req2_도기원홀_4둘다있으면_원홀단가반영_4는대체옵션").compareTo(il451.setPrice()));
 
         VendorParsedItem wonhol = part(il451, "도기(원홀)");
         assertEquals(VendorParsedItem.RELATION_MAIN, wonhol.relationType(), "원홀이 본품(세트가 포함)");
@@ -95,7 +96,7 @@ class VendorBWashbasinSheetTest {
         List<VendorProductSet> sets = washbasinSets();
         // L551: 도기(4")만 존재(50000), 원홀 없음 → 50000
         VendorProductSet l551 = byCode(sets, "L551");
-        assertEquals(0, new BigDecimal("50000").compareTo(l551.setPrice()));
+        assertEquals(0, price("VendorBWashbasinSheetTest.req2_도기_하나만있으면_그_단가반영").compareTo(l551.setPrice()));
         VendorParsedItem four = part(l551, "도기(4\")");
         assertEquals(VendorParsedItem.RELATION_MAIN, four.relationType(), "유일 도기는 본품");
         assertNull(four.remark());
@@ -106,7 +107,7 @@ class VendorBWashbasinSheetTest {
         List<VendorProductSet> sets = washbasinSets();
         // L966: 도기원홀61000 + 반다리22500 + 하프고리2200 + 앙카볼트1500 = 87200 (긴다리24000 제외)
         VendorProductSet l966 = byCode(sets, "L966");
-        assertEquals(0, new BigDecimal("87200").compareTo(l966.setPrice()));
+        assertEquals(0, price("VendorBWashbasinSheetTest.req2_반다리_긴다리둘다있으면_반다리반영_긴다리는대체옵션_나머지는모두포함").compareTo(l966.setPrice()));
 
         assertNull(part(l966, "반다리").remark(), "반다리 채택");
         assertEquals("대체옵션", part(l966, "긴다리").remark(), "긴다리 대체옵션");
@@ -119,7 +120,7 @@ class VendorBWashbasinSheetTest {
         List<VendorProductSet> sets = washbasinSets();
         // IL453: I=46ele1010b(수전/배터리식), L=AE4002(물비누통)
         VendorProductSet il453 = byCode(sets, "IL453");
-        assertEquals(0, new BigDecimal("160000").compareTo(il453.setPrice()),
+        assertEquals(0, price("VendorBWashbasinSheetTest.req3_슬롯코드의_괄호설명이_description으로_분리됨").compareTo(il453.setPrice()),
                 "도기원홀50000+반다리90000+앙카볼트20000");
 
         VendorParsedItem bandari = part(il453, "반다리");
@@ -142,16 +143,16 @@ class VendorBWashbasinSheetTest {
         assertTrue(hwa.main().description().startsWith("화려"), hwa.main().description());
         assertTrue(cle.main().description().startsWith("클레이탄"), cle.main().description());
         // 도기원홀59000 + 앙카볼트2000 = 61000
-        assertEquals(0, new BigDecimal("61000").compareTo(hwa.setPrice()));
-        assertEquals(0, new BigDecimal("61000").compareTo(cle.setPrice()));
+        assertEquals(0, price("VendorBWashbasinSheetTest.req1_3_도자종류만_다른_동일품번은_도기코드_구분글자로_분기되고_도자명은description").compareTo(hwa.setPrice()));
+        assertEquals(0, price("VendorBWashbasinSheetTest.req1_3_도자종류만_다른_동일품번은_도기코드_구분글자로_분기되고_도자명은description.2").compareTo(cle.setPrice()));
 
         // IL674E(모노피) 4ml674awt / IL674E(길마위욕) 4jl674awt → IL674Em / IL674Ej
         VendorProductSet mono = byCode(sets, "IL674Em");
         VendorProductSet gil = byCode(sets, "IL674Ej");
         assertTrue(mono.main().description().startsWith("모노피"), mono.main().description());
         assertTrue(gil.main().description().startsWith("길마위욕"), gil.main().description());
-        assertEquals(0, new BigDecimal("62000").compareTo(mono.setPrice()));
-        assertEquals(0, new BigDecimal("62000").compareTo(gil.setPrice()));
+        assertEquals(0, price("VendorBWashbasinSheetTest.req1_3_도자종류만_다른_동일품번은_도기코드_구분글자로_분기되고_도자명은description.3").compareTo(mono.setPrice()));
+        assertEquals(0, price("VendorBWashbasinSheetTest.req1_3_도자종류만_다른_동일품번은_도기코드_구분글자로_분기되고_도자명은description.4").compareTo(gil.setPrice()));
     }
 
     @Test
