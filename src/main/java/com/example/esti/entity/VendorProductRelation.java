@@ -42,7 +42,10 @@ public class VendorProductRelation extends BaseEntity {
      * 중복 행을 세어 여기 담으면 {@code S132E}·{@code L352E}·{@code L352E-2} 3건이 세트가와 정확히 일치한다.
      * ({@code plan-b-format-2026.md} §8 잔여 ②)
      */
-    @Column(name = "quantity", nullable = false)
+    // columnDefinition에 DEFAULT를 박아야 한다 — ddl-auto=update로 기존 테이블에 NOT NULL 컬럼을
+    // 붙일 때 Derby가 기본값을 요구한다(없으면 ALTER TABLE이 통째로 실패하고 컬럼이 안 생긴다).
+    // 인메모리 create-drop을 쓰는 테스트에서는 드러나지 않는 차이다.
+    @Column(name = "quantity", nullable = false, columnDefinition = "integer default 1 not null")
     @Builder.Default
     private Integer quantity = 1;
 }
