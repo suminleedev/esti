@@ -54,20 +54,20 @@ class ProposalCardExcelWriterTest {
         Workbook wb = render(sampleProposal(), sampleLines());
         Sheet sheet = wb.getSheetAt(0);
 
-        // 1열 = 양변기 <PRICE>×1 + 세면기 <PRICE>×2 = <PRICE>
-        assertThat(numeric(sheet, 3, 2)).isEqualByComparingTo("<PRICE>");
-        // 2열 = 씽크수전 <PRICE>×1
-        assertThat(numeric(sheet, 3, 5)).isEqualByComparingTo("<PRICE>");
+        // 1열 = 양변기 152,000×1 + 세면기 69,000×2 = 290,000
+        assertThat(numeric(sheet, 3, 2)).isEqualByComparingTo("290000");
+        // 2열 = 씽크수전 57,000×1
+        assertThat(numeric(sheet, 3, 5)).isEqualByComparingTo("57000");
         // 3열(유상옵션)은 소계 칸을 비운다 — 계약금액이 아니라 별도 청구분이다
         assertThat(text(sheet, 3, 8)).isEmpty();
-        // 4열 = 수건걸이 <PRICE>×2
-        assertThat(numeric(sheet, 3, 11)).isEqualByComparingTo("<PRICE>");
+        // 4열 = 수건걸이 14,000×2
+        assertThat(numeric(sheet, 3, 11)).isEqualByComparingTo("28000");
 
-        // 세대당 = 옵션 열을 뺀 합. 비데 <PRICE>은 카드에는 보이되 합계에는 안 들어간다
-        BigDecimal perHousehold = new BigDecimal("<PRICE>");   // <PRICE> + <PRICE> + <PRICE>
+        // 세대당 = 옵션 열을 뺀 합. 비데 143,000은 카드에는 보이되 합계에는 안 들어간다
+        BigDecimal perHousehold = new BigDecimal("375000");   // 290,000 + 57,000 + 28,000
         assertThat(text(sheet, 2, 9)).isEqualTo("세대당");
         assertThat(numeric(sheet, 2, 10)).isEqualByComparingTo(perHousehold);
-        assertThat(numeric(sheet, 1, 10)).isEqualByComparingTo(perHousehold.multiply(BigDecimal.valueOf(0)));
+        assertThat(numeric(sheet, 1, 10)).isEqualByComparingTo(perHousehold.multiply(BigDecimal.valueOf(523)));
 
         // R4 라벨 자리에는 제안서 기준 평형
         assertThat(text(sheet, 3, 1)).isEqualTo("59㎡");
@@ -88,7 +88,7 @@ class ProposalCardExcelWriterTest {
         assertThat(numeric(a, 1, 10)).isEqualByComparingTo(numeric(b, 1, 10));
 
         // 그래도 옵션 카드의 금액 자체는 찍힌다 (3열 첫 카드의 금액 행)
-        assertThat(numeric(a, 8, 8)).isEqualByComparingTo("<PRICE>");
+        assertThat(numeric(a, 8, 8)).isEqualByComparingTo("143000");
     }
 
     @Test
@@ -112,7 +112,7 @@ class ProposalCardExcelWriterTest {
         assertThat(text(sheet, top + 3, label)).isEqualTo("사양");
         assertThat(text(sheet, top + 3, value)).isEqualTo("투피스양변기");
         assertThat(text(sheet, top + 4, label)).isEqualTo("금액");
-        assertThat(numeric(sheet, top + 4, value)).isEqualByComparingTo("<PRICE>");
+        assertThat(numeric(sheet, top + 4, value)).isEqualByComparingTo("152000");
         assertThat(text(sheet, top + 5, label)).isEqualTo("업체");
         assertThat(text(sheet, top + 5, value)).isEqualTo("이누스 주식회사");
 
@@ -147,8 +147,8 @@ class ProposalCardExcelWriterTest {
     @DisplayName("사입가·마진율은 파일 어디에도 없다 (고객 제출용)")
     void 사입가_마진_미노출() throws Exception {
         List<ProposalLine> lines = sampleLines();
-        // 사입가 <PRICE> / 마진율 33 — 새어 나오면 아래 스캔에 걸린다
-        lines.get(0).setCatalogUnitPrice(new BigDecimal("<PRICE>"));
+        // 사입가 99,999 / 마진율 33 — 새어 나오면 아래 스캔에 걸린다
+        lines.get(0).setCatalogUnitPrice(new BigDecimal("99999"));
         lines.get(0).setMarginRate(new BigDecimal("33"));
 
         Sheet sheet = render(sampleProposal(), lines).getSheetAt(0);
@@ -158,7 +158,7 @@ class ProposalCardExcelWriterTest {
         for (Row row : sheet) {
             for (Cell cell : row) all.add(fmt.formatCellValue(cell));
         }
-        assertThat(all).noneMatch(v -> v.contains("<PRICE>") || v.contains("99999"));
+        assertThat(all).noneMatch(v -> v.contains("99,999") || v.contains("99999"));
         assertThat(all).noneMatch(v -> v.contains("마진") || v.contains("사입"));
     }
 

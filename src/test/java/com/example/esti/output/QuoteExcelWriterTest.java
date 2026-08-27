@@ -43,8 +43,8 @@ class QuoteExcelWriterTest {
         assertThat(text(sheet, 8, 0)).isEqualTo("工事名  : 햇살아파트 위생기구류 납품");
         assertThat(text(sheet, 11, 0)).isEqualTo("下記와   如히   내역 하나이다.");
 
-        // 도기 <PRICE> + 수전 <PRICE>×2 + 악세 <PRICE> = <PRICE>
-        assertThat(text(sheet, 10, 0)).isEqualTo("合計金  :   삼십만사천원정(₩<PRICE>)");
+        // 도기 152,000 + 수전 69,000×2 + 악세 14,000 = 304,000
+        assertThat(text(sheet, 10, 0)).isEqualTo("合計金  :   삼십만사천원정(₩304,000)");
     }
 
     @Test
@@ -73,9 +73,9 @@ class QuoteExcelWriterTest {
         assertThat(text(sheet, r, 1)).isEqualTo("IC702");
         assertThat(text(sheet, r, 2)).isEqualTo("SET");
         assertThat(numeric(sheet, r, 3)).isEqualByComparingTo("1");
-        assertThat(numeric(sheet, r, 4)).isEqualByComparingTo("<PRICE>");
+        assertThat(numeric(sheet, r, 4)).isEqualByComparingTo("152000");
         assertThat(formula(sheet, r, 5)).isEqualTo("E15*D15");
-        assertThat(numeric(sheet, r, 8)).isEqualByComparingTo("<PRICE>");   // 사입가
+        assertThat(numeric(sheet, r, 8)).isEqualByComparingTo("120000");   // 사입가
         assertThat(formula(sheet, r, 9)).isEqualTo("E15-I15");
         assertThat(formula(sheet, r, 10)).isEqualTo("D15*J15");
         // 소계행도 같은 정의를 쓴다 — 샘플의 K/F(매출 대비)와는 의도적으로 다르다
@@ -113,7 +113,7 @@ class QuoteExcelWriterTest {
         for (Row row : sheet) for (Cell c : row) all.add(fmt.formatCellValue(c));
 
         assertThat(all).contains("사입가", "사입가대비", "마진");
-        assertThat(numeric(sheet, 14, 8)).isEqualByComparingTo("<PRICE>");
+        assertThat(numeric(sheet, 14, 8)).isEqualByComparingTo("120000");
     }
 
     @Test

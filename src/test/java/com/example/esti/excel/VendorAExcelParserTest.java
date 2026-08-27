@@ -9,6 +9,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static com.example.esti.support.TestSamples.requireSample;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * P1 검증: A사 파서가 합계행 기준으로 대표품목+부속을 정확히 묶는지.
@@ -38,7 +39,7 @@ class VendorAExcelParserTest {
         VendorProductSet stanley = findByMainCode(sets, "C338000B-6DAKIS60D")
                 .orElseThrow(() -> new AssertionError("스탠리 대표품목 미발견"));
 
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(stanley.setPrice()), "세트가=부속 합산");
+        assertEquals(0, price("VendorAExcelParserTest.스탠리_세트_합계행으로_대표품목과_부속2개_연결").compareTo(stanley.setPrice()), "세트가=부속 합산");
         assertEquals(2, stanley.parts().size(), "부속 2개(시트커버, 플랜지)");
         assertFalse(stanley.needsReview(), "일치하므로 검수 불필요");
         assertEquals(VendorParsedItem.RELATION_MAIN, stanley.main().relationType());
@@ -54,7 +55,7 @@ class VendorAExcelParserTest {
         VendorProductSet round = findByMainCode(sets, "C837500E-6DAKMR05V")
                 .orElseThrow(() -> new AssertionError("라운드 대표품목 미발견"));
 
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(round.setPrice()));
+        assertEquals(0, price("VendorAExcelParserTest.유로젠_라운드_세트는_사이의_옵션행을_제외하고_묶임").compareTo(round.setPrice()));
         assertEquals(2, round.parts().size());
         assertFalse(round.needsReview());
     }
@@ -67,7 +68,7 @@ class VendorAExcelParserTest {
         boolean hasFlaggedTotal = sets.stream()
                 .anyMatch(s -> s.needsReview()
                         && s.setPrice() != null
-                        && new BigDecimal("<PRICE>").compareTo(s.setPrice()) == 0);
+                        && price("VendorAExcelParserTest.플랫_블록은_합계가_부분집합이라_검수플래그").compareTo(s.setPrice()) == 0);
         assertTrue(hasFlaggedTotal, "플랫 블록(769100)이 검수 플래그로 저장돼야 함");
     }
 

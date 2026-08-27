@@ -37,7 +37,7 @@ class ProposalTemplateServiceTest {
         line.setProductId(77L); // ProductCatalog에 존재하지 않는 임의 id — 조회 없이 스냅샷 저장돼야 함
         line.setVendorItemName("스냅샷 품목");
         line.setMainItemCode("SNAP-001");
-        line.setUnitPrice(BigDecimal.valueOf(0));
+        line.setUnitPrice(BigDecimal.valueOf(50000));
         line.setArea("욕실1");
         line.setCategory("양변기");
         line.setDefaultQty(1);
@@ -54,7 +54,7 @@ class ProposalTemplateServiceTest {
         assertThat(line.getProductId()).isEqualTo(77L);
         assertThat(line.getVendorItemName()).isEqualTo("스냅샷 품목");
         assertThat(line.getMainItemCode()).isEqualTo("SNAP-001");
-        assertThat(line.getUnitPrice()).isEqualByComparingTo("<PRICE>");
+        assertThat(line.getUnitPrice()).isEqualByComparingTo("50000");
     }
 
     @Test

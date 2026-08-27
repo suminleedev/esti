@@ -8,13 +8,13 @@ function toNum(v) {
   return Number.isFinite(n) ? n : null
 }
 
-/** 천 단위 구분 숫자. 값 없으면 '-' (예: 1234000 → "<PRICE>,000") */
+/** 천 단위 구분 숫자. 값 없으면 '-' (예: 1234000 → "1,234,000") */
 export function number(v) {
   const n = toNum(v)
   return n == null ? '-' : n.toLocaleString('ko-KR')
 }
 
-/** 금액(원 접미). 값 없으면 '-' (예: 1234000 → "<PRICE>,000원") */
+/** 금액(원 접미). 값 없으면 '-' (예: 1234000 → "1,234,000원") */
 export function won(v) {
   const n = toNum(v)
   return n == null ? '-' : n.toLocaleString('ko-KR') + '원'

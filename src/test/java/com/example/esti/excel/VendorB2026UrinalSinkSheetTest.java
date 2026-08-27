@@ -8,6 +8,7 @@ import java.util.List;
 
 import static com.example.esti.support.TestSamples.requireSample;
 import static org.junit.jupiter.api.Assertions.*;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * T3 검증 — 최신본(2026) 소변기·수채 시트.
@@ -73,7 +74,7 @@ class VendorB2026UrinalSinkSheetTest {
         VendorProductSet s = byCode(parse(), "S132E");
 
         // 계(173100) = 도기 115000 + 수채가량 18000 × 2 + 수채트랩 22100
-        assertEquals(new BigDecimal("<PRICE>"), s.setPrice());
+        assertEquals(price("VendorB2026UrinalSinkSheetTest.같은_부속이_두_번_들어간_세트도_計가_맞는다"), s.setPrice());
         assertEquals(0, sumOf(s).compareTo(s.setPrice()));
         assertEquals(2, s.parts().stream().filter(p -> "수채가량".equals(p.productName())).count(),
                 "중복 부속을 합치면 計가 어긋난다 — 원본 그대로 둔다");

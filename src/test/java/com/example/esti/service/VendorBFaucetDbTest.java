@@ -10,6 +10,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * 수전금구 3-시트 <b>DB 적재</b> 검증(§10). 파싱은 {@code VendorBFaucetSheetTest}.
@@ -41,8 +42,8 @@ class VendorBFaucetDbTest extends AbstractVendorBSheetDbVerification {
     void 같은_본품이_price_basis별로_가격_분리적재() {
         VendorProduct g0110 = dbSetProduct(LARGE, "G-0110");
         // 일반(대리점가) 31000 / 국산(소계 세트가) 54400 — 한 품번, 두 가격행
-        assertThat(dbSetPriceByBasis(g0110, "수전금구")).isEqualByComparingTo(new BigDecimal("<PRICE>"));
-        assertThat(dbSetPriceByBasis(g0110, KOR)).isEqualByComparingTo(new BigDecimal("<PRICE>"));
+        assertThat(dbSetPriceByBasis(g0110, "수전금구")).isEqualByComparingTo(price("VendorBFaucetDbTest.같은_본품이_price_basis별로_가격_분리적재"));
+        assertThat(dbSetPriceByBasis(g0110, KOR)).isEqualByComparingTo(price("VendorBFaucetDbTest.같은_본품이_price_basis별로_가격_분리적재.2"));
     }
 
     @Test
@@ -51,7 +52,7 @@ class VendorBFaucetDbTest extends AbstractVendorBSheetDbVerification {
         VendorProduct popup = dbPart(g0110, "폽업");
         assertThat(popup.getProductCode()).isEqualTo("G-0110_U9110150");
         assertThat(popup.getCategorySmall()).isEqualTo("국산");
-        assertThat(dbPartPrice(popup)).isEqualByComparingTo(new BigDecimal("<PRICE>"));
+        assertThat(dbPartPrice(popup)).isEqualByComparingTo(price("VendorBFaucetDbTest.국산_부속은_categorySmall_국산으로_적재"));
     }
 
     @Test

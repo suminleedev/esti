@@ -25,7 +25,7 @@ class ProductCatalogRepositoryTest {
         product.setModel("M3405");
         product.setBrand("브랜드S");
         product.setSpecs("600mm");
-        product.setBasePrice(new BigDecimal("<PRICE>"));
+        product.setBasePrice(new BigDecimal("120000"));
         product.setDescription("화이트 세면대");
         product.setImageUrl("http://example.com/sink.png");
 
@@ -43,7 +43,7 @@ class ProductCatalogRepositoryTest {
         product.setModel("B3405");
         product.setBrand("BrandS");
         product.setSpecs("양변기");
-        product.setBasePrice(new BigDecimal("<PRICE>"));
+        product.setBasePrice(new BigDecimal("200000"));
         product.setDescription("고급 변기");
         product.setImageUrl("http://example.com/toilet.png");
         productCatalogRepository.save(product);
@@ -62,15 +62,15 @@ class ProductCatalogRepositoryTest {
         product.setModel("BT3405");
         product.setBrand("BrandBath");
         product.setSpecs("1200mm");
-        product.setBasePrice(new BigDecimal("<PRICE>"));
+        product.setBasePrice(new BigDecimal("500000"));
         product.setDescription("기본 욕조");
         product.setImageUrl("http://example.com/bathtub.png");
         ProductCatalog saved = productCatalogRepository.save(product);
 
-        saved.setBasePrice(new BigDecimal("<PRICE>"));
+        saved.setBasePrice(new BigDecimal("550000"));
         ProductCatalog updated = productCatalogRepository.save(saved);
 
-        assertThat(updated.getBasePrice()).isEqualTo(new BigDecimal("<PRICE>"));
+        assertThat(updated.getBasePrice()).isEqualTo(new BigDecimal("550000"));
     }
 
     @Test
@@ -81,7 +81,7 @@ class ProductCatalogRepositoryTest {
         product.setModel("M-021");
         product.setBrand("BrandMirror");
         product.setSpecs("800x600");
-        product.setBasePrice(new BigDecimal("<PRICE>"));
+        product.setBasePrice(new BigDecimal("80000"));
         product.setDescription("욕실 거울");
         product.setImageUrl("http://example.com/mirror.png");
         ProductCatalog saved = productCatalogRepository.save(product);

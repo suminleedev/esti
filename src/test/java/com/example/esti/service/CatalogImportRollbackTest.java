@@ -158,11 +158,11 @@ class CatalogImportRollbackTest {
     private VendorProductSet set(String prefix, int i) {
         VendorParsedItem main = new VendorParsedItem(
                 prefix + "-" + i, "롤백테스트 세트 " + i, null, null,
-                VendorParsedItem.RELATION_MAIN, new BigDecimal("<PRICE>"), null);
+                VendorParsedItem.RELATION_MAIN, new BigDecimal("10000"), null);
         VendorParsedItem part = new VendorParsedItem(
                 prefix + "-" + i + "_P1", "롤백테스트 부속", null, null,
-                "도기", new BigDecimal("<PRICE>"), null);
+                "도기", new BigDecimal("3000"), null);
         return new VendorProductSet("B", "양변기", "테스트", main, List.of(part),
-                new BigDecimal("<PRICE>"), false, null, false);
+                new BigDecimal("13000"), false, null, false);
     }
 }

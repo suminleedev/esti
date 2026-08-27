@@ -16,6 +16,7 @@ import java.nio.file.Path;
 
 import static com.example.esti.support.TestSamples.requireSample;
 import static org.assertj.core.api.Assertions.assertThat;
+import static com.example.esti.support.ExpectedCodes.code;
 
 /**
  * T9 — 최신본(2026, 14시트)을 실제 DB(인메모리 Derby)에 적재하고 재업로드 멱등을 확인한다(R8).
@@ -45,7 +46,7 @@ class CatalogImport2026IntegrationTest {
         requireSample(BOOK);
 
         int sets1 = service.importVendorCatalog("B", BOOK);
-        assertThat(sets1).as("파싱된 세트/제품 수").isEqualTo(767);
+        assertThat(sets1).as("파싱된 세트/제품 수").isEqualTo(763); // §8 잔여 ⑦로 바스 중복 4건 제외
 
         long products1 = productRepository.count();
         long prices1 = priceRepository.count();
@@ -72,12 +73,12 @@ class CatalogImport2026IntegrationTest {
         assertThat(relationRepository.findAllBySourceProduct(accSet)).hasSize(4);
         assertThat(productRepository.findByVendorAndProductCode(b, "AC8305G")).isPresent();
         // 부속류(T5) — 구·신 전산코드가 따로 남는다
-        assertThat(productRepository.findByVendorAndProductCode(b, "<CODE>")).isPresent();
-        assertThat(productRepository.findByVendorAndProductCode(b, "<CODE>")).isPresent();
+        assertThat(productRepository.findByVendorAndProductCode(b, code("수전부속.냉수.구형"))).isPresent();
+        assertThat(productRepository.findByVendorAndProductCode(b, code("수전부속.냉수.신형"))).isPresent();
         // 수전금구(T6) — 전산코드를 보조 코드로 보존
         assertThat(productRepository.findByVendorAndProductCode(b, "G-0110")).isPresent();
         // 바스(T8) — 신규 카테고리
-        assertThat(productRepository.findByVendorAndProductCode(b, "<CODE>").orElseThrow()
+        assertThat(productRepository.findByVendorAndProductCode(b, code("바스.천정재")).orElseThrow()
                 .getCategoryLarge()).isEqualTo("바스");
 
         // 사라진 시트의 잔재가 새로 들어오지 않는다
@@ -102,7 +103,7 @@ class CatalogImport2026IntegrationTest {
 
         BigDecimal setPrice = priceRepository.findFirstByVendorAndVendorProduct(b, toilet)
                 .orElseThrow().getUnitPrice();
-        assertThat(setPrice).isEqualByComparingTo("<PRICE>");
+        assertThat(setPrice).isEqualByComparingTo("160500");
 
         BigDecimal partSum = relationRepository.findAllBySourceProduct(toilet).stream()
                 .map(rel -> priceRepository.findFirstByVendorAndVendorProduct(b, rel.getTargetProduct())

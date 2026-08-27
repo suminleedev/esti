@@ -41,7 +41,7 @@ public class ProposalService {
     private final ObjectMapper mapper;
 
     /** 마진율 백분율 계산용 상수 */
-    private static final BigDecimal HUNDRED = BigDecimal.valueOf(0);
+    private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
 //    /* CREATE */
 //    public ProposalResponse create(ProposalRequest req) throws Exception {

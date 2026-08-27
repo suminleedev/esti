@@ -101,7 +101,7 @@ class ProposalLineNewFieldsTest {
         ProposalRequest.Line l = new ProposalRequest.Line();
         l.setProductId(1L);
         l.setProductName("검증용 품목");
-        l.setCatalogUnitPrice(new BigDecimal("<PRICE>"));
+        l.setCatalogUnitPrice(new BigDecimal("10000"));
         l.setQty(1);
         l.setArea("욕실1");
         l.setCategory("양변기");

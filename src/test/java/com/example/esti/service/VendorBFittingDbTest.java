@@ -9,6 +9,8 @@ import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static com.example.esti.support.TestSamples.requireSample;
+import static com.example.esti.support.ExpectedPrices.price;
+import static com.example.esti.support.ExpectedCodes.code;
 
 /**
  * 수전부속 3-시트 <b>DB 적재</b> 검증(§11). 파싱은 {@code VendorBFittingSheetTest}.
@@ -49,13 +51,13 @@ class VendorBFittingDbTest extends AbstractVendorBSheetDbVerification {
         // "G 0130" → G-0130 정규화 → 대분류=수전금구 1행(§10과 병합), 분계표 대리점가는 별도 basis(P1)
         VendorProduct g0130 = dbSetProduct("수전금구", "G-0130");
         assertThat(g0130.getCategorySmall()).isEqualTo("G-01");
-        assertThat(dbSetPriceByBasis(g0130, "분계표")).isEqualByComparingTo(new BigDecimal("<PRICE>"));
+        assertThat(dbSetPriceByBasis(g0130, "분계표")).isEqualByComparingTo(price("VendorBFittingDbTest.분계표본품은_수전금구본품과_1행으로_병합되고_가격은_분계표basis"));
 
         // 부속 = {품번}_{전산코드}, 출처 categorySmall=분계(P2)
         VendorProduct body = dbPart(g0130, "몸체");
         assertThat(body.getProductCode()).isEqualTo("G-0130_46dsg0130n");
         assertThat(body.getCategorySmall()).isEqualTo("분계");
-        assertThat(dbPartPrice(body)).isEqualByComparingTo(new BigDecimal("<PRICE>"));
+        assertThat(dbPartPrice(body)).isEqualByComparingTo(price("VendorBFittingDbTest.분계표본품은_수전금구본품과_1행으로_병합되고_가격은_분계표basis.2"));
     }
 
     @Test
@@ -63,16 +65,16 @@ class VendorBFittingDbTest extends AbstractVendorBSheetDbVerification {
         ensureFittingLoaded();
         // U9111이 세트(9500)·단가표(9500) 모두 등장 → upsert 1행 + 가격 2행(P5)
         VendorProduct u9111 = dbSetProduct("수전부속", "U9111");
-        assertThat(dbSetPriceByBasis(u9111, SET_BASIS)).isEqualByComparingTo(new BigDecimal("<PRICE>"));
-        assertThat(dbSetPriceByBasis(u9111, PRICE_BASIS)).isEqualByComparingTo(new BigDecimal("<PRICE>"));
+        assertThat(dbSetPriceByBasis(u9111, SET_BASIS)).isEqualByComparingTo(price("VendorBFittingDbTest.공통품번은_제품1행에_시트명basis_가격2행"));
+        assertThat(dbSetPriceByBasis(u9111, PRICE_BASIS)).isEqualByComparingTo(price("VendorBFittingDbTest.공통품번은_제품1행에_시트명basis_가격2행.2"));
 
         // 표현이 다른 가격도 유실 없이 분리: U9310 세트=건+행거 합 5000 / 단가표=건만 4500
         VendorProduct u9310 = dbSetProduct("수전부속", "U9310");
-        assertThat(dbSetPriceByBasis(u9310, SET_BASIS)).isEqualByComparingTo(new BigDecimal("<PRICE>"));
-        assertThat(dbSetPriceByBasis(u9310, PRICE_BASIS)).isEqualByComparingTo(new BigDecimal("<PRICE>"));
+        assertThat(dbSetPriceByBasis(u9310, SET_BASIS)).isEqualByComparingTo(price("VendorBFittingDbTest.공통품번은_제품1행에_시트명basis_가격2행.3"));
+        assertThat(dbSetPriceByBasis(u9310, PRICE_BASIS)).isEqualByComparingTo(price("VendorBFittingDbTest.공통품번은_제품1행에_시트명basis_가격2행.4"));
         // 행거는 품번 재사용 → 전산코드 폴백 단품(P8)
-        assertThat(dbSetPriceByBasis(dbSetProduct("수전부속", "<CODE>"), PRICE_BASIS))
-                .isEqualByComparingTo(new BigDecimal("<PRICE>"));
+        assertThat(dbSetPriceByBasis(dbSetProduct("수전부속", code("수전부속.행거")), PRICE_BASIS))
+                .isEqualByComparingTo(price("VendorBFittingDbTest.공통품번은_제품1행에_시트명basis_가격2행.5"));
     }
 
     @Test
@@ -80,21 +82,21 @@ class VendorBFittingDbTest extends AbstractVendorBSheetDbVerification {
         ensureFittingLoaded();
         // U9013c/h + 소계 → 합성 세트 U9013 + 부속 U9013_c/h(P6). 단가표 단품 U9013C와 공존
         VendorProduct u9013 = dbSetProduct("수전부속", "U9013");
-        assertThat(dbSetPriceByBasis(u9013, SET_BASIS)).isEqualByComparingTo(new BigDecimal("<PRICE>"));
+        assertThat(dbSetPriceByBasis(u9013, SET_BASIS)).isEqualByComparingTo(price("VendorBFittingDbTest.합성세트는_부속2건과_소계세트가로_적재"));
         assertThat(dbPartsOf(u9013)).hasSize(2);
         assertThat(dbPartsOf(u9013).stream().map(VendorProduct::getProductCode))
                 .containsExactlyInAnyOrder("U9013_c", "U9013_h");
         assertThat(dbSetPriceByBasis(dbSetProduct("수전부속", "U9013C"), PRICE_BASIS))
-                .isEqualByComparingTo(new BigDecimal("<PRICE>"));
+                .isEqualByComparingTo(price("VendorBFittingDbTest.합성세트는_부속2건과_소계세트가로_적재.2"));
     }
 
     @Test
     void OEM단가표_공유품번은_basis_3행째로_병합되고_단종신규도_적재() {
         ensureFittingLoaded();
-        // U-942245 → U942245(P9) — 세트 시트 OEM 항목과 1행 병합, 가격은 basis 2행(둘 다 <PRICE>)
+        // U-942245 → U942245(P9) — 세트 시트 OEM 항목과 1행 병합, 가격은 basis 2행(단가 동일)
         VendorProduct valve = dbSetProduct("수전부속", "U942245");
-        assertThat(dbSetPriceByBasis(valve, SET_BASIS)).isEqualByComparingTo(new BigDecimal("<PRICE>"));
-        assertThat(dbSetPriceByBasis(valve, OEM_BASIS)).isEqualByComparingTo(new BigDecimal("<PRICE>"));
+        assertThat(dbSetPriceByBasis(valve, SET_BASIS)).isEqualByComparingTo(price("VendorBFittingDbTest.OEM단가표_공유품번은_basis_3행째로_병합되고_단종신규도_적재"));
+        assertThat(dbSetPriceByBasis(valve, OEM_BASIS)).isEqualByComparingTo(price("VendorBFittingDbTest.OEM단가표_공유품번은_basis_3행째로_병합되고_단종신규도_적재.2"));
         assertThat(valve.getCategorySmall()).isEqualTo("일체형 앵글밸브"); // 품명 유도(P15, last-wins)
         assertThat(valve.getSpecs()).isEqualTo("45mm"); // C-2: 규격성 비고 → specs (세트 시트 유래, OEM null이라 미덮어씀)
 
@@ -103,7 +105,7 @@ class VendorBFittingDbTest extends AbstractVendorBSheetDbVerification {
 
         // 단종 신규 항목(이 시트 고유 정보) 적재(P16)
         assertThat(dbSetPriceByBasis(dbSetProduct("수전부속", "U9240D"), OEM_BASIS))
-                .isEqualByComparingTo(new BigDecimal("<PRICE>"));
+                .isEqualByComparingTo(price("VendorBFittingDbTest.OEM단가표_공유품번은_basis_3행째로_병합되고_단종신규도_적재.3"));
     }
 
     @Test

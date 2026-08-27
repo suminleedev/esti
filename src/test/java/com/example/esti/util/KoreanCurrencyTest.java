@@ -14,7 +14,7 @@ class KoreanCurrencyTest {
     @Test
     @DisplayName("샘플 견적서의 合計金 표기를 그대로 재현한다")
     void 샘플_합계금() {
-        assertThat(KoreanCurrency.toKoreanAmount(new BigDecimal("<PRICE>")))
+        assertThat(KoreanCurrency.toKoreanAmount(new BigDecimal("806513400")))
                 .isEqualTo("팔억육백오십일만삼천사백원정");
     }
 

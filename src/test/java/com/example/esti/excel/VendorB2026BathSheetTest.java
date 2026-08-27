@@ -10,6 +10,8 @@ import java.util.stream.Collectors;
 
 import static com.example.esti.support.TestSamples.requireSample;
 import static org.junit.jupiter.api.Assertions.*;
+import static com.example.esti.support.ExpectedPrices.price;
+import static com.example.esti.support.ExpectedCodes.code;
 
 /**
  * T8 검증 — 최신본(2026) 바스 4시트(직영). 최신본에서 새로 생긴 카테고리다.
@@ -40,8 +42,9 @@ class VendorB2026BathSheetTest {
         List<VendorProductSet> sets = parse();
 
         assertTrue(sets.stream().allMatch(s -> "바스".equals(s.categoryLarge())));
+        // 선반은 원본 18행이지만 4건이 액세사리류와 중복이라 여기서 빠진다(§8 잔여 ⑦, 액세사리류가 정본)
         assertEquals(Map.of(
-                "바스 선반(직영)", 18L,
+                "바스 선반(직영)", 14L,
                 "바스 파티션,욕조(직영)", 10L,
                 "바스 천정재(직영)", 7L,
                 "바스 욕실장,거울(직영)", 35L
@@ -50,18 +53,18 @@ class VendorB2026BathSheetTest {
 
     @Test
     void 판매점_단가만_저장한다() {
-        // 선반 5행: 판매점 <PRICE> / 인테리어 <PRICE> / 소비자 <PRICE>
-        VendorProductSet s = byCode(parse(), "<CODE>");
-        assertEquals(new BigDecimal("<PRICE>"), s.setPrice());
+        // 선반 5행은 3단 가격(판매점/인테리어/소비자)이고 판매점만 저장한다
+        VendorProductSet s = byCode(parse(), code("바스.선반.판매점단가"));
+        assertEquals(price("VendorB2026BathSheetTest.판매점_단가만_저장한다"), s.setPrice());
     }
 
     @Test
     void 이미지_컬럼이_없는_천정재도_한_칸_밀려_읽힌다() {
         // 천정재는 B가 전산코드다(다른 시트는 B=이미지, C=전산코드). 위치를 하드코딩하면 전부 깨진다.
-        VendorProductSet s = byCode(parse(), "<CODE>");
+        VendorProductSet s = byCode(parse(), code("바스.천정재"));
 
         assertEquals("천정재 메인판(평판/1300*1750)-거광이앤지", s.main().productName());
-        assertEquals(new BigDecimal("<PRICE>"), s.setPrice());
+        assertEquals(price("VendorB2026BathSheetTest.이미지_컬럼이_없는_천정재도_한_칸_밀려_읽힌다"), s.setPrice());
         assertEquals("평판/1300*1750", s.main().specs());
         assertEquals("천정재", s.categorySmall());
     }
@@ -71,9 +74,9 @@ class VendorB2026BathSheetTest {
         // 파티션·욕조 시트는 이미지 컬럼에 '샤워파티션'/'민자형' 라벨이 섞여 온다(그림은 글자가 없다).
         List<VendorProductSet> sets = parse();
 
-        assertEquals("샤워파티션", byCode(sets, "<CODE>").categorySmall());
-        assertEquals("민자형", byCode(sets, "<CODE>").categorySmall());
-        assertEquals("선반", byCode(sets, "<CODE>").categorySmall(), "라벨이 없으면 시트명에서 뽑는다");
+        assertEquals("샤워파티션", byCode(sets, code("바스.샤워파티션")).categorySmall());
+        assertEquals("민자형", byCode(sets, code("바스.민자형")).categorySmall());
+        assertEquals("선반", byCode(sets, code("바스.선반.판매점단가")).categorySmall(), "라벨이 없으면 시트명에서 뽑는다");
     }
 
     @Test
@@ -81,8 +84,8 @@ class VendorB2026BathSheetTest {
         // K=비고와 별개로 L열에 '단종'이 따로 들어온다. 헤더가 없어 놓치기 쉽다.
         List<VendorProductSet> sets = parse();
 
-        assertEquals("단종", byCode(sets, "<CODE>").main().remark());
-        VendorProductSet s = byCode(sets, "<CODE>");
+        assertEquals("단종", byCode(sets, code("바스.단종")).main().remark());
+        VendorProductSet s = byCode(sets, code("바스.욕실장.세트명"));
         assertEquals("단종", s.main().remark());
         assertTrue(s.main().description().contains("노블리젠시"), "세트명은 설명으로 남는다");
     }
@@ -90,15 +93,28 @@ class VendorB2026BathSheetTest {
     @Test
     void 세트명_컬럼의_ea는_설명으로_새지_않는다() {
         // 욕실장 F열은 세트명이지만 'ea'(단위)도 섞여 들어온다.
-        VendorProductSet s = byCode(parse(), "<CODE>");
+        VendorProductSet s = byCode(parse(), code("바스.욕실장.상부장"));
         assertEquals("온라인 스퀘어스케치", s.main().description());
+    }
+
+    @Test
+    void 액세사리류와_중복인_4건은_바스에서_빠진다() {
+        // 같은 제품이 두 시트에 실려 있는데 코드 축이 달라(액세사리류는 품번, 바스는 전산코드)
+        // upsert가 병합하지 못하고 대분류만 다른 2건이 생긴다. 액세사리류를 정본으로 삼는다(§8 잔여 ⑦).
+        List<VendorProductSet> sets = parse();
+
+        for (String code : List.of(code("바스.중복.수건선반2단"), code("바스.중복.코너선반1단"), code("바스.중복.코너선반1단브론즈"), code("바스.중복.코너선반2단브론즈"))) {
+            assertTrue(sets.stream().noneMatch(s -> s.main() != null && code.equals(s.main().productCode())),
+                    "액세사리류 정본과 중복 → 바스에서 제외되어야 한다: " + code);
+        }
     }
 
     @Test
     void 전체_회귀_기준값() {
         List<VendorProductSet> sets = parse();
 
-        assertEquals(70, sets.size(), "4시트 71행 - 중복 전산코드 1건");
+        // 4시트 71행 - 시트 내 중복 전산코드 1건 - 액세사리류 중복 4건(§8 잔여 ⑦)
+        assertEquals(66, sets.size(), "4시트 71행 - 중복 1건 - 액세사리류 중복 4건");
         assertTrue(sets.stream().allMatch(s -> s.parts().isEmpty()), "부속 없는 단일 제품");
         assertEquals(sets.size(), sets.stream().map(s -> s.main().productCode()).distinct().count());
     }

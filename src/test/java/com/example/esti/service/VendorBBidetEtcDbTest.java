@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * 비데·기타 시트 <b>DB 적재</b> 검증. 파싱 정확성은 {@code VendorBBidetEtcSheetTest},
@@ -37,7 +38,7 @@ class VendorBBidetEtcDbTest extends AbstractVendorBSheetDbVerification {
         assertThat(dsb.getCategoryLarge()).isEqualTo("비데");
         assertThat(dsb.getCategorySmall()).isEqualTo("비데");
         assertThat(dsb.getProductName()).isEqualTo("비데 DSB-5420");
-        assertThat(dbSetPrice("비데", dsb)).isEqualByComparingTo(new BigDecimal("<PRICE>"));
+        assertThat(dbSetPrice("비데", dsb)).isEqualByComparingTo(price("VendorBBidetEtcDbTest.req2_비데는_대분류_소분류_모두_비데"));
 
         // 비데 비고는 description 컬럼에 저장
         assertThat(dbSetProduct("비데", "IS-24").getDescription()).isEqualTo("방수 비데");
@@ -48,8 +49,8 @@ class VendorBBidetEtcDbTest extends AbstractVendorBSheetDbVerification {
     void req3_전기배터리_변형은_품번뒤_구분글자로_둘다적재_원본품번은_충돌없음() {
         VendorProduct electric = dbSetProduct("기타", "E102e");
         VendorProduct battery = dbSetProduct("기타", "E102b");
-        assertThat(dbSetPrice("기타", electric)).isEqualByComparingTo(new BigDecimal("<PRICE>"));
-        assertThat(dbSetPrice("기타", battery)).isEqualByComparingTo(new BigDecimal("<PRICE>"));
+        assertThat(dbSetPrice("기타", electric)).isEqualByComparingTo(price("VendorBBidetEtcDbTest.req3_전기배터리_변형은_품번뒤_구분글자로_둘다적재_원본품번은_충돌없음"));
+        assertThat(dbSetPrice("기타", battery)).isEqualByComparingTo(price("VendorBBidetEtcDbTest.req3_전기배터리_변형은_품번뒤_구분글자로_둘다적재_원본품번은_충돌없음.2"));
 
         // 접미 없는 원본 품번 E102가 남아 있으면 업서트 충돌(유실) 위험
         assertThat(dbSetProductsOf("기타"))

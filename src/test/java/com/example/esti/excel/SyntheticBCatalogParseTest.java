@@ -103,7 +103,7 @@ class SyntheticBCatalogParseTest {
         VendorProductSet tb100 = byCode(sets, "TB100");
         assertEquals("양변기", tb100.categoryLarge());
         assertEquals("양변기", tb100.sheetName(), "이미지 매칭 키=시트명");
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(tb100.setPrice()), "計=도기+시트");
+        assertEquals(0, new BigDecimal("70000").compareTo(tb100.setPrice()), "計=도기+시트");
         assertEquals(2, tb100.parts().size(), "도기+시트");
         assertTrue(tb100.parts().stream()
                 .anyMatch(p -> VendorParsedItem.RELATION_MAIN.equals(p.relationType())), "도기=본품");
@@ -113,7 +113,7 @@ class SyntheticBCatalogParseTest {
     void 품종_병합빈칸은_carry_forward() {
         VendorProductSet tb200 = byCode(parse(), "TB200");
         assertEquals("양변기", tb200.categorySmall(), "품종 carry-forward");
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(tb200.setPrice()));
+        assertEquals(0, new BigDecimal("85000").compareTo(tb200.setPrice()));
     }
 
     @Test

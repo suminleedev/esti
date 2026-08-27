@@ -69,7 +69,7 @@ class ProposalServiceSoftDeleteTest {
         ProposalRequest.Line line = new ProposalRequest.Line();
         line.setProductId(1L);
         line.setProductName("테스트제품");
-        line.setCatalogUnitPrice(BigDecimal.valueOf(0));
+        line.setCatalogUnitPrice(BigDecimal.valueOf(10000));
         line.setQty(1);
         req.setLines(List.of(line));
         return req;

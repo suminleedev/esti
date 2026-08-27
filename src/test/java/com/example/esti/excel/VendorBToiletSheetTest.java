@@ -9,6 +9,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static com.example.esti.support.TestSamples.requireSample;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * 양변기 시트 전용 검증(parseToiletSheet).
@@ -51,7 +52,7 @@ class VendorBToiletSheetTest {
         VendorProductSet mc921 = byCode(sets, "MC921");
 
         assertEquals("대변기", mc921.categorySmall(), "F/V 구간 품종");
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(mc921.setPrice()));
+        assertEquals(0, price("VendorBToiletSheetTest.FV구간_대변기_MC921은_기존대로_도기_FV_스퍼드_세트가77200").compareTo(mc921.setPrice()));
         assertEquals(3, mc921.parts().size());
         assertTrue(partNames(mc921).contains("F/V"), "F/V 부속 유지");
         assertTrue(mc921.parts().stream().anyMatch(p ->
@@ -82,7 +83,7 @@ class VendorBToiletSheetTest {
         assertFalse(names.contains("F/V"), "투피스엔 F/V 없음: " + names);
         assertFalse(names.contains("스퍼드"), "투피스엔 스퍼드 없음: " + names);
 
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(c752.setPrice()));
+        assertEquals(0, price("VendorBToiletSheetTest.req2_투피스_부속은_헤더기준으로_탱크_양부속이고_FV스퍼드가_아님").compareTo(c752.setPrice()));
         BigDecimal sum = c752.parts().stream().map(VendorParsedItem::unitPrice)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         assertEquals(0, c752.setPrice().compareTo(sum), "計=부속합");
@@ -99,11 +100,11 @@ class VendorBToiletSheetTest {
                 "C853 description=도기수로: " + dogi.main().description());
         assertTrue(sachul.main().description() != null && sachul.main().description().contains("사출수로"),
                 "C853p description=사출수로: " + sachul.main().description());
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(dogi.setPrice()));
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(sachul.setPrice()));
+        assertEquals(0, price("VendorBToiletSheetTest.도기수로_사출수로_변형은_둘다_보존되고_사출수로에만_p가_붙는다").compareTo(dogi.setPrice()));
+        assertEquals(0, price("VendorBToiletSheetTest.도기수로_사출수로_변형은_둘다_보존되고_사출수로에만_p가_붙는다.2").compareTo(sachul.setPrice()));
 
         // 다른 충돌 쌍도 사출수로에 p 부여
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(byCode(sets, "C959p").setPrice()));
+        assertEquals(0, price("VendorBToiletSheetTest.C959p").compareTo(byCode(sets, "C959p").setPrice()));
         assertNotNull(byCode(sets, "C959"));
 
         // 단독 사출수로(짝 없음)는 p를 붙이지 않고 원래 품번 유지
@@ -143,8 +144,8 @@ class VendorBToiletSheetTest {
         // IC855E는 두 모델 가격이 달라(173200/171300) 둘 다 보존되어야 함
         VendorProductSet m = byCode(sets, "IC855Em"); // 모노피 4mc855wt
         VendorProductSet e = byCode(sets, "IC855Ee"); // 헝얼자도 4ec855wt
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(m.setPrice()));
-        assertEquals(0, new BigDecimal("<PRICE>").compareTo(e.setPrice()));
+        assertEquals(0, price("VendorBToiletSheetTest.도자종류만_다른_동일품번_중복은_도기코드_구분글자로_분기되고_둘다_보존").compareTo(m.setPrice()));
+        assertEquals(0, price("VendorBToiletSheetTest.도자종류만_다른_동일품번_중복은_도기코드_구분글자로_분기되고_둘다_보존.2").compareTo(e.setPrice()));
     }
 
     @Test

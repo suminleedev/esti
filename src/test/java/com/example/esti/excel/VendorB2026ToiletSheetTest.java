@@ -9,6 +9,7 @@ import java.util.Optional;
 
 import static com.example.esti.support.TestSamples.requireSample;
 import static org.junit.jupiter.api.Assertions.*;
+import static com.example.esti.support.ExpectedPrices.price;
 
 /**
  * T1 검증 — 최신본(2026) 양변기 시트(세로 나열형).
@@ -47,15 +48,15 @@ class VendorB2026ToiletSheetTest {
     void 세로_나열형_세트는_計와_구성합이_일치하고_첫행이_MAIN이다() {
         VendorProductSet s = byCode(parse(), "IC552EF");
 
-        assertEquals(new BigDecimal("<PRICE>"), s.setPrice());
+        assertEquals(price("VendorB2026ToiletSheetTest.세로_나열형_세트는_計와_구성합이_일치하고_첫행이_MAIN이다"), s.setPrice());
         assertEquals(0, sumOf(s).compareTo(s.setPrice()), "計 = 도기 + 부속 4건");
         assertEquals(5, s.parts().size(), "도기/F/V/스퍼드/시트/후렌지");
 
         VendorParsedItem dogi = s.parts().get(0);
         assertEquals("도기", dogi.productName());
         assertEquals(VendorParsedItem.RELATION_MAIN, dogi.relationType(), "세트 첫 행이 대표품목");
-        assertEquals("IC552EF_<CODE>", dogi.productCode());
-        assertEquals(new BigDecimal("<PRICE>"), dogi.unitPrice());
+        assertEquals("IC552EF_4gc552wt-w3-g", dogi.productCode());
+        assertEquals(price("VendorB2026ToiletSheetTest.세로_나열형_세트는_計와_구성합이_일치하고_첫행이_MAIN이다.2"), dogi.unitPrice());
 
         assertEquals("F/V", s.categorySmall(), "소분류 = B열 품종");
         assertEquals("C910CR", s.main().subItemCode(), "KS 품번");
@@ -96,7 +97,7 @@ class VendorB2026ToiletSheetTest {
         assertEquals("하부", s.parts().get(0).productName());
         assertEquals(VendorParsedItem.RELATION_MAIN, s.parts().get(0).relationType(),
                 "'도기'라는 이름이 아니라 세트 첫 행이 대표품목이다");
-        assertEquals(new BigDecimal("<PRICE>"), s.setPrice());
+        assertEquals(price("VendorB2026ToiletSheetTest.투피스는_하부가_대표품목이_된다"), s.setPrice());
         assertEquals(0, sumOf(s).compareTo(s.setPrice()));
     }
 
@@ -109,10 +110,10 @@ class VendorB2026ToiletSheetTest {
         VendorProductSet first = byCode(sets, "L352E");
         VendorProductSet second = byCode(sets, "L352E-2");
 
-        assertEquals(new BigDecimal("<PRICE>"), first.setPrice());
-        assertEquals(new BigDecimal("<PRICE>"), second.setPrice());
-        assertEquals("L352E_<CODE>", part(first, "자폐수전").orElseThrow().productCode());
-        assertEquals("L352E-2_<CODE>", part(second, "자폐수전").orElseThrow().productCode());
+        assertEquals(price("VendorB2026ToiletSheetTest.동일_품번이_두_번_나오면_별개_세트로_갈린다"), first.setPrice());
+        assertEquals(price("VendorB2026ToiletSheetTest.동일_품번이_두_번_나오면_별개_세트로_갈린다.2"), second.setPrice());
+        assertEquals("L352E_46yj352", part(first, "자폐수전").orElseThrow().productCode());
+        assertEquals("L352E-2_46yjk0352ren", part(second, "자폐수전").orElseThrow().productCode());
         assertTrue(second.main().description().contains("동일 품번 변형 2"));
 
         // 같은 부속이 한 세트에 2번 들어가는 경우(앵글밸브 ×2)도 計에 두 번 반영된다.
@@ -135,8 +136,8 @@ class VendorB2026ToiletSheetTest {
     void 세트_사이_빈_행은_세트만_끊고_시트를_끝내지_않는다() {
         // 오토플러싱 구간은 IC600DE(182행) — 빈 행 — IC599DE(184행) 순이다.
         List<VendorProductSet> sets = parse();
-        assertEquals(new BigDecimal("<PRICE>"), byCode(sets, "IC600DE").setPrice());
-        assertEquals(new BigDecimal("<PRICE>"), byCode(sets, "IC599DE").setPrice(),
+        assertEquals(price("VendorB2026ToiletSheetTest.IC600DE"), byCode(sets, "IC600DE").setPrice());
+        assertEquals(price("VendorB2026ToiletSheetTest.IC599DE"), byCode(sets, "IC599DE").setPrice(),
                 "빈 행 뒤의 세트도 계속 읽어야 한다");
         assertEquals("화변기", byCode(sets, "C922").categorySmall(), "시트 마지막 세트까지 도달");
     }
