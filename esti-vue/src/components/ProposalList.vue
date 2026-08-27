@@ -193,7 +193,7 @@
 
       <div class="card-footer">
         <!-- Pagination -->
-        <Pagination
+        <AppPagination
           :page="page"
           :size="size"
           :totalPages="totalPages"
@@ -220,7 +220,7 @@ import { usePagination } from "@/composables/usePagination"
 import { useToast } from "@/composables/useToast"
 import { useConfirm } from "@/composables/useConfirm"
 import { saveBlob } from "@/utils/download"
-import Pagination from "@/components/Pagination.vue";
+import AppPagination from "@/components/AppPagination.vue";
 import StatusBadge from "@/components/common/StatusBadge.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import { PROPOSAL_STATUS, APARTMENT_TYPES } from "@/constants/labels";
