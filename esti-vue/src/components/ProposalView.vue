@@ -190,9 +190,7 @@
                   </td>
                   <td>
                     {{ r.area }}
-                    <div v-if="r.apartmentType || r.buildingType" class="small text-muted">
-                      {{ [r.apartmentType, r.buildingType].filter(Boolean).join(' · ') }}
-                    </div>
+                    <div v-if="r.buildingType" class="small text-muted">{{ r.buildingType }}</div>
                   </td>
                   <td class="text-end">{{ number(r.qty) }}<span class="text-muted small ms-1">{{ r.unit }}</span></td>
                   <td class="text-end">{{ getAppliedMarginRate(r) }}%</td>
@@ -427,14 +425,8 @@
                   </select>
                 </div>
                 <div class="row g-2 mb-2">
-                  <div class="col-6">
-                    <label class="form-label">평형</label>
-                    <select v-model="lineInput.apartmentType" class="form-select">
-                      <option value="">선택 안 함</option>
-                      <option v-for="t in apartmentTypeChoices" :key="t" :value="t">{{ t }}</option>
-                    </select>
-                  </div>
-                  <div class="col-6">
+                  <!-- 평형은 라인에서 고르지 않는다 — 한 제안서 = 한 평형이라 STEP 1 값이 서버에서 자동으로 들어간다 -->
+                  <div class="col-12">
                     <label class="form-label">건물 구분</label>
                     <input
                       v-model.trim="lineInput.buildingType"
@@ -533,9 +525,7 @@
                         {{ r.vendorItemName }}
                         <div class="small text-muted">{{ r.mainItemCode }} · {{ r.vendorName }}</div>
                         <div class="small text-muted">{{ r.category }} · {{ r.area }}</div>
-                        <div v-if="r.apartmentType || r.buildingType" class="small text-muted">
-                          {{ [r.apartmentType, r.buildingType].filter(Boolean).join(' · ') }}
-                        </div>
+                        <div v-if="r.buildingType" class="small text-muted">{{ r.buildingType }}</div>
                         <div class="small text-muted">원가 {{ won(r.catalogUnitPrice) }} · 단위 {{ r.unit }}</div>
                         <span v-if="r.optional" class="badge bg-warning-subtle text-warning-emphasis">유상옵션</span>
                       </td>
@@ -816,7 +806,7 @@ const candidate = reactive({
 // 평형·건물구분은 라인마다 다를 수 있어(O-5, O-7) 담을 때 함께 고른다.
 // 부위·카테고리와 달리 필수는 아니다 — 기존 제안서에 없던 값이라 비워 둔 채로도 저장된다.
 const lineInput = reactive({
-  area: '', category: '', qty: 1, note: '', apartmentType: '', buildingType: '', optional: false
+  area: '', category: '', qty: 1, note: '', buildingType: '', optional: false
 })
 
 const lineValid = computed(() =>
@@ -887,7 +877,7 @@ function resetLine () {
     unit: UNIT_DEFAULT,
     categorySmall: ''
   })
-  Object.assign(lineInput, { area: '', category: '', qty: 1, note: '', apartmentType: '', buildingType: '', optional: false })
+  Object.assign(lineInput, { area: '', category: '', qty: 1, note: '', buildingType: '', optional: false })
 }
 
 /* ====== 마진 계산 ====== */
@@ -987,7 +977,8 @@ function addLine() {
     note: lineInput.note,
 
     unit: candidate.unit,
-    apartmentType: lineInput.apartmentType,
+    // 서버가 제안서 평형으로 덮어쓴다. 여기서도 같은 값을 넣어 저장 전후 표시가 흔들리지 않게 한다.
+    apartmentType: form.apartmentType,
     buildingType: lineInput.buildingType,
     categorySmall: candidate.categorySmall,
     optional: lineInput.optional
