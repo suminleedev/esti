@@ -22,8 +22,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.nio.file.Path;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 공급사 단가표 적재의 <b>트랜잭션 경계</b>. 파싱 결과를 VendorProduct/Relation/ItemPrice로 풀어 upsert한다.
@@ -134,7 +137,8 @@ public class VendorCatalogImporter {
         // 대표품목
         UpsertResult mainRes = upsertVendorProduct(
                 vendor, mainItem.productCode(), mainItem.productName(),
-                set.categoryLarge(), set.categorySmall(), ITEM_TYPE_SET, mainItem.description(), mainItem.specs());
+                set.categoryLarge(), set.categorySmall(), ITEM_TYPE_SET, mainItem.description(), mainItem.specs(),
+                mainItem.unit());
         VendorProduct mainProduct = mainRes.product();
 
         // 임베디드 이미지 연결 (D15) — 대표품목 행에 앵커된 그림
@@ -152,18 +156,41 @@ public class VendorCatalogImporter {
         upsertPrice(vendor, mainProduct, mainItem, mainPrice, mainRemark, ITEM_TYPE_SET, set.priceBasis());
 
         // 부속품 + 관계
+        //
+        // 원본은 같은 부속이 2개 들어갈 때 행을 두 번 적는다(§8 잔여 ②). 관계 유일키가
+        // (source, target, type)이라 그대로 돌면 한 건으로 접혀 부속 합계가 세트가에 못 미친다.
+        // 먼저 같은 (부속, 슬롯)의 등장 횟수를 세고, 첫 등장에서 그 횟수를 수량으로 넘긴다.
+        // LinkedHashMap이라 첫 등장 순서 = 엑셀 순서가 그대로 유지된다(관계 id 순 정렬이 이 순서에 기댄다).
+        Map<String, Integer> partCounts = new LinkedHashMap<>();
         for (VendorParsedItem part : set.parts()) {
+            partCounts.merge(partKey(part), 1, Integer::sum);
+        }
+
+        Set<String> handled = new HashSet<>();
+        for (VendorParsedItem part : set.parts()) {
+            if (!handled.add(partKey(part))) continue; // 2회차 이후는 수량으로 이미 반영됨
+
             // 부속 전용 소분류가 있으면 그것으로(§10 S4: 국산/OEM 출처). 없으면 세트 소분류.
             String partCategorySmall = part.categorySmall() != null ? part.categorySmall() : set.categorySmall();
             VendorProduct partProduct = upsertVendorProduct(
                     vendor, part.productCode(), part.productName(),
-                    set.categoryLarge(), partCategorySmall, ITEM_TYPE_PART, part.description(), part.specs()).product();
+                    set.categoryLarge(), partCategorySmall, ITEM_TYPE_PART, part.description(), part.specs(),
+                    part.unit()).product();
 
             // 공유 부속 단가는 코드당 1건 유지(D13) → priceBasis=null
             upsertPrice(vendor, partProduct, part, part.unitPrice(), part.remark(), ITEM_TYPE_PART, null);
-            upsertRelation(mainProduct, partProduct, part.relationType());
+            upsertRelation(mainProduct, partProduct, part.relationType(), partCounts.get(partKey(part)));
         }
         return mainRes.created();
+    }
+
+    /**
+     * 부속 동일성 키 — 관계 유일키 {@code (target, relationType)}와 같은 축.
+     * 코드가 없는 부속(A사 신품번 없음 등)은 이름으로 대신한다.
+     */
+    private static String partKey(VendorParsedItem part) {
+        String id = part.productCode() != null ? part.productCode() : part.productName();
+        return id + "\u0000" + part.relationType();
     }
 
     /**
@@ -202,7 +229,7 @@ public class VendorCatalogImporter {
 
     private UpsertResult upsertVendorProduct(Vendor vendor, String productCode, String productName,
                                              String categoryLarge, String categorySmall, String itemType,
-                                             String description, String specs) {
+                                             String description, String specs, String unit) {
         VendorProduct product = null;
 
         // 1) 코드(품번)가 있으면 코드로만 식별 — 공급사 범위 내.
@@ -237,6 +264,9 @@ public class VendorCatalogImporter {
         product.setItemType(itemType);
         if (description != null && !description.isBlank()) product.setDescription(description);
         if (specs != null && !specs.isBlank()) product.setSpecs(specs);
+        // 단위는 원본에 단위 컬럼이 있는 시트만 채워 온다(현재 B사 부속류). null이면 손대지 않아
+        // 엔티티 기본값(SET)이 그대로 남는다 — 다른 시트의 기존 값이 바뀌지 않는다.
+        if (unit != null && !unit.isBlank()) product.setUnit(unit);
 
         // A사 masterCode/detailCode 분리 (신품번 '-' 기준)
         if ("A".equals(vendor.getVendorCode()) && productCode != null) {
@@ -306,7 +336,7 @@ public class VendorCatalogImporter {
         vendorItemPriceRepository.save(vip);
     }
 
-    private void upsertRelation(VendorProduct source, VendorProduct target, String relationType) {
+    private void upsertRelation(VendorProduct source, VendorProduct target, String relationType, int quantity) {
         if (source.getId() != null && source.getId().equals(target.getId())) return; // 자기 참조 방지
 
         String rel = (relationType != null && !relationType.isBlank())
@@ -314,16 +344,26 @@ public class VendorCatalogImporter {
                 : VendorParsedItem.RELATION_ACCESSORY;
         if (rel.length() > 50) rel = rel.substring(0, 50); // relation_type 컬럼 길이 방어
 
-        boolean exists = vendorProductRelationRepository
+        int qty = Math.max(1, quantity);
+
+        // 재적재 멱등: 이미 있으면 수량만 맞춘다. 원본에서 개수가 바뀌면 그 값이 반영돼야 한다.
+        VendorProductRelation existing = vendorProductRelationRepository
                 .findBySourceProductAndTargetProductAndRelationType(source, target, rel)
-                .isPresent();
-        if (exists) return;
+                .orElse(null);
+        if (existing != null) {
+            if (!Integer.valueOf(qty).equals(existing.getQuantity())) {
+                existing.setQuantity(qty);
+                vendorProductRelationRepository.save(existing);
+            }
+            return;
+        }
 
         vendorProductRelationRepository.save(
                 VendorProductRelation.builder()
                         .sourceProduct(source)
                         .targetProduct(target)
                         .relationType(rel)
+                        .quantity(qty)
                         .build()
         );
     }

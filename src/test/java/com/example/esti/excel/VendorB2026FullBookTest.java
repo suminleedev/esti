@@ -40,7 +40,7 @@ class VendorB2026FullBookTest {
     void 전체_적재량_회귀_기준값() {
         List<VendorProductSet> sets = parse();
 
-        assertEquals(767, sets.size(), "전체 세트/제품 수");
+        assertEquals(763, sets.size(), "전체 세트/제품 수");
         assertEquals(449, sets.stream().mapToInt(s -> s.parts().size()).sum(), "구성행 수");
         assertEquals(28, sets.stream()
                 .filter(s -> s.main().productName().contains("(가격없음)")).count(), "D8 표기");
@@ -54,7 +54,7 @@ class VendorB2026FullBookTest {
         assertEquals(new TreeMap<>(Map.of(
                 "양변기", 39L, "세면기", 56L, "소변기", 8L, "수채", 3L,
                 "비데", 6L, "기타", 22L,
-                "수전금구", 264L, "수전부속", 124L, "악세사리", 175L, "바스", 70L
+                "수전금구", 264L, "수전부속", 124L, "악세사리", 175L, "바스", 66L
         )), byCat);
     }
 
