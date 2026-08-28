@@ -1,7 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 import HomeView from '@/components/HomeView.vue';
-import EstimateView from '../components/EstimateView.vue'
 import UploadCatalog from '../components/UploadCatalog.vue'
 import ProposalView from "@/components/ProposalView.vue";
 import ProposalList from "@/components/ProposalList.vue";
@@ -9,7 +8,6 @@ import MasterSettingsView from "@/components/MasterSettingsView.vue";
 
 const routes = [
   { path: "/", name: "home", component: HomeView, meta: { title: '홈' } },
-  { path: '/estimate', name: 'estimate', component: EstimateView, meta: { title: '견적서' } }, // 견적서 페이지
   { path: '/upload', name: 'uploadCatalog', component: UploadCatalog, meta: { title: '카탈로그 관리' } },
   { path: '/proposal', name: 'proposal-new', component: ProposalView, meta: { title: '새 제안서' } },
   { path: '/proposal/list', name: 'proposal-list', component: ProposalList, meta: { title: '제안서 목록' } },
