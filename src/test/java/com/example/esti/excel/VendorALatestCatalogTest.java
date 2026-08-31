@@ -1,0 +1,87 @@
+package com.example.esti.excel;
+
+import org.junit.jupiter.api.Test;
+
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import static com.example.esti.support.TestSamples.requireSample;
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * A사 최신본(시트 {@code ASK}, 2220행) 분류 회귀 검증 — `docs/plan-a-format.md` A-5.
+ *
+ * <p>고도화 전에는 대분류가 C열 텍스트 추론에서 나와 <b>12종 중 7종만</b> 생성됐고,
+ * 소분류 {@code 세면수전} 하나에 728건(전체 38%)이 쏠렸다. 액세서리·발코니수전 구간은
+ * C 라벨 전용행이 없어 직전 소분류 {@code 벽붙이주방수전}에 통째로 흡수됐다.
+ *
+ * <p>샘플은 gitignore이므로 파일이 없으면 스킵한다(CI strict에선 fail).
+ */
+class VendorALatestCatalogTest {
+
+    private static final Path LATEST = Path.of("docs/samples/A사 단가표_2021최신.xls");
+
+    /** 원본 B열 12종을 저장 어휘로 옮긴 결과(G-2). {@code 매립형 욕조&부속}·{@code 스탠딩욕조}가 합쳐져 11종이다. */
+    private static final Set<String> EXPECTED_LARGE_CATEGORIES = Set.of(
+            "양변기", "비데", "세면기", "욕조", "세면수전", "샤워수전",
+            "주방수전", "액세서리", "발코니수전", "상업용제품", "부속");
+
+    private List<VendorProductSet> parseLatest() {
+        requireSample(LATEST);
+        return new VendorAExcelParser().parseSets(LATEST);
+    }
+
+    @Test
+    void 대분류_11종이_모두_생성된다() {
+        Set<String> larges = parseLatest().stream()
+                .map(VendorProductSet::categoryLarge)
+                .collect(Collectors.toSet());
+
+        assertEquals(EXPECTED_LARGE_CATEGORIES, larges,
+                "고도화 전에는 비데·발코니수전·상업용제품·부속이 아예 생성되지 않았다");
+    }
+
+    @Test
+    void 액세서리_구간이_직전_소분류에_흡수되지_않는다() {
+        List<VendorProductSet> accessories = parseLatest().stream()
+                .filter(s -> "액세서리".equals(s.categoryLarge()))
+                .toList();
+
+        assertFalse(accessories.isEmpty(), "액세서리 대분류가 있어야 함");
+        assertTrue(accessories.stream().noneMatch(s -> "벽붙이주방수전".equals(s.categorySmall())),
+                "액세서리 구간이 직전 소분류(벽붙이주방수전)로 새면 안 됨");
+        assertTrue(parseLatest().stream()
+                        .filter(s -> "주방수전".equals(s.categoryLarge()))
+                        .noneMatch(s -> "액세서리".equals(s.categorySmall())),
+                "역방향 오염도 없어야 함");
+    }
+
+    @Test
+    void 어휘_추론이_안_되던_소분류_6종이_살아난다() {
+        // 예전에는 이 6종이 세트명으로 흘러가 직전 소분류가 조용히 이어졌다.
+        Set<String> smalls = parseLatest().stream()
+                .map(VendorProductSet::categorySmall)
+                .filter(s -> s != null)
+                .collect(Collectors.toSet());
+
+        for (String recovered : List.of("월풀", "매립헤드", "자동온도조절수전",
+                "핸드레일&바", "폽업", "기타부속")) {
+            assertTrue(smalls.contains(recovered), "소분류 '" + recovered + "'가 인식돼야 함");
+        }
+    }
+
+    @Test
+    void 세트_그룹핑은_회귀하지_않는다() {
+        List<VendorProductSet> sets = parseLatest();
+
+        int items = sets.size() + sets.stream().mapToInt(s -> s.parts().size()).sum();
+        long review = sets.stream().filter(VendorProductSet::needsReview).count();
+
+        // 분류만 손댔으므로 합계행 기반 그룹핑 결과는 그대로여야 한다(2021 최신본 실측값).
+        assertEquals(962, sets.size(), "세트 수");
+        assertEquals(1892, items, "품목 총계 = 원본 데이터 행 수");
+        assertEquals(7, review, "합계≠부속합산으로 검수 필요한 세트");
+    }
+}
