@@ -15,4 +15,10 @@ public interface ManufacturerProductSyncHandler {
 
     /** prepare()가 만든 컨텍스트를 활용하는 저장. 기본 구현은 컨텍스트를 무시한다. */
     default void save(CrawledProduct crawled, Object context) { save(crawled); }
+
+    /**
+     * 반영 없이 매칭만 해 본다(dry-run). 내려받지도, 저장하지도 않는다.
+     * 기본 구현은 아무것도 하지 않는다 — dry-run을 지원하지 않는 핸들러는 빈 리포트를 낸다.
+     */
+    default void inspect(CrawledProduct crawled, Object context) { }
 }
