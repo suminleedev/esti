@@ -134,7 +134,10 @@ public class InusProductSyncHandler implements ManufacturerProductSyncHandler {
     }
 
     private void applyImage(CrawledProduct crawled, String sourceUrl, List<Long> matchedIds, MatchContext ctx) {
-        String fileName = crawled.getVendorCode() + "_" + normalizeFileNamePart(crawled.getProductCode());
+        // 확장자를 붙이지 않고 넘긴다 — 응답 Content-Type을 보고 ImageDownloadService가 정한다.
+        // 사이트 이미지는 상당수가 PNG인데 .jpg로 저장하면 엑셀 출력에서 깨진다.
+        // 파일명에 쓸 수 없는 문자는 ImageDownloadService가 걷어낸다.
+        String fileName = crawled.getVendorCode() + "_" + crawled.getProductCode();
 
         ImageDownloadService.DownloadResult downloaded;
         try {
@@ -235,11 +238,6 @@ public class InusProductSyncHandler implements ManufacturerProductSyncHandler {
             return null;
         }
         return code.trim().toUpperCase().replaceAll("[^A-Z0-9]", "");
-    }
-
-    /** 파일명에는 사이트 표기를 살리되 경로로 쓸 수 없는 문자만 걷어낸다. */
-    private String normalizeFileNamePart(String code) {
-        return code == null ? "" : code.trim().replaceAll("[^A-Za-z0-9._-]", "_");
     }
 
     /** 사이트 품번과 DB 품번의 완화 후보 짝. 반영하지 않고 리포트로만 쓴다. */
