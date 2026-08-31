@@ -1,6 +1,7 @@
 package com.example.esti.crawler.inus;
 
 import com.example.esti.crawler.common.CrawlException;
+import com.example.esti.crawler.common.CrawlResult;
 import com.example.esti.crawler.common.CrawledProduct;
 import com.example.esti.crawler.common.ProductImageCrawler;
 import lombok.extern.slf4j.Slf4j;
@@ -84,6 +85,11 @@ public class InusCrawler implements ProductImageCrawler {
 
     @Override
     public List<CrawledProduct> crawlAllProducts() throws Exception {
+        return crawlAll().products();
+    }
+
+    @Override
+    public CrawlResult crawlAll() throws Exception {
         List<String> urls = buildListUrls();
 
         // 품번 하나가 여러 리스트에 걸릴 수 있다. ASTD와 달리 siteProductId가 늘 null이라
@@ -117,7 +123,12 @@ public class InusCrawler implements ProductImageCrawler {
                     urls.size(), failed.size(), failed);
         }
 
-        return new ArrayList<>(unique.values());
+        // 몇 개 중 몇 개를 받았는지 함께 넘긴다. 리포트가 부분 수집을 감추지 않게 하려는 것이다.
+        return new CrawlResult(
+                new ArrayList<>(unique.values()),
+                urls.size(),
+                urls.size() - failed.size(),
+                List.copyOf(failed));
     }
 
     private Document fetch(String url) throws Exception {

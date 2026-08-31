@@ -4,7 +4,6 @@ import com.example.esti.crawler.common.CrawledProduct;
 import com.example.esti.crawler.common.ImageDownloadService;
 import com.example.esti.entity.VendorProduct;
 import com.example.esti.repository.VendorProductRepository;
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -12,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -56,24 +56,33 @@ public class InusProductSyncHandler implements ManufacturerProductSyncHandler {
      * SET 행을 1회만 읽어 "정규화 품번 → VendorProduct id" 인덱스를 만든다.
      *
      * <p>담는 것은 <b>id뿐이다.</b> 이 메서드는 트랜잭션 밖에서 돌아 엔티티가 detach 상태로
-     * 나오므로, 저장할 때 id로 다시 조회한다.
+     * 나오므로, 저장할 때 id로 다시 조회한다. 다만 이미지 보유 여부는 이때 함께 적어 둔다 —
+     * dry-run이 "교체 대상 몇 건"을 세려면 필요한데, 그것 때문에 다시 조회할 이유는 없다.
      */
     @Override
     public Object prepare(String vendorCode) {
         Map<String, List<Long>> idsByCode = new HashMap<>();
+        Set<Long> idsWithImage = new HashSet<>();
 
         for (VendorProduct product :
                 vendorProductRepository.findAllByVendor_VendorCodeAndItemType(vendorCode, ITEM_TYPE_SET)) {
 
             String code = normalizeCode(product.getProductCode());
-            if (code != null && !code.isBlank()) {
-                idsByCode.computeIfAbsent(code, k -> new ArrayList<>()).add(product.getId());
+            if (code == null || code.isBlank()) {
+                continue;
+            }
+
+            idsByCode.computeIfAbsent(code, k -> new ArrayList<>()).add(product.getId());
+
+            if (product.getImageUrl() != null && !product.getImageUrl().isBlank()) {
+                idsWithImage.add(product.getId());
             }
         }
 
-        log.info("[{}] SET 인덱스 {}개 품번 준비", MAKER, idsByCode.size());
+        log.info("[{}] SET 인덱스 {}개 품번 준비 (이미지 보유 {}행)",
+                MAKER, idsByCode.size(), idsWithImage.size());
 
-        return new MatchContext(idsByCode);
+        return new MatchContext(idsByCode, idsWithImage);
     }
 
     /**
@@ -93,47 +102,81 @@ public class InusProductSyncHandler implements ManufacturerProductSyncHandler {
     @Override
     @Transactional
     public void save(CrawledProduct crawled, Object context) {
-        if (!(context instanceof MatchContext ctx)) {
-            throw new IllegalStateException("INUS 저장에 필요한 매칭 인덱스가 없습니다: " + context);
+        MatchContext ctx = asContext(context);
+
+        List<Long> matchedIds = match(crawled, ctx);
+        if (matchedIds.isEmpty()) {
+            return;
         }
 
+        applyImage(crawled, matchedIds, ctx);
+    }
+
+    /** 매칭만 하고 아무것도 바꾸지 않는다. 내려받지도 저장하지도 않는다. */
+    @Override
+    public void inspect(CrawledProduct crawled, Object context) {
+        MatchContext ctx = asContext(context);
+
+        for (Long id : match(crawled, ctx)) {
+            ctx.rowsAffected++;
+            if (ctx.idsWithImage.contains(id)) {
+                ctx.rowsReplaced++;
+            } else {
+                ctx.rowsFilled++;
+            }
+        }
+    }
+
+    private MatchContext asContext(Object context) {
+        if (context instanceof MatchContext ctx) {
+            return ctx;
+        }
+        throw new IllegalStateException("INUS 처리에 필요한 매칭 인덱스가 없습니다: " + context);
+    }
+
+    /**
+     * 제품 1건을 인덱스에 대조하고 집계를 올린다. 반영 여부와 무관한 공통 경로라
+     * 실반영과 dry-run이 <b>같은 규칙으로 같은 숫자</b>를 내게 한다.
+     *
+     * @return 갱신 대상 VendorProduct id. 매칭이 없거나 처리할 수 없으면 빈 목록
+     */
+    private List<Long> match(CrawledProduct crawled, MatchContext ctx) {
         ctx.collected++;
 
         Set<String> siteCodes = matchingKeys(crawled);
         if (siteCodes.isEmpty()) {
             ctx.skippedNoCode++;
             log.info("[{}] 품번 없음 — 건너뜀. url={}", MAKER, crawled.getProductUrl());
-            return;
+            return List.of();
         }
 
-        String sourceUrl = resolveSourceUrl(crawled);
-        if (sourceUrl == null) {
+        if (resolveSourceUrl(crawled) == null) {
             ctx.skippedNoImage++;
             log.info("[{}] 이미지 없음 — 건너뜀. code={}", MAKER, crawled.getProductCode());
-            return;
+            return List.of();
         }
 
         List<Long> matchedIds = findExactMatches(ctx, siteCodes);
-
-        if (matchedIds.isEmpty()) {
-            // 정확 매칭이 없을 때만 완화 후보를 찾는다. 찾아도 쓰지 않는다 —
-            // 뒤 몇 자가 다른 건 색상·사양 변형인 다른 제품일 수 있어서, 목록으로 뽑아
-            // 눈으로 보고 승인하는 쪽이 오매칭 사진을 넣는 것보다 싸다(G-1 ⓒ).
-            List<RelaxedCandidate> candidates = findRelaxedCandidates(ctx, siteCodes);
-            if (candidates.isEmpty()) {
-                ctx.notInDb++;
-            } else {
-                ctx.relaxedOnly++;
-                ctx.relaxedCandidates.addAll(candidates);
-            }
-            return;
+        if (!matchedIds.isEmpty()) {
+            ctx.exactMatched++;
+            return matchedIds;
         }
 
-        ctx.exactMatched++;
-        applyImage(crawled, sourceUrl, matchedIds, ctx);
+        // 정확 매칭이 없을 때만 완화 후보를 찾는다. 찾아도 쓰지 않는다 —
+        // 뒤 몇 자가 다른 건 색상·사양 변형인 다른 제품일 수 있어서, 목록으로 뽑아
+        // 눈으로 보고 승인하는 쪽이 오매칭 사진을 넣는 것보다 싸다(G-1 ⓒ).
+        List<String> candidates = findRelaxedCandidates(ctx, siteCodes);
+        if (candidates.isEmpty()) {
+            ctx.notInDb++;
+        } else {
+            ctx.relaxedOnly++;
+            ctx.relaxedCandidates.addAll(candidates);
+        }
+
+        return List.of();
     }
 
-    private void applyImage(CrawledProduct crawled, String sourceUrl, List<Long> matchedIds, MatchContext ctx) {
+    private void applyImage(CrawledProduct crawled, List<Long> matchedIds, MatchContext ctx) {
         // 확장자를 붙이지 않고 넘긴다 — 응답 Content-Type을 보고 ImageDownloadService가 정한다.
         // 사이트 이미지는 상당수가 PNG인데 .jpg로 저장하면 엑셀 출력에서 깨진다.
         // 파일명에 쓸 수 없는 문자는 ImageDownloadService가 걷어낸다.
@@ -141,11 +184,10 @@ public class InusProductSyncHandler implements ManufacturerProductSyncHandler {
 
         ImageDownloadService.DownloadResult downloaded;
         try {
-            downloaded = imageDownloadService.download(sourceUrl, fileName);
+            downloaded = imageDownloadService.download(resolveSourceUrl(crawled), fileName);
         } catch (Exception e) {
             ctx.downloadFailed++;
-            log.error("[{}] 이미지 내려받기 실패. code={}, url={}",
-                    MAKER, crawled.getProductCode(), sourceUrl, e);
+            log.error("[{}] 이미지 내려받기 실패. code={}", MAKER, crawled.getProductCode(), e);
             return;
         }
 
@@ -157,7 +199,7 @@ public class InusProductSyncHandler implements ManufacturerProductSyncHandler {
             product.setImageUrl(downloaded.relativePath());
             vendorProductRepository.save(product);
 
-            ctx.rowsUpdated++;
+            ctx.rowsAffected++;
             if (hadImage) {
                 ctx.rowsReplaced++;
             } else {
@@ -197,13 +239,13 @@ public class InusProductSyncHandler implements ManufacturerProductSyncHandler {
      * 한쪽이 다른 쪽으로 시작하고 길이 차이가 {@value #RELAXED_MAX_LENGTH_DIFF}자 이내인 짝을 찾는다.
      * 사이트가 더 긴 경우와 DB가 더 긴 경우를 모두 본다.
      */
-    private List<RelaxedCandidate> findRelaxedCandidates(MatchContext ctx, Set<String> siteCodes) {
-        List<RelaxedCandidate> found = new ArrayList<>();
+    private List<String> findRelaxedCandidates(MatchContext ctx, Set<String> siteCodes) {
+        List<String> found = new ArrayList<>();
 
         for (String siteCode : siteCodes) {
             for (String dbCode : ctx.idsByCode.keySet()) {
                 if (isRelaxedMatch(siteCode, dbCode)) {
-                    found.add(new RelaxedCandidate(siteCode, dbCode));
+                    found.add(siteCode + " ↔ " + dbCode);
                 }
             }
         }
@@ -240,21 +282,17 @@ public class InusProductSyncHandler implements ManufacturerProductSyncHandler {
         return code.trim().toUpperCase().replaceAll("[^A-Z0-9]", "");
     }
 
-    /** 사이트 품번과 DB 품번의 완화 후보 짝. 반영하지 않고 리포트로만 쓴다. */
-    public record RelaxedCandidate(String siteCode, String dbCode) {
-    }
-
     /**
      * {@link #prepare(String)}이 만든 매칭 인덱스와, 한 번의 동기화에서 모인 집계.
      *
-     * <p>집계는 dry-run 리포트(I-7)와 실반영 결과 대조(I-10)가 함께 쓴다. 동기화는
-     * 관리자가 한 번에 하나씩 돌리는 단일 스레드 경로라 평범한 필드로 센다.
+     * <p>집계는 dry-run 리포트와 실반영 결과 대조가 함께 쓴다. 동기화는 관리자가 한 번에
+     * 하나씩 돌리는 단일 스레드 경로라 평범한 필드로 센다.
      */
-    @Getter
-    public static final class MatchContext {
+    public static final class MatchContext implements SyncMatchCounters {
 
         private final Map<String, List<Long>> idsByCode;
-        private final List<RelaxedCandidate> relaxedCandidates = new ArrayList<>();
+        private final Set<Long> idsWithImage;
+        private final List<String> relaxedCandidates = new ArrayList<>();
 
         private int collected;
         private int exactMatched;
@@ -263,17 +301,30 @@ public class InusProductSyncHandler implements ManufacturerProductSyncHandler {
         private int skippedNoCode;
         private int skippedNoImage;
         private int downloadFailed;
-        private int rowsUpdated;
+        private int rowsAffected;
         private int rowsFilled;
         private int rowsReplaced;
 
-        private MatchContext(Map<String, List<Long>> idsByCode) {
+        private MatchContext(Map<String, List<Long>> idsByCode, Set<Long> idsWithImage) {
             this.idsByCode = idsByCode;
+            this.idsWithImage = idsWithImage;
         }
 
-        /** 인덱스에 담긴 서로 다른 품번 수 — 매칭 모수. */
-        public int indexedCodeCount() {
-            return idsByCode.size();
+        @Override public int indexedCodes()   { return idsByCode.size(); }
+        @Override public int collected()      { return collected; }
+        @Override public int exactMatched()   { return exactMatched; }
+        @Override public int relaxedOnly()    { return relaxedOnly; }
+        @Override public int notInDb()        { return notInDb; }
+        @Override public int skippedNoCode()  { return skippedNoCode; }
+        @Override public int skippedNoImage() { return skippedNoImage; }
+        @Override public int downloadFailed() { return downloadFailed; }
+        @Override public int rowsAffected()   { return rowsAffected; }
+        @Override public int rowsFilled()     { return rowsFilled; }
+        @Override public int rowsReplaced()   { return rowsReplaced; }
+
+        @Override
+        public List<String> relaxedCandidates() {
+            return List.copyOf(relaxedCandidates);
         }
     }
 }
