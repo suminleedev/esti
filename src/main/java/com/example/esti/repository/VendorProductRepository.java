@@ -13,6 +13,9 @@ public interface VendorProductRepository extends JpaRepository<VendorProduct, Lo
 
     List<VendorProduct> findAllByProductCode(String productCode);
 
+    /** 벤더의 특정 품목 유형만 훑는다. 이누스 이미지 매칭이 SET 인덱스를 만들 때 쓴다. */
+    List<VendorProduct> findAllByVendor_VendorCodeAndItemType(String vendorCode, String itemType);
+
     List<VendorProduct> findAllByProductNameAndCategoryLargeAndCategorySmall(
             String name, String categoryLarge, String categorySmall);
 }
