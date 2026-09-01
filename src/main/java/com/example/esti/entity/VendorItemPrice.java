@@ -17,6 +17,12 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 public class VendorItemPrice {
 
+    /** {@link #priceType} — 대표품목(세트) 가격행. */
+    public static final String PRICE_TYPE_SET = "SET";
+
+    /** {@link #priceType} — 부속 가격행. 세트를 구성하는 쪽이라 그 자체로는 구성이 없다. */
+    public static final String PRICE_TYPE_PART = "PART";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

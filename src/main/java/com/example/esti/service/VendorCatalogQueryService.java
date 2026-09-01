@@ -63,6 +63,9 @@ public class VendorCatalogQueryService {
      * <p>{@code @Transactional(readOnly = true)}가 필수다: 관계의 {@code sourceProduct}·
      * {@code targetProduct}가 LAZY라 세션 밖에서는 초기화되지 않는다.
      *
+     * <p><b>부속 가격행({@code priceType='PART'})은 항상 빈 리스트다</b> — 부속은 세트를 구성하는 쪽이라
+     * 그 자체로는 구성이 없다. 근거는 {@link #partsOf} 주석.
+     *
      * @return 부속 목록(구성이 없으면 빈 리스트). 해당 가격 라인 자체가 없으면 {@link Optional#empty()} —
      *         "부속 없음"과 "조회 실패"를 호출자가 구분할 수 있어야 한다.
      */
@@ -73,6 +76,17 @@ public class VendorCatalogQueryService {
     }
 
     private List<VendorProductPartView> partsOf(VendorItemPrice price) {
+        // 부속 가격행은 펼치지 않는다.
+        //
+        // 관계가 (제품 → 제품)이라 가격행의 역할을 구분하지 못한다. 같은 품번이 어떤 세트에선
+        // 부속이고 다른 곳에선 대표품목이면, 부속으로 올라온 행에도 그 세트의 부속이 딸려 나온다
+        // — 화면에서 "부속을 눌렀는데 부속이 또 나오는" 상태다.
+        // (A사 7건. 예: [부속/폽업] 폽업을 누르면 P트랩·패킹·호스·앵글밸브가 나왔다)
+        //
+        // 근본 해결은 관계에 기준 축(세트 또는 가격행)을 넣는 것이고, 이건 그 전까지의 차단이다.
+        // docs/analysis-a-set-parts.md §4·§10-1
+        if (VendorItemPrice.PRICE_TYPE_PART.equals(price.getPriceType())) return List.of();
+
         Vendor vendor = price.getVendor();
         VendorProduct main = price.getVendorProduct();
 
