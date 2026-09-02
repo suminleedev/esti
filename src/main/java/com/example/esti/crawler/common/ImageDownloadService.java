@@ -4,6 +4,7 @@ import com.example.esti.util.VectorImageConverter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.io.BufferedInputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -17,9 +18,12 @@ import java.util.UUID;
 public class ImageDownloadService {
 
     private final Path rootDir;
+    private final String userAgent;
 
-    public ImageDownloadService(@Value("${app.crawler.image-dir}") String rootDir) {
+    public ImageDownloadService(@Value("${app.crawler.image-dir}") String rootDir,
+                                @Value("${app.crawler.user-agent}") String userAgent) {
         this.rootDir = Path.of(rootDir).toAbsolutePath().normalize();
+        this.userAgent = userAgent;
     }
 
     /**
@@ -30,24 +34,35 @@ public class ImageDownloadService {
      * 저장하면 PNG 바이트를 JPEG라고 선언해 워크북에 넣게 된다. 화면은 브라우저가 내용으로
      * 판별해 멀쩡히 보이므로 <b>엑셀을 열어보기 전에는 드러나지 않는다.</b>
      *
-     * @param preferredFileName 파일명 힌트. <b>이미 이미지 확장자가 붙어 있으면 그대로 쓴다</b> —
-     *                          기존 호출부(ASTD)가 {@code ".jpg"}를 직접 붙여 넘기므로 동작이 바뀌지 않는다.
-     *                          확장자가 없으면 응답 {@code Content-Type}으로 정한다
+     * @param preferredFileName 파일명 힌트. <b>이미 이미지 확장자가 붙어 있으면 그대로 쓴다.</b>
+     *                          확장자가 없으면 응답 {@code Content-Type}으로 정한다 — 크롤러 호출부는
+     *                          모두 확장자를 떼고 넘겨 이 판정을 타게 한다(C-5)
      */
     public DownloadResult download(String sourceUrl, String preferredFileName) throws Exception {
         Files.createDirectories(rootDir);
 
         String fileName = sanitize(preferredFileName);
 
-        /* 이미지 재크롤링 시 기존 파일 덮어쓰기 방식으로 변경 */
-
         HttpURLConnection conn = (HttpURLConnection) new URL(sourceUrl).openConnection();
         conn.setConnectTimeout(5_000);
         conn.setReadTimeout(30_000);
 
-        try (InputStream in = conn.getInputStream()) {
+        // HTML은 크롤러가 UA를 실어 보내는데 이미지는 기본 UA로 나가고 있었다. 지금은 양쪽 다 200이라
+        // 무해하지만, 한쪽만 신원이 다른 상태라 hotlink 차단이 켜지면 이미지만 조용히 깨진다.
+        if (userAgent != null && !userAgent.isBlank()) {
+            conn.setRequestProperty("User-Agent", userAgent);
+        }
+
+        try (InputStream raw = conn.getInputStream();
+             BufferedInputStream in = new BufferedInputStream(raw)) {
+
+            // 응답 앞부분을 미리 읽어 실제 형식을 본다. 되돌려 놓으므로 저장에는 영향이 없다.
+            in.mark(SNIFF_BYTES);
+            byte[] head = in.readNBytes(SNIFF_BYTES);
+            in.reset();
+
             if (!hasImageExtension(fileName)) {
-                fileName += "." + resolveExtension(conn.getContentType(), sourceUrl);
+                fileName += "." + resolveExtension(head, conn.getContentType(), sourceUrl);
             }
 
             Path target = rootDir.resolve(fileName);
@@ -61,12 +76,24 @@ public class ImageDownloadService {
     }
 
     /**
-     * 저장할 확장자를 정한다 — 응답 {@code Content-Type}이 1순위, URL 경로가 2순위, 없으면 {@code jpg}.
+     * 저장할 확장자를 정한다 — <b>실제 바이트가 1순위</b>, 응답 {@code Content-Type}이 2순위,
+     * URL 경로가 3순위, 그래도 모르면 {@code jpg}.
      *
-     * <p><b>왜 URL이 아니라 Content-Type이 먼저인가</b> — 이누스는 URL에 확장자가 있지만
-     * ASTD는 {@code img.do?v_product=333}처럼 아예 없다. Content-Type이 두 사이트의 공통 분모다.
+     * <p><b>왜 바이트가 Content-Type보다 먼저인가</b> — 서버가 틀리게 말하기 때문이다.
+     * ASTD는 {@code Content-Type: image/jpeg}를 보내면서 PNG 바이트를 준다. 실측한 238장 중
+     * <b>225장이 PNG였는데 전부 {@code .jpg}로 저장됐다.</b> 확장자가 내용과 어긋나면 제안서
+     * 엑셀 출력이 깨진다 — 출력이 확장자로 POI 그림 타입을 정하므로 PNG 바이트를 JPEG라고
+     * 선언해 워크북에 넣게 된다. 화면은 브라우저가 내용으로 판별해 멀쩡히 보이므로
+     * <b>엑셀을 열어보기 전에는 드러나지 않는다.</b>
+     *
+     * <p>매직 넘버는 서버가 뭐라고 하든 파일 자신이 말하는 것이라 가장 믿을 만하다.
      */
-    static String resolveExtension(String contentType, String sourceUrl) {
+    static String resolveExtension(byte[] head, String contentType, String sourceUrl) {
+        String sniffed = extensionOfMagic(head);
+        if (sniffed != null) {
+            return sniffed;
+        }
+
         String fromType = extensionOfContentType(contentType);
         if (fromType != null) {
             return fromType;
@@ -78,6 +105,38 @@ public class ImageDownloadService {
         }
 
         return "jpg";
+    }
+
+    /** 파일 앞머리의 매직 넘버로 형식을 판별한다. 모르는 형식이면 null. */
+    static String extensionOfMagic(byte[] head) {
+        if (head == null || head.length < 4) {
+            return null;
+        }
+
+        if (startsWith(head, 0x89, 'P', 'N', 'G')) return "png";
+        if (startsWith(head, 0xFF, 0xD8, 0xFF))    return "jpg";
+        if (startsWith(head, 'G', 'I', 'F', '8'))  return "gif";
+
+        // WEBP: "RIFF" + 파일크기 4바이트 + "WEBP"
+        if (head.length >= 12
+                && startsWith(head, 'R', 'I', 'F', 'F')
+                && head[8] == 'W' && head[9] == 'E' && head[10] == 'B' && head[11] == 'P') {
+            return "webp";
+        }
+
+        return null;
+    }
+
+    private static boolean startsWith(byte[] head, int... expected) {
+        if (head.length < expected.length) {
+            return false;
+        }
+        for (int i = 0; i < expected.length; i++) {
+            if ((head[i] & 0xFF) != (expected[i] & 0xFF)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static String extensionOfContentType(String contentType) {
@@ -150,6 +209,9 @@ public class ImageDownloadService {
                 "/uploads/product-images/" + fileName
         );
     }
+
+    /** 형식 판별에 필요한 앞머리 길이. WEBP가 12바이트를 본다. */
+    private static final int SNIFF_BYTES = 16;
 
     private static final Set<String> KNOWN_EXTENSIONS =
             Set.of("jpg", "jpeg", "png", "webp", "gif");

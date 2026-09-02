@@ -2,6 +2,7 @@ package com.example.esti.crawler.astd;
 
 import com.example.esti.crawler.common.CrawledProduct;
 import com.example.esti.crawler.common.ProductImageCrawler;
+import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -10,12 +11,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
+@Slf4j
 @Component
 public class AstdCrawler implements ProductImageCrawler {
 
@@ -39,6 +39,9 @@ public class AstdCrawler implements ProductImageCrawler {
     @Value("${app.crawler.timeout-ms}")
     private int timeoutMs;
 
+    @Value("${app.crawler.astd.request-delay-ms}")
+    private int requestDelayMs;
+
     private final AstdParser parser = new AstdParser();
 
     @Override
@@ -52,22 +55,17 @@ public class AstdCrawler implements ProductImageCrawler {
     }
 
     @Override
-    public List<String> collectProductUrls() {
-        return Collections.emptyList();
-    }
-
-    @Override
-    public Optional<CrawledProduct> crawlProduct(String productUrl) {
-        return Optional.empty();
-    }
-
-    @Override
     public List<CrawledProduct> crawlAllProducts() throws Exception {
         Map<String, CrawledProduct> unique = new LinkedHashMap<>();
+
+        // 카테고리와 페이지를 가리지 않고 "요청과 요청 사이"에 간격을 둬야 하므로
+        // 보낸 요청 수를 전체를 통틀어 센다. 카테고리마다 리셋하면 카테고리 경계에서 간격이 사라진다.
+        int sent = 0;
 
         for (Integer cate1 : parseCategoryIds()) {
             String currentCategoryUrl = buildCategoryUrl(cate1);
 
+            throttle(sent++);
             Document firstPage = Jsoup.connect(currentCategoryUrl)
                     .userAgent(userAgent)
                     .timeout(timeoutMs)
@@ -76,14 +74,33 @@ public class AstdCrawler implements ProductImageCrawler {
             collectFromPage(unique, firstPage);
 
             int totalPages = extractTotalPages(firstPage);
+            log.info("ASTD 카테고리 {} — {}페이지, 누적 {}건", cate1, totalPages, unique.size());
 
             for (int page = 2; page <= totalPages; page++) {
+                throttle(sent++);
                 Document pageDoc = fetchPageByAjax(currentCategoryUrl, cate1, page);
                 collectFromPage(unique, pageDoc);
             }
         }
 
+        log.info("ASTD 수집 완료 — 요청 {}회, 고유 {}건", sent, unique.size());
+
         return new ArrayList<>(unique.values());
+    }
+
+    /**
+     * 요청과 요청 사이에 간격을 둔다.
+     *
+     * <p>사이트가 {@code robots.txt}에 {@code Crawl-delay}를 명시하고 있고, 그 값을 존중하기로 했다
+     * (G-5 ① — {@code docs/plan-a-crawler.md}). <b>이 간격이 이 크롤러에서 가장 비싼 줄이다</b> —
+     * 요청 44회 기준으로 실행 시간이 통째로 여기서 나온다. 그래도 기능은 잃지 않는다.
+     *
+     * @param alreadySent 지금까지 보낸 요청 수. 0이면 첫 요청이라 기다리지 않는다
+     */
+    private void throttle(int alreadySent) throws InterruptedException {
+        if (alreadySent > 0) {
+            Thread.sleep(requestDelayMs);
+        }
     }
 
     private void collectFromPage(Map<String, CrawledProduct> unique, Document doc) {

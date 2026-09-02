@@ -11,19 +11,16 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * INUS(이누스) 이미지 크롤러.
  *
  * <p>ASTD와 달리 <b>상세 페이지를 돌지 않는다.</b> 이 사이트는 상세 페이지 자체가 없고
  * 리스트 HTML에 품번·이미지·품목명이 다 들어 있어, 리스트 6장을 받는 것으로 수집이 끝난다.
- * 그래서 {@link #collectProductUrls()}·{@link #crawlProduct(String)}는 쓰이지 않고
- * {@link #crawlAllProducts()}만 구현한다.
+ * 그래서 {@link #crawlAll()}로 리스트를 돌며 한 번에 수집한다.
  */
 @Slf4j
 @Component
@@ -69,18 +66,6 @@ public class InusCrawler implements ProductImageCrawler {
     @Override
     public String vendorCode() {
         return vendorCode;
-    }
-
-    /** 리스트만으로 수집이 끝나 쓰이지 않는다. */
-    @Override
-    public List<String> collectProductUrls() {
-        return Collections.emptyList();
-    }
-
-    /** 상세 페이지가 없어 쓰이지 않는다. */
-    @Override
-    public Optional<CrawledProduct> crawlProduct(String productUrl) {
-        return Optional.empty();
     }
 
     @Override
