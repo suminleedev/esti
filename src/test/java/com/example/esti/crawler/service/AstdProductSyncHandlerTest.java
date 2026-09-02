@@ -185,6 +185,23 @@ class AstdProductSyncHandlerTest {
     }
 
     @Test
+    void 사이트_제품_둘이_같은_제품_행에_걸리면_반영은_한_행이다() {
+        // 같은 행을 두 번 세면 "반영 2행"이 되는데 실제로 남는 건 뒤에 온 사진 하나다.
+        when(vendorItemPriceRepository.findAllByVendor_VendorCode("A"))
+                .thenReturn(List.of(vip(1L, "AAA111")));
+        when(vendorProductRepository.findAllByVendor_VendorCode("A"))
+                .thenReturn(List.of(product("AAA111", null)));
+
+        Object ctx = handler.prepare("A");
+        handler.inspect(crawled("AAA111"), ctx);
+        handler.inspect(crawled("AAA111"), ctx);
+
+        assertThat(counters(ctx).exactMatched()).isEqualTo(2);
+        assertThat(counters(ctx).rowsAffected()).isEqualTo(1);
+        assertThat(counters(ctx).rowsFilled()).isEqualTo(1);
+    }
+
+    @Test
     void 매칭되는_품번이_없으면_아무것도_저장하지_않는다() throws Exception {
         when(vendorItemPriceRepository.findAllByVendor_VendorCode("A"))
                 .thenReturn(List.of(vip(1L, "DEF999")));

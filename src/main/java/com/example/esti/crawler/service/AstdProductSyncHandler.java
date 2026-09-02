@@ -178,6 +178,10 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
      *
      * <p>가격행이 아니라 <b>제품 행</b>을 센다 — 여러 가격행이 같은 품번을 가리키면
      * 실제로 사진이 붙는 곳은 하나다. 가격행 수로 세면 반영 규모가 부풀려진다.
+     *
+     * <p>같은 이유로 <b>한 번의 동기화에서 같은 제품 행은 한 번만 센다.</b> 사이트 제품 여럿이
+     * 한 대표품번으로 접히면 같은 행을 여러 번 건드리게 되는데, 그건 "반영 N행"이 아니라
+     * <b>N번째 사진이 이긴 1행</b>이다. 그때는 어느 사진이 맞는지 알 수 없으므로 경고를 남긴다.
      */
     private void countRows(List<CodeMatch> matches, MatchContext ctx) {
         Set<String> targetCodes = new LinkedHashSet<>();
@@ -188,6 +192,13 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
         }
 
         for (String code : targetCodes) {
+            if (!ctx.countedProductCodes.add(code)) {
+                ctx.rowsContested++;
+                log.warn("[{}] ⚠️ 같은 제품 행에 사이트 제품이 둘 이상 걸린다 — 뒤에 온 사진이 이긴다. code={}",
+                        MAKER, code);
+                continue;
+            }
+
             Boolean hasImage = ctx.imageByProductCode.get(code);
 
             ctx.rowsAffected++;
@@ -395,6 +406,9 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
         private final Map<String, List<CodeMatch>> byBaseCode;
         private final Map<String, Boolean> imageByProductCode;
 
+        /** 이번 실행에서 이미 센 제품 행. 같은 행을 두 번 세지 않기 위한 것이다. */
+        private final Set<String> countedProductCodes = new HashSet<>();
+
         private int collected;
         private int exactMatched;
         private int notInDb;
@@ -407,6 +421,9 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
 
         /** 제품 행이 <b>새로 생기는</b> 건수. 리포트에는 없고 로그로만 남긴다 — §4의 위험 실측치다. */
         private int rowsCreated;
+
+        /** 사이트 제품 둘 이상이 같은 제품 행을 두고 다툰 횟수. 사진이 뒤엎인다. */
+        private int rowsContested;
 
         private MatchContext(Map<String, List<CodeMatch>> byBaseCode,
                              Map<String, Boolean> imageByProductCode) {
@@ -433,6 +450,10 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
 
         int rowsCreated() {
             return rowsCreated;
+        }
+
+        int rowsContested() {
+            return rowsContested;
         }
     }
 }
