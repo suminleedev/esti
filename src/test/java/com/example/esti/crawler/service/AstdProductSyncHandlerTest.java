@@ -18,6 +18,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
@@ -199,6 +200,26 @@ class AstdProductSyncHandlerTest {
         assertThat(counters(ctx).exactMatched()).isEqualTo(2);
         assertThat(counters(ctx).rowsAffected()).isEqualTo(1);
         assertThat(counters(ctx).rowsFilled()).isEqualTo(1);
+    }
+
+    @Test
+    void 파일명에_확장자를_붙이지_않아_Content_Type_판정을_타게_한다() throws Exception {
+        // 사이트 이미지 URL에 확장자가 없어 .jpg가 "우연히 맞는" 상태였다.
+        // PNG가 하나라도 오면 엑셀 출력이 깨진다.
+        when(vendorItemPriceRepository.findAllByVendor_VendorCode("A"))
+                .thenReturn(List.of(vip(1L, "AAA111-X")));
+        when(vendorProductRepository.findAllByVendor_VendorCode("A"))
+                .thenReturn(List.of(product("AAA111-X", null)));
+        when(vendorItemPriceRepository.findAllById(any())).thenReturn(List.of(vip(1L, "AAA111-X")));
+        when(vendorProductRepository.findByVendorAndProductCode(any(), anyString()))
+                .thenReturn(Optional.of(product("AAA111-X", null)));
+        when(imageDownloadService.download(anyString(), anyString()))
+                .thenReturn(new ImageDownloadService.DownloadResult("/abs/a.png", "/uploads/product-images/a.png"));
+
+        Object ctx = handler.prepare("A");
+        handler.save(crawled("AAA111"), ctx);
+
+        verify(imageDownloadService).download(anyString(), eq("A_AAA111"));
     }
 
     @Test

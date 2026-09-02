@@ -30,9 +30,9 @@ public class ImageDownloadService {
      * 저장하면 PNG 바이트를 JPEG라고 선언해 워크북에 넣게 된다. 화면은 브라우저가 내용으로
      * 판별해 멀쩡히 보이므로 <b>엑셀을 열어보기 전에는 드러나지 않는다.</b>
      *
-     * @param preferredFileName 파일명 힌트. <b>이미 이미지 확장자가 붙어 있으면 그대로 쓴다</b> —
-     *                          기존 호출부(ASTD)가 {@code ".jpg"}를 직접 붙여 넘기므로 동작이 바뀌지 않는다.
-     *                          확장자가 없으면 응답 {@code Content-Type}으로 정한다
+     * @param preferredFileName 파일명 힌트. <b>이미 이미지 확장자가 붙어 있으면 그대로 쓴다.</b>
+     *                          확장자가 없으면 응답 {@code Content-Type}으로 정한다 — 크롤러 호출부는
+     *                          모두 확장자를 떼고 넘겨 이 판정을 타게 한다(C-5)
      */
     public DownloadResult download(String sourceUrl, String preferredFileName) throws Exception {
         Files.createDirectories(rootDir);

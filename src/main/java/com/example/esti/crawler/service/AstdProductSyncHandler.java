@@ -108,7 +108,11 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
         }
 
         String siteCode = normalizeCode(crawled.getProductCode());
-        String fileName = crawled.getVendorCode() + "_" + siteCode + ".jpg";
+
+        // 확장자를 붙이지 않고 넘긴다 — 응답 Content-Type을 보고 ImageDownloadService가 정한다.
+        // 사이트 이미지 URL에는 확장자가 없어서(img.do?v_product=N) 지금까지 .jpg를 붙이는 게
+        // "우연히 맞는" 상태였다. PNG를 돌려주는 제품이 하나만 있어도 엑셀 출력이 깨진다.
+        String fileName = crawled.getVendorCode() + "_" + siteCode;
 
         ImageDownloadService.DownloadResult downloaded;
         try {
@@ -246,7 +250,7 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
                 return;
             }
 
-            String fileName = crawled.getVendorCode() + "_" + siteCode + ".jpg";
+            String fileName = crawled.getVendorCode() + "_" + siteCode;
             ImageDownloadService.DownloadResult result =
                     imageDownloadService.download(sourceUrl, fileName);
 
