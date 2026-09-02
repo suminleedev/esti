@@ -533,7 +533,15 @@ onMounted(() => {
                   <td>{{ idx + 1 }}</td>
                   <td>{{ p.categoryLarge }}</td>
                   <td>{{ p.categorySmall }}</td>
-                  <td>{{ p.productName }}</td>
+                  <td>
+                    {{ p.productName }}
+                    <!--
+                      구성 요약 (G-1) — 세트 축을 넣으면 같은 품번의 여러 세트가 각각의 행이 된다.
+                      쪼개지는 24묶음 중 22묶음은 제품명까지 같아서, 이게 없으면 "같은 행이 두 개"로 보인다.
+                      세트가로도 구분되지 않는 묶음이 5건 있어 구성을 보여주는 수밖에 없다.
+                    -->
+                    <div v-if="p.setSummary" class="small text-muted set-summary">{{ p.setSummary }}</div>
+                  </td>
                   <td>{{ p.mainItemCode }}</td>
                   <td>{{ p.vendorName }}</td>
                   <td>{{ p.remark }}</td>
@@ -751,6 +759,14 @@ onMounted(() => {
 .price-basis {
   font-size: 0.7rem;
   text-decoration: none;
+}
+
+/* 구성 요약(G-1) — 제품명 아래 보조 표기. 같은 품번의 여러 세트를 여기서 가른다.
+   상위 테이블이 nowrap/ellipsis라 요약도 한 줄로 잘린다(전체는 드릴다운에서 본다) */
+.set-summary {
+  font-size: 0.7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 부속 구성 펼침 행 — 상위 테이블의 nowrap/ellipsis·고정 레이아웃을 이 행에서만 푼다 */

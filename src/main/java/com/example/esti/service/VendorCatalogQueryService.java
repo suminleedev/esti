@@ -90,7 +90,20 @@ public class VendorCatalogQueryService {
         Vendor vendor = price.getVendor();
         VendorProduct main = price.getVendorProduct();
 
-        return vendorProductRelationRepository.findAllBySourceProduct(main).stream()
+        // 이 가격행이 가리키는 <b>세트 하나</b>의 부속만 (G-1).
+        //
+        // 관계가 (제품 → 제품)이던 때는 같은 품번의 모든 세트 부속이 한꺼번에 나왔다 —
+        // 세면기 긴다리/반다리처럼 택1인 것이 동시에 보였다(A사 22종).
+        //
+        // setHash가 null인 행은 세트 축 도입 전에 적재된 것이다. 그때 만들어진 관계도 null이라
+        // 서로 맞물린다(하위호환). JPA는 파라미터가 null이면 `= ?`로 만들어 매칭에 실패하므로
+        // IsNull 변형을 따로 쓴다.
+        String setHash = price.getSetHash();
+        List<VendorProductRelation> relations = (setHash == null)
+                ? vendorProductRelationRepository.findAllBySourceProductAndSetHashIsNull(main)
+                : vendorProductRelationRepository.findAllBySourceProductAndSetHash(main, setHash);
+
+        return relations.stream()
                 // 관계 id 순 = 엑셀에 적힌 부속 순서. 정렬을 명시해야 화면 순서가 흔들리지 않는다.
                 .sorted(Comparator.comparing(VendorProductRelation::getId, Comparator.nullsLast(Long::compareTo)))
                 .map(relation -> toPartView(vendor, relation))

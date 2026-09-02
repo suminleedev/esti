@@ -77,4 +77,30 @@ public class VendorItemPrice {
 
     @Column(length = 10)
     private String currency;          // KRW 등
+
+    /**
+     * 세트 정체성 — 부속 구성 다이제스트 (G-1). <b>대표품목(SET) 행에만 채운다.</b>
+     *
+     * <p>같은 품번이 여러 세트의 대표품목일 때 가격행을 갈라 준다. 이게 없으면 세트가 접히면서
+     * <b>세트가가 하나만 남는다</b> — A사에서 19종의 서로 다른 세트가 24개가 덮였다.
+     * 공유 부속(PART) 행은 코드당 1건을 유지하므로(D13) null이다.
+     *
+     * <p><b>nullable이어야 한다.</b> {@code ddl-auto=update}로 기존 테이블에 NOT NULL 컬럼을
+     * 붙이면 Derby가 기본값을 요구해 ALTER TABLE이 통째로 실패한다({@code VendorProductRelation.quantity}
+     * 주석의 교훈). 적재 전 기존 행은 null로 남고, 조회는 그 상태에서도 동작한다(하위호환).
+     */
+    @Column(name = "set_hash", length = 64)
+    private String setHash;
+
+    /**
+     * 구성 요약 — 목록에서 세트를 눈으로 가르기 위한 한 줄 (예: {@code "긴다리 · 앙카120"}).
+     *
+     * <p>세트 축을 넣으면 같은 품번의 여러 세트가 각각의 행이 되는데, A사에서 쪼개지는 24묶음 중
+     * <b>22묶음은 제품명까지 같다.</b> 요약이 없으면 "같은 행이 두 개"로 보인다.
+     * 목록에서 행마다 부속을 끌어오면 N+1이라 적재 시점에 만들어 둔다({@code VendorProductSet.partsSummary()}).
+     *
+     * <p>대표품목(SET) 행에만 채운다. nullable인 이유는 {@link #setHash}와 같다.
+     */
+    @Column(name = "set_summary", length = 200)
+    private String setSummary;
 }
