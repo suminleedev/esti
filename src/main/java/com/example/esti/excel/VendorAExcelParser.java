@@ -172,11 +172,11 @@ public class VendorAExcelParser implements VendorExcelParser {
             for (int i = k + 1; i < buffer.size(); i++) {
                 parts.add(withRelation(buffer.get(i), VendorParsedItem.RELATION_ACCESSORY));
             }
-            out.add(new VendorProductSet("A", large, small, main, parts, total, false, null, false));
+            out.add(newSet(large, small, main, parts, total, false));
         } else {
             // 불일치: 대표품목(첫 행)만 합계가로 저장 + 검수 플래그, 나머지는 개별
             VendorParsedItem main = withRelation(buffer.get(0), VendorParsedItem.RELATION_MAIN);
-            out.add(new VendorProductSet("A", large, small, main, new ArrayList<>(), total, false, null, true));
+            out.add(newSet(large, small, main, new ArrayList<>(), total, true));
             for (int i = 1; i < buffer.size(); i++) emitStandalone(buffer.get(i), large, small, out);
             logger.warn("[VendorA] 합계≠부속합산 → 검수필요. total={}, bufferSize={}, main={}",
                     total, buffer.size(), main.productName());
@@ -197,6 +197,105 @@ public class VendorAExcelParser implements VendorExcelParser {
         return -1;
     }
 
+    /**
+     * 세트 하나를 만든다 — <b>분류 후속 규칙을 여기 한 곳에서 적용</b>한다.
+     *
+     * <p>생성 지점이 셋(합계 일치/불일치/독립품목)이라 규칙을 각자 넣으면 어긋난다.
+     */
+    private VendorProductSet newSet(String large, String small, VendorParsedItem main,
+                                    List<VendorParsedItem> parts, BigDecimal price, boolean needsReview) {
+        String resolvedLarge = large;
+        String resolvedSmall = resolveSmallCategory(large, small, main);
+
+        // ② 부속 구간에 섞인 도기 완제품은 제 대분류로 돌린다. 소분류는 원본에 없으니 비운다.
+        if (LARGE_PART.equals(large)) {
+            String moved = reclassifyPotteryInParts(main.productName(), main.productCode());
+            if (moved != null) {
+                logger.info("[VendorA] 부속 구간의 도기 완제품을 재분류: '{}' → {}", main.productName(), moved);
+                resolvedLarge = moved;
+                resolvedSmall = null;
+            }
+        }
+        return new VendorProductSet("A", resolvedLarge, resolvedSmall, main, parts,
+                price, false, null, needsReview);
+    }
+
+    /** 대분류 {@code 수전} — 이 구간만 소분류를 제품명에서 뽑는다(분류 후속 ①). */
+    private static final String LARGE_FAUCET = "수전";
+
+    /** 대분류 {@code 부속} — 이 구간에 도기 완제품이 섞여 있다(분류 후속 ②). */
+    private static final String LARGE_PART = "부속";
+
+    /**
+     * 세트의 소분류를 확정한다.
+     *
+     * <p>대부분은 C 라벨 전용행에서 온 값을 그대로 쓴다. 두 구간만 예외다.
+     */
+    private String resolveSmallCategory(String large, String small, VendorParsedItem main) {
+        if (LARGE_FAUCET.equals(large)) return resolveFaucetSmallCategory(main.productName());
+        return small;
+    }
+
+    /**
+     * {@code 수전} 구간의 소분류를 <b>제품명</b>에서 뽑는다 (분류 후속 ①).
+     *
+     * <p>원본은 이 구간(816행)에 C 라벨을 <b>단 하나</b>({@code 세면수전})만 두고 시리즈 단위로 묶었다.
+     * 그대로 두면 706품목이 한 소분류에 쏠리고, 그 안에 샤워·욕조 수전이 섞인 채 묻힌다.
+     *
+     * <p>버킷은 지어내지 않고 <b>실데이터 분포에서 뽑았다</b> — 세트 207개가 아래 갈래로 갈리며
+     * 각 갈래가 3건 이상이다. {@code 매립}·{@code 데크}는 A사가 {@code 샤워} 구간에서도 쓰는
+     * 설치 방식 축이라 살린다.
+     *
+     * <p>세트가 아니라 부속이 독립 제품으로 떨어진 것(호스·폽업·트랩·핸들 등 21건)은
+     * {@code 수전부속}으로 모은다 — 이름에 수전 종류가 없다.
+     */
+    private String resolveFaucetSmallCategory(String productName) {
+        if (isBlank(productName)) return "수전부속";
+        String n = productName;
+
+        String kind;
+        if (n.contains("샤워욕조")) kind = "샤워욕조수전";
+        else if (n.contains("샤워")) kind = "샤워수전";
+        else if (n.contains("욕조")) kind = "욕조수전";
+        else if (n.contains("세면")) kind = "세면수전";
+        else return "수전부속";
+
+        if (n.contains("데크")) return "데크" + kind;
+        if (n.contains("매립")) return "매립" + kind;
+        return kind;
+    }
+
+    /**
+     * {@code 부속} 구간에 섞인 <b>도기 완제품</b>을 제 대분류로 돌린다 (분류 후속 ②).
+     *
+     * <p>원본이 파일 끝에 파티오 시리즈 16종을 {@code 기타부속} 아래 적어 놨다 — 비데·양변기·
+     * 세면기·소변기 완제품이다. 그중 하나는 {@code 세면기} 구간에도 있어 last-wins로 {@code 부속}이 된다.
+     *
+     * <p><b>품번 접두어만으로는 못 가른다.</b> 실측한 접두어 순도가 {@code C6xx} 41% ·
+     * {@code C8xx} 53% · {@code CC} 59%로 낮고, 같은 구간의 {@code IDS자동폽업}({@code CC})·
+     * {@code IDS-I트랩}({@code C7xx})은 <b>진짜 부속</b>이라 접두어로는 완제품과 구별되지 않는다.
+     * 그래서 <b>제품명을 1순위</b>로 쓰고, 이름에 품목이 없는 경우만 접두어로 메운다.
+     *
+     * @return 옮겨갈 대분류. 옮길 이유가 없으면 null
+     */
+    private String reclassifyPotteryInParts(String productName, String productCode) {
+        if (isBlank(productName)) return null;
+        String n = productName;
+
+        // 이름에 부속임이 드러나면 그대로 둔다 — 접두어가 도기 계열이어도 마찬가지다.
+        if (n.contains("트랩") || n.contains("폽업") || n.contains("밸브")
+                || n.contains("호스") || n.contains("패킹")) return null;
+
+        if (n.contains("비데")) return "비데";
+        if (n.contains("양변기")) return "양변기";
+        if (n.contains("소변기")) return "상업용제품";
+        if (n.contains("세면기")) return "세면기";
+
+        // 이름에 품목이 없는 것(예: "반다리 일체형")만 접두어로 메운다.
+        if (productCode != null && productCode.startsWith("C1")) return "세면기";
+        return null;
+    }
+
     /** 버퍼의 모든 품목을 개별(독립) 제품으로 방출하고 버퍼 비움. */
     private void flushOrphans(List<VendorParsedItem> buffer, String large, String small,
                               List<VendorProductSet> out) {
@@ -207,8 +306,7 @@ public class VendorAExcelParser implements VendorExcelParser {
     private void emitStandalone(VendorParsedItem it, String large, String small,
                                 List<VendorProductSet> out) {
         VendorParsedItem main = withRelation(it, VendorParsedItem.RELATION_MAIN);
-        out.add(new VendorProductSet("A", large, small, main, new ArrayList<>(),
-                it.unitPrice(), false, null, false));
+        out.add(newSet(large, small, main, new ArrayList<>(), it.unitPrice(), false));
     }
 
     private VendorParsedItem buildItem(String colD, String colE, String colF, BigDecimal colG) {
@@ -252,6 +350,11 @@ public class VendorAExcelParser implements VendorExcelParser {
      * 원본 B열 대분류 라벨 → 저장 어휘(G-2). 원본은 12종, 저장 어휘는 11종이다
      * ({@code 매립형 욕조&부속}·{@code 스탠딩욕조}가 {@code 욕조}로 합쳐진다).
      * 키는 공백을 제거한 형태로 비교한다.
+     *
+     * <p><b>{@code 수전}은 그대로 둔다(분류 후속 ①).</b> 예전에는 {@code 세면수전}으로 좁혔는데,
+     * 그 구간은 타입이 아니라 <b>시리즈 단위</b>로 묶여 있어 한 시리즈에 세면·샤워욕조·데크욕조가
+     * 섞인다. 좁히면 <b>샤워·욕조 수전 85종이 세면수전으로 오분류</b>된다.
+     * 대신 그 구간의 소분류를 제품명에서 뽑는다({@link #resolveFaucetSmallCategory}).
      */
     private static final Map<String, String> LARGE_CATEGORY_VOCABULARY = Map.ofEntries(
             Map.entry("양변기", "양변기"),
@@ -259,7 +362,7 @@ public class VendorAExcelParser implements VendorExcelParser {
             Map.entry("세면기", "세면기"),
             Map.entry("매립형욕조&부속", "욕조"),
             Map.entry("스탠딩욕조", "욕조"),
-            Map.entry("수전", "세면수전"),
+            Map.entry("수전", "수전"),
             Map.entry("샤워", "샤워수전"),
             Map.entry("주방수전", "주방수전"),
             Map.entry("액세서리", "액세서리"),

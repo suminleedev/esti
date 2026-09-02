@@ -103,4 +103,18 @@ public class VendorItemPrice {
      */
     @Column(name = "set_summary", length = 200)
     private String setSummary;
+
+    /**
+     * <b>본품 자체의 단가</b> — {@link #unitPrice}(세트 합계)와 별개다 (G-2).
+     *
+     * <p>A사는 {@code 세트가 = 본품단가 + 부속합}인데(270/270 성립) 본품 단가가 어디에도 남지 않아
+     * 화면이 그 등식으로 대조할 수 없었다. 배지가 258행 전부 {@code info}였던 이유다.
+     *
+     * <p>B사는 반대로 <b>본품이 부속 목록 안에</b> 있어(120세트 중 88) {@code 세트가 = 부속합}이다.
+     * 그래서 B사는 이 값을 채우지 않는다 — null이면 화면이 종전 판정을 그대로 쓴다.
+     *
+     * <p>대표품목(SET) 행에만 채운다. nullable인 이유는 {@link #setHash}와 같다.
+     */
+    @Column(name = "main_unit_price", precision = 15, scale = 2)
+    private BigDecimal mainUnitPrice;
 }

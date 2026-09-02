@@ -75,6 +75,13 @@ function partPricedAt(parts, amount) {
 /**
  * 세트가와 부속 합계를 대조해 배지 한 건을 만든다.
  *
+ * `mainUnitPrice`가 오면 **본품 포함 세트가**로 대조한다(G-2).
+ * 공급사마다 부속 목록의 의미가 다르기 때문이다 —
+ *   · A사: 세트가 = 본품 + 부속합. 부속 목록에 본품이 없다(270/270)
+ *   · B사: 세트가 = 부속합.       부속 목록에 본품이 들어 있다(120 중 88)
+ * 예전에는 A사가 구조적으로 `본품 미포함`(info)에 걸려 258행 전부가 판정 불가였고,
+ * 실제 오류 14행이 그 안에 묻혔다.
+ *
  * level 은 세 가지다:
  *   - `match`  합계가 맞는다
  *   - `info`   합계가 안 맞지만 **구조상 당연한** 것 — 확인할 필요가 없다
@@ -83,15 +90,19 @@ function partPricedAt(parts, amount) {
  * @param {number|string|null} setPrice 세트(대표품목) 단가
  * @param {Array} parts 부속 목록 (`VendorProductPartView`)
  * @param {string} [productName] 세트 제품명 — "N품" 표기 판정에만 쓴다
+ * @param {number|string|null} [mainUnitPrice] 본품 자체 단가. 있으면 `본품 + 부속합`으로 대조한다(G-2).
+ *        null이면 종전대로 부속합만 본다(B사 경로, 판정 불변)
  * @returns {{level:string, code:string, label:string, detail:string, diff:number}|null}
  *          부속이 없으면 null (호출부가 "부속 없음"을 따로 표시한다)
  */
-export function partsSumStatus(setPrice, parts, productName) {
+export function partsSumStatus(setPrice, parts, productName, mainUnitPrice = null) {
   const list = parts ?? []
   if (list.length === 0) return null
 
   const set = toNum(setPrice) ?? 0
-  const sum = sumParts(list)
+  const main = toNum(mainUnitPrice)
+  // 본품 단가를 아는 공급사는 본품을 더해 대조한다 — 그래야 비교 대상이 같아진다.
+  const sum = sumParts(list) + (main ?? 0)
   const diff = sum - set
 
   // A. 원본에 세트 합계가 없다(분계표). 파싱 실패가 아니라 값이 없는 것이라 비교 자체가 성립하지 않는다.
@@ -183,7 +194,9 @@ export function partsSumStatus(setPrice, parts, productName) {
 
   // E. 부속 목록에 본품이 없다. 세트가에는 본품이 들어 있어 비교 대상이 애초에 다르다.
   //     단 "N품 세트"(악세사리)는 본품이 따로 없고 부속 합이 곧 세트가라 이 사유가 성립하지 않는다.
-  if (mainCount === 0 && declared == null) {
+  //     본품 단가를 아는 경우(G-2)는 이미 더해서 비교했으므로 이 사유가 성립하지 않는다 —
+  //     여기까지 왔다면 실제 불일치다. 그 경우 아래 G로 떨어뜨린다.
+  if (mainCount === 0 && declared == null && main == null) {
     return {
       level: 'info',
       code: 'MAIN_EXCLUDED',

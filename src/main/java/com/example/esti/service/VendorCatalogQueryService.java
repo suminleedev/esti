@@ -118,10 +118,16 @@ public class VendorCatalogQueryService {
                 .map(VendorItemPrice::getUnitPrice)
                 .orElse(null);
 
+        // 그 세트에 적힌 이름을 우선한다(G-4). VendorProduct.productName은 품번당 하나라
+        // 파일에서 마지막에 나온 이름으로 통일되고, 그게 최빈값도 아닌 경우가 33종 중 27종이다.
+        String displayName = relation.getPartName() != null
+                ? relation.getPartName()
+                : part.getProductName();
+
         return new VendorProductPartView(
                 part.getId(),
                 part.getProductCode(),
-                part.getProductName(),
+                displayName,
                 relation.getRelationType(),
                 unitPrice,
                 relation.getQuantity() != null ? relation.getQuantity() : 1,

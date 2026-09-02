@@ -218,6 +218,70 @@ class VendorCatalogSetAxisTest {
                 .isEqualTo("나중 · 먼저");
     }
 
+    // ====== G-2 : 본품 단가 보존 ======
+
+    @Test
+    void 본품_단가가_세트가와_별개로_남는다() {
+        // A사는 세트가 = 본품 + 부속합인데 본품 단가가 어디에도 안 남아 배지가 258행 전부 info였다.
+        importTwoSets();
+
+        Vendor vendor = vendorRepository.findByVendorCode("A").orElseThrow();
+        VendorProduct main = productRepository.findByVendorAndProductCode(vendor, MAIN_CODE).orElseThrow();
+
+        List<VendorItemPrice> rows = priceRepository
+                .findAllByVendorAndVendorProductAndPriceTypeAndPriceBasis(
+                        vendor, main, VendorItemPrice.PRICE_TYPE_SET, "세면기");
+
+        assertThat(rows).allSatisfy(r -> {
+            assertThat(r.getMainUnitPrice())
+                    .as("본품 단가가 세트가로 덮이면 안 된다")
+                    .isEqualByComparingTo("50");
+            assertThat(r.getUnitPrice()).isNotEqualByComparingTo("50"); // 세트가는 100·200
+        });
+    }
+
+    @Test
+    void 부속_가격행에는_본품_단가가_없다() {
+        importTwoSets();
+        Vendor vendor = vendorRepository.findByVendorCode("A").orElseThrow();
+        VendorProduct part = productRepository.findByVendorAndProductCode(vendor, "P-A").orElseThrow();
+
+        assertThat(priceRepository.findFirstByVendorAndVendorProduct(vendor, part).orElseThrow()
+                .getMainUnitPrice()).isNull();
+    }
+
+    // ====== G-4 : 부속 표시명 ======
+
+    @Test
+    void 부속_표시명은_그_세트에_적힌_이름을_쓴다() {
+        // VendorProduct.productName은 품번당 하나라 파일 마지막 이름으로 통일된다.
+        // 같은 부속을 두 세트가 다른 이름으로 적으면, 각 세트가 제 이름을 보여야 한다.
+        //
+        // 부속을 P-X 하나만 두면 두 세트의 구성이 같아 한 세트로 접힌다(해시 의미상 정상).
+        // 실제 형태대로 세트마다 다른 부속을 하나씩 더 둔다.
+        given(parserFactory.getParser("A")).willReturn(parserReturning(List.of(
+                set("100", part("P-X", "스탠리 플랜지"), part("P-A", "긴다리")),
+                set("200", part("P-X", "플랜지세트(치마형)"), part("P-B", "반다리")))));
+        importer.importVendorCatalog("A", DUMMY, null);
+
+        Vendor vendor = vendorRepository.findByVendorCode("A").orElseThrow();
+        VendorProduct main = productRepository.findByVendorAndProductCode(vendor, MAIN_CODE).orElseThrow();
+        List<VendorItemPrice> rows = priceRepository
+                .findAllByVendorAndVendorProductAndPriceTypeAndPriceBasis(
+                        vendor, main, VendorItemPrice.PRICE_TYPE_SET, "세면기");
+
+        assertThat(rows).hasSize(2);
+        List<String> shown = rows.stream()
+                .map(r -> queryService.getParts(r.getId()).orElseThrow().stream()
+                        .filter(v -> "P-X".equals(v.productCode()))
+                        .findFirst().orElseThrow().productName())
+                .toList();
+
+        assertThat(shown)
+                .as("품번이 같아도 세트마다 제 이름을 보여야 한다")
+                .containsExactlyInAnyOrder("스탠리 플랜지", "플랜지세트(치마형)");
+    }
+
     // ====== 헬퍼 ======
 
     private void importTwoSets() {
