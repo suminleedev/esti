@@ -39,6 +39,21 @@ public interface VendorItemPriceRepository extends JpaRepository<VendorItemPrice
     Optional<VendorItemPrice> findByVendorAndVendorProductAndProposalItemCodeAndPriceBasisIsNull(
             Vendor vendor, VendorProduct product, String proposalItemCode);
 
+    // 세트 축 도입 후 대표품목 가격행의 upsert 키 — 세트별로 갈린다 (G-1).
+    // 이게 없으면 같은 품번의 여러 세트가 한 행으로 접혀 세트가가 하나만 남는다.
+    Optional<VendorItemPrice> findByVendorAndVendorProductAndProposalItemCodeAndPriceBasisAndSetHash(
+            Vendor vendor, VendorProduct product, String proposalItemCode, String priceBasis, String setHash);
+
+    /**
+     * 재적재 시 <b>그 (제품, priceBasis)</b>의 낡은 대표품목 가격행을 걷어내기 위한 조회.
+     *
+     * <p><b>basis까지 좁히는 이유</b>: 한 공급사를 여러 파일로 나눠 적재하는 경우가 있다
+     * (B사 수전부속 + 신규 OEM 부속). 제품 단위로 지우면 <b>앞 파일이 넣은 행을 뒤 파일이 지운다.</b>
+     * 파일마다 basis가 다르므로 basis로 좁히면 서로 침범하지 않는다.
+     */
+    List<VendorItemPrice> findAllByVendorAndVendorProductAndPriceTypeAndPriceBasis(
+            Vendor vendor, VendorProduct product, String priceType, String priceBasis);
+
     // 제안서 품번이 없는(신품번 없음) 항목의 멱등 upsert용
     Optional<VendorItemPrice> findFirstByVendorAndVendorProduct(Vendor vendor, VendorProduct product);
 

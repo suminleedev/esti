@@ -3,7 +3,12 @@ package com.example.esti.excel;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -70,6 +75,49 @@ class VendorALatestCatalogTest {
                 "핸드레일&바", "폽업", "기타부속")) {
             assertTrue(smalls.contains(recovered), "소분류 '" + recovered + "'가 인식돼야 함");
         }
+    }
+
+    @Test
+    void 세트_축이_같은_대표품목의_다른_세트를_가른다() {
+        // G-1. 세트 정체성 = 부속 구성 해시. 가격행 축(품번+대분류)은 22종 중 0종을 갈랐다.
+        List<VendorProductSet> sets = parseLatest();
+
+        // 카탈로그 행 = (품번, 대분류, 세트해시). 세트 축 전에는 (품번, 대분류)라 881행이었다.
+        Set<String> rows = sets.stream()
+                .map(s -> key(s) + "|" + s.categoryLarge() + "|" + s.setHash())
+                .collect(Collectors.toSet());
+        assertEquals(910, rows.size(), "세트 축 적용 후 카탈로그 행 수");
+
+        // 대표품목 하나에 부속 구성이 다른 세트가 2개 이상 = 예전에 한 덩어리로 합쳐지던 것
+        Map<String, Set<String>> hashesByMain = new HashMap<>();
+        for (VendorProductSet s : sets) {
+            if (s.parts().isEmpty()) continue;
+            hashesByMain.computeIfAbsent(key(s), k -> new HashSet<>()).add(s.setHash());
+        }
+        long split = hashesByMain.values().stream().filter(h -> h.size() > 1).count();
+        assertEquals(22, split, "구성이 갈리는 대표품목 종수 — 이만큼이 예전엔 1행으로 접혔다");
+    }
+
+    @Test
+    void 부속_순서가_달라도_같은_세트해시다() {
+        // 엑셀 행 순서가 바뀌었다고 정체성이 흔들리면 재적재마다 행이 새로 생긴다.
+        VendorProductSet original = parseLatest().stream()
+                .filter(s -> s.parts().size() >= 2)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("부속 2건 이상인 세트 미발견"));
+
+        List<VendorParsedItem> reversed = new ArrayList<>(original.parts());
+        Collections.reverse(reversed);
+        VendorProductSet shuffled = new VendorProductSet("A", original.categoryLarge(),
+                original.categorySmall(), original.main(), reversed, original.setPrice(),
+                false, null, false);
+
+        assertEquals(original.setHash(), shuffled.setHash());
+    }
+
+    /** 대표품목 식별자 — 코드가 없으면 이름(임포터의 제품 식별과 같은 축). */
+    private static String key(VendorProductSet s) {
+        return s.main().productCode() != null ? s.main().productCode() : "NAME:" + s.main().productName();
     }
 
     @Test

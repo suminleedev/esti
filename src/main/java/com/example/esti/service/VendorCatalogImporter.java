@@ -103,11 +103,15 @@ public class VendorCatalogImporter {
         int total = Math.max(sets.size(), 1);
         if (jobId != null) progressStore.update(jobId, 35, "DB 저장 시작");
 
+        // 이번 실행에서 낡은 것을 이미 걷어낸 (대표품목, priceBasis). 같은 짝이 여러 세트에 걸릴 수 있으므로
+        // "처음 만났을 때 한 번만" 지운다 — 매번 지우면 방금 넣은 앞 세트를 스스로 지운다. (G-1 / Task 3)
+        Set<String> purged = new HashSet<>();
+
         int done = 0;
         int created = 0;
         int updated = 0;
         for (VendorProductSet set : sets) {
-            boolean mainCreated = saveSet(vendor, set, images);
+            boolean mainCreated = saveSet(vendor, set, images, purged);
             // 대표품목(세트) 단위 집계 — main 있는 세트만 카운트(빈 세트는 saveSet에서 null 처리)
             if (set.main() != null) {
                 if (mainCreated) created++; else updated++;
@@ -130,7 +134,8 @@ public class VendorCatalogImporter {
      * @return 대표품목이 신규 생성됐으면 true(기존 갱신이면 false). 빈 세트(main 없음)는 false.
      */
     private boolean saveSet(Vendor vendor, VendorProductSet set,
-                            Map<String, Map<Integer, ExtractedImage>> images) {
+                            Map<String, Map<Integer, ExtractedImage>> images,
+                            Set<String> purged) {
         VendorParsedItem mainItem = set.main();
         if (mainItem == null) return false;
 
@@ -140,6 +145,10 @@ public class VendorCatalogImporter {
                 set.categoryLarge(), set.categorySmall(), ITEM_TYPE_SET, mainItem.description(), mainItem.specs(),
                 mainItem.unit());
         VendorProduct mainProduct = mainRes.product();
+
+        // 이 (제품, priceBasis)의 낡은 대표품목 가격행·관계를 처음 만났을 때 한 번만 걷어낸다.
+        // 임포터에 delete가 없어 세트 구성이 바뀌면 낡은 부속 연결이 남는다(Task 3).
+        purgeStaleSetRows(vendor, mainProduct, set.priceBasis(), purged);
 
         // 임베디드 이미지 연결 (D15) — 대표품목 행에 앵커된 그림
         applyImage(mainProduct, set, images);
@@ -153,7 +162,11 @@ public class VendorCatalogImporter {
         // 대표품목 가격은 price_basis별로 분리 보존 — 같은 품번이 시트마다 다른 가격일 때 충돌 방지.
         // priceBasis 기본값=categoryLarge(하위호환). 수전금구 3-시트처럼 대분류를 통합(=수전금구)하고
         // 가격만 시트별로 나눌 때는 파서가 priceBasis를 시트명으로 지정한다(§10 S2·S3).
-        upsertPrice(vendor, mainProduct, mainItem, mainPrice, mainRemark, ITEM_TYPE_SET, set.priceBasis());
+        //
+        // 여기에 세트 해시가 더 붙는다(G-1) — priceBasis만으로는 같은 품번의 여러 세트가 한 행으로
+        // 접혀 세트가가 하나만 남는다. A사에서 19종의 서로 다른 세트가 24개가 그렇게 덮였다.
+        upsertPrice(vendor, mainProduct, mainItem, mainPrice, mainRemark, ITEM_TYPE_SET,
+                set.priceBasis(), set.setHash());
 
         // 부속품 + 관계
         //
@@ -177,11 +190,44 @@ public class VendorCatalogImporter {
                     set.categoryLarge(), partCategorySmall, ITEM_TYPE_PART, part.description(), part.specs(),
                     part.unit()).product();
 
-            // 공유 부속 단가는 코드당 1건 유지(D13) → priceBasis=null
-            upsertPrice(vendor, partProduct, part, part.unitPrice(), part.remark(), ITEM_TYPE_PART, null);
-            upsertRelation(mainProduct, partProduct, part.relationType(), partCounts.get(partKey(part)));
+            // 공유 부속 단가는 코드당 1건 유지(D13) → priceBasis=null, setHash=null
+            upsertPrice(vendor, partProduct, part, part.unitPrice(), part.remark(), ITEM_TYPE_PART, null, null);
+            upsertRelation(mainProduct, partProduct, part.relationType(),
+                    partCounts.get(partKey(part)), set.setHash());
         }
         return mainRes.created();
+    }
+
+    /**
+     * 재적재 시 이 대표품목의 <b>낡은</b> 대표품목 가격행과 관계를 걷어낸다.
+     * 이번 실행에서 처음 만난 제품에 대해서만 한 번 수행한다.
+     *
+     * <p><b>매번 지우면 안 된다</b> — 같은 제품이 여러 세트의 대표품목이면 방금 넣은 앞 세트를
+     * 스스로 지운다. A사에는 대표품목 하나에 세트가 최대 13개인 것도 있다.
+     *
+     * <p>부속(PART) 가격행은 건드리지 않는다 — 공유 자원이라 코드당 1건을 유지한다(D13).
+     * 다른 세트가 여전히 그 부속을 참조한다.
+     */
+    private void purgeStaleSetRows(Vendor vendor, VendorProduct mainProduct,
+                                   String priceBasis, Set<String> purged) {
+        if (mainProduct.getId() == null || priceBasis == null) return;
+        if (!purged.add(mainProduct.getId() + "\u0000" + priceBasis)) return;
+
+        List<VendorItemPrice> stale = vendorItemPriceRepository
+                .findAllByVendorAndVendorProductAndPriceTypeAndPriceBasis(
+                        vendor, mainProduct, ITEM_TYPE_SET, priceBasis);
+
+        // 그 가격행들이 가리키던 세트의 관계만 지운다. 다른 basis(=다른 파일)의 세트는 그대로 둔다.
+        stale.stream()
+                .map(VendorItemPrice::getSetHash)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .forEach(h -> vendorProductRelationRepository.deleteAllBySourceProductAndSetHash(mainProduct, h));
+
+        // 세트 축 도입 전에 쌓인 관계(setHash=null)는 재적재 한 번으로 정리된다.
+        vendorProductRelationRepository.deleteAllBySourceProductAndSetHashIsNull(mainProduct);
+
+        if (!stale.isEmpty()) vendorItemPriceRepository.deleteAll(stale);
     }
 
     /**
@@ -299,11 +345,18 @@ public class VendorCatalogImporter {
      * 분리 저장 — 같은 품번이 시트별로 다른 가격(대표품목)일 때 충돌 방지. basis=null이면 코드당 1건(D13).
      */
     private void upsertPrice(Vendor vendor, VendorProduct product, VendorParsedItem item,
-                            BigDecimal price, String remark, String priceType, String priceBasis) {
+                            BigDecimal price, String remark, String priceType, String priceBasis,
+                            String setHash) {
         String proposalCode = item.productCode();
 
         VendorItemPrice vip;
-        if (proposalCode != null && priceBasis != null) {
+        if (proposalCode != null && priceBasis != null && setHash != null) {
+            // 대표품목(SET) — 세트별로 행이 갈린다 (G-1)
+            vip = vendorItemPriceRepository
+                    .findByVendorAndVendorProductAndProposalItemCodeAndPriceBasisAndSetHash(
+                            vendor, product, proposalCode, priceBasis, setHash)
+                    .orElse(null);
+        } else if (proposalCode != null && priceBasis != null) {
             vip = vendorItemPriceRepository
                     .findByVendorAndVendorProductAndProposalItemCodeAndPriceBasis(vendor, product, proposalCode, priceBasis)
                     .orElse(null);
@@ -331,12 +384,14 @@ public class VendorCatalogImporter {
         vip.setUnitPrice(price != null ? price : BigDecimal.ZERO);
         vip.setPriceType(priceType);
         vip.setPriceBasis(priceBasis);
+        vip.setSetHash(setHash);
         vip.setCurrency("KRW");
 
         vendorItemPriceRepository.save(vip);
     }
 
-    private void upsertRelation(VendorProduct source, VendorProduct target, String relationType, int quantity) {
+    private void upsertRelation(VendorProduct source, VendorProduct target, String relationType,
+                                int quantity, String setHash) {
         if (source.getId() != null && source.getId().equals(target.getId())) return; // 자기 참조 방지
 
         String rel = (relationType != null && !relationType.isBlank())
@@ -347,8 +402,9 @@ public class VendorCatalogImporter {
         int qty = Math.max(1, quantity);
 
         // 재적재 멱등: 이미 있으면 수량만 맞춘다. 원본에서 개수가 바뀌면 그 값이 반영돼야 한다.
+        // 유일키에 setHash가 들어간다(G-1) — 같은 대표품목의 다른 세트가 같은 부속을 써도 별개 관계다.
         VendorProductRelation existing = vendorProductRelationRepository
-                .findBySourceProductAndTargetProductAndRelationType(source, target, rel)
+                .findBySourceProductAndTargetProductAndRelationTypeAndSetHash(source, target, rel, setHash)
                 .orElse(null);
         if (existing != null) {
             if (!Integer.valueOf(qty).equals(existing.getQuantity())) {
@@ -364,6 +420,7 @@ public class VendorCatalogImporter {
                         .targetProduct(target)
                         .relationType(rel)
                         .quantity(qty)
+                        .setHash(setHash)
                         .build()
         );
     }

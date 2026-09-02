@@ -48,4 +48,19 @@ public class VendorProductRelation extends BaseEntity {
     @Column(name = "quantity", nullable = false, columnDefinition = "integer default 1 not null")
     @Builder.Default
     private Integer quantity = 1;
+
+    /**
+     * 세트 정체성 — 이 관계가 속한 세트의 부속 구성 다이제스트 (G-1).
+     *
+     * <p>관계가 (제품 → 제품)이라 <b>가격행의 역할도 세트도 구분하지 못했다.</b> 같은 품번이
+     * 여러 세트의 대표품목이면 그 세트들의 부속이 한 제품에 전부 누적돼, 화면에서 택1 부속이
+     * 동시에 나왔다 — A사 22종에서 원본 48세트가 22행으로 접혔다.
+     *
+     * <p>유일키가 {@code (source, target, type, setHash)}가 되어 세트별로 갈린다.
+     * {@link VendorItemPrice#getSetHash()}와 같은 값으로 이어 붙여 조회한다.
+     *
+     * <p>nullable인 이유는 {@code VendorItemPrice.setHash}와 같다 — Derby ALTER TABLE 제약.
+     */
+    @Column(name = "set_hash", length = 64)
+    private String setHash;
 }
