@@ -358,6 +358,12 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
 
             if (held == null) {
                 claims.put(id, kind);
+                if (kind == Claim.MASTER) {
+                    // 이 행의 최종 임자가 대표품번 짝일 수 있다는 뜻이다(뒤에 원형이 오면 넘어간다).
+                    // 「대표품번으로만 잡힌 행이 최종적으로 몇 개인가」를 세려면 이 줄이 필요하다 —
+                    // 성공한 MASTER 확보에서 넘겨준 횟수를 빼면 그 값이다.
+                    log.info("[{}] 대표품번으로 자리를 잡는다. id={}, siteCode={}", MAKER, id, siteCode);
+                }
                 rowsAffected++;
                 if (idsWithImage.contains(id)) {
                     rowsReplaced++;
