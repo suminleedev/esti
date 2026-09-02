@@ -135,7 +135,7 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
     public void inspect(CrawledProduct crawled, Object context) {
         MatchContext ctx = asContext(context);
 
-        countRows(match(crawled, ctx), ctx);
+        match(crawled, ctx);   // 자리를 잡고 집계까지 여기서 끝난다
     }
 
     private MatchContext asContext(Object context) {
@@ -167,28 +167,44 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
             return List.of();
         }
 
-        // 원형끼리 먼저 본다. 더 좁은 비교라 여기서 걸리면 그게 가장 확실한 짝이다.
-        Set<Long> ids = new LinkedHashSet<>(ctx.idsByFullCode.getOrDefault(siteCode, List.of()));
-        boolean byFull = !ids.isEmpty();
+        // 원형끼리의 일치가 가장 확실한 짝이다. 품번이 통째로 같다.
+        Set<Long> byFull = new LinkedHashSet<>(ctx.idsByFullCode.getOrDefault(siteCode, List.of()));
 
-        // 그리고 양쪽 다 하이픈 앞을 잘라 다시 본다. 예전에 DB만 잘라 놓쳤던 경로다.
-        List<Long> byBase = ctx.idsByMasterCode.getOrDefault(baseCodeOf(siteCode), List.of());
-        boolean addedByBase = ids.addAll(byBase);
+        // 대표품번 일치는 "같은 모델의 어떤 변형"까지만 말해 준다. 색상·사양이 다를 수 있다.
+        Set<Long> byMaster = new LinkedHashSet<>(ctx.idsByMasterCode.getOrDefault(baseCodeOf(siteCode), List.of()));
+        byMaster.removeAll(byFull);
 
-        if (ids.isEmpty()) {
+        if (byFull.isEmpty() && byMaster.isEmpty()) {
             ctx.notInDb++;
             return List.of();
         }
 
         ctx.exactMatched++;
-        if (byFull) {
+        if (!byFull.isEmpty()) {
             ctx.matchedByFullCode++;
         }
-        if (addedByBase) {
+        if (!byMaster.isEmpty()) {
             ctx.matchedByMasterCode++;
+            if (byFull.isEmpty()) {
+                log.info("[{}] 대표품번으로만 매칭 — 변형이 다를 수 있다. siteCode={}, 행 {}건",
+                        MAKER, siteCode, byMaster.size());
+            }
         }
 
-        return new ArrayList<>(ids);
+        // 확실한 짝부터 자리를 잡는다. 순서가 승자를 정하지 않게 하는 것이 요점이다.
+        List<Long> writable = new ArrayList<>();
+        for (Long id : byFull) {
+            if (ctx.claim(id, Claim.FULL, siteCode)) {
+                writable.add(id);
+            }
+        }
+        for (Long id : byMaster) {
+            if (ctx.claim(id, Claim.MASTER, siteCode)) {
+                writable.add(id);
+            }
+        }
+
+        return writable;
     }
 
     private void applyImage(CrawledProduct crawled, List<Long> matchedIds, MatchContext ctx) {
@@ -201,6 +217,9 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
         try {
             downloaded = imageDownloadService.download(resolveSourceUrl(crawled), fileName);
         } catch (Exception e) {
+            // 못 받았으면 잡아 둔 자리를 놓아준다. 안 그러면 이 행은 아무 사진도 못 받은 채
+            // "이미 임자 있음"으로 남아 뒤에 오는 짝까지 막는다.
+            ctx.release(matchedIds);
             ctx.downloadFailed++;
             log.error("[{}] 이미지 내려받기 실패. code={}", MAKER, crawled.getProductCode(), e);
             return;
@@ -214,33 +233,6 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
             product.setRawTagText(crawled.getRawTagText());
 
             vendorProductRepository.save(product);
-        }
-
-        countRows(matchedIds, ctx);
-    }
-
-    /**
-     * 갱신될 제품 행을 센다.
-     *
-     * <p><b>한 번의 동기화에서 같은 행은 한 번만 센다.</b> 사이트 제품 여럿이 한 대표품번으로
-     * 접히면 같은 행을 여러 번 건드리게 되는데, 그건 "반영 N행"이 아니라
-     * <b>N번째 사진이 이긴 1행</b>이다. 그때는 어느 사진이 맞는지 알 수 없으므로 경고를 남긴다.
-     */
-    private void countRows(List<Long> matchedIds, MatchContext ctx) {
-        for (Long id : matchedIds) {
-            if (!ctx.countedIds.add(id)) {
-                ctx.rowsContested++;
-                log.warn("[{}] ⚠️ 같은 제품 행에 사이트 제품이 둘 이상 걸린다 — 뒤에 온 사진이 이긴다. id={}",
-                        MAKER, id);
-                continue;
-            }
-
-            ctx.rowsAffected++;
-            if (ctx.idsWithImage.contains(id)) {
-                ctx.rowsReplaced++;
-            } else {
-                ctx.rowsFilled++;
-            }
         }
     }
 
@@ -294,8 +286,13 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
         private final Map<String, List<Long>> idsByFullCode;
         private final Set<Long> idsWithImage;
 
-        /** 이번 실행에서 이미 센 제품 행. 같은 행을 두 번 세지 않기 위한 것이다. */
-        private final Set<Long> countedIds = new HashSet<>();
+        /**
+         * 제품 행의 임자. <b>확실한 짝이 애매한 짝을 이긴다</b>는 규칙이 여기 있다.
+         *
+         * <p>없으면 크롤링 순서가 승자를 정한다 — 같은 대표품번의 변형이 사이트에 여럿 있으면
+         * 마지막에 처리된 변형의 사진이 남는데, 그 선택에는 아무 근거가 없다.
+         */
+        private final Map<Long, Claim> claims = new HashMap<>();
 
         private int collected;
         private int exactMatched;
@@ -311,8 +308,11 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
         private int matchedByFullCode;
         private int matchedByMasterCode;
 
-        /** 사이트 제품 둘 이상이 같은 제품 행을 두고 다툰 횟수. 사진이 뒤엎인다. */
+        /** 이미 임자가 있어 물러난 횟수. 사진이 뒤엎이는 대신 여기로 센다. */
         private int rowsContested;
+
+        /** 대표품번으로 잡아 둔 자리를 원형 일치가 넘겨받은 횟수. */
+        private int rowsUpgraded;
 
         private MatchContext(Map<String, List<Long>> idsByMasterCode,
                              Map<String, List<Long>> idsByFullCode,
@@ -342,5 +342,63 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
         int matchedByFullCode()   { return matchedByFullCode; }
         int matchedByMasterCode() { return matchedByMasterCode; }
         int rowsContested()       { return rowsContested; }
+        int rowsUpgraded()        { return rowsUpgraded; }
+
+        /**
+         * 제품 행의 자리를 잡는다. 잡았으면 이 제품이 사진을 쓴다.
+         *
+         * <ul>
+         *   <li>빈자리 → 잡는다</li>
+         *   <li>대표품번이 잡아 둔 자리를 <b>원형 일치가 넘겨받는다</b> — 행 수는 늘지 않는다</li>
+         *   <li>그 밖에는 물러난다. 먼저 잡은 쪽이 남는다</li>
+         * </ul>
+         */
+        private boolean claim(Long id, Claim kind, String siteCode) {
+            Claim held = claims.get(id);
+
+            if (held == null) {
+                claims.put(id, kind);
+                rowsAffected++;
+                if (idsWithImage.contains(id)) {
+                    rowsReplaced++;
+                } else {
+                    rowsFilled++;
+                }
+                return true;
+            }
+
+            if (held == Claim.MASTER && kind == Claim.FULL) {
+                claims.put(id, Claim.FULL);
+                rowsUpgraded++;
+                log.info("[{}] 원형 일치가 대표품번 짝을 넘겨받는다. id={}, siteCode={}", MAKER, id, siteCode);
+                return true;
+            }
+
+            rowsContested++;
+            log.info("[{}] 이미 임자가 있어 물러난다. id={}, 기존={}, siteCode={}", MAKER, id, held, siteCode);
+            return false;
+        }
+
+        /** 잡아 둔 자리를 놓아준다. 내려받기가 실패했을 때만 쓴다. */
+        private void release(List<Long> ids) {
+            for (Long id : ids) {
+                if (claims.remove(id) != null) {
+                    rowsAffected--;
+                    if (idsWithImage.contains(id)) {
+                        rowsReplaced--;
+                    } else {
+                        rowsFilled--;
+                    }
+                }
+            }
+        }
+    }
+
+    /** 제품 행을 어느 확신으로 잡았는가. */
+    private enum Claim {
+        /** 품번이 통째로 같다. */
+        FULL,
+        /** 대표품번만 같다 — 같은 모델의 다른 변형일 수 있다. */
+        MASTER
     }
 }

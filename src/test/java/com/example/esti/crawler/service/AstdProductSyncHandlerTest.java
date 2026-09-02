@@ -181,8 +181,8 @@ class AstdProductSyncHandlerTest {
     }
 
     @Test
-    @DisplayName("사이트 제품 둘이 같은 행에 걸리면 반영은 한 행이다 — 뒤에 온 사진이 이긴다")
-    void countsContestedRowOnlyOnce() {
+    @DisplayName("대표품번으로만 걸린 제품 둘이 같은 행을 노리면 먼저 잡은 쪽이 남는다")
+    void firstMasterOnlyClaimWins() {
         indexHas(set(1L, "AC8100-A", "AC8100", null));
 
         Object ctx = handler.prepare("A");
@@ -191,6 +191,59 @@ class AstdProductSyncHandlerTest {
 
         assertThat(counters(ctx).exactMatched()).isEqualTo(2);
         assertThat(counters(ctx).rowsAffected()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("원형 일치가 대표품번 짝을 이긴다 — 대표품번이 먼저 잡았어도 넘겨받는다")
+    void fullCodeMatchTakesOverFromMasterOnly() throws Exception {
+        VendorProduct target = set(1L, "AC8100-A", "AC8100", null);
+        indexHas(target);
+        when(vendorProductRepository.findAllById(any())).thenReturn(List.of(target));
+        when(imageDownloadService.download(anyString(), anyString()))
+                .thenReturn(new ImageDownloadService.DownloadResult("/abs/b.png", "/img/A_AC8100-B.png"))
+                .thenReturn(new ImageDownloadService.DownloadResult("/abs/a.png", "/img/A_AC8100-A.png"));
+
+        Object ctx = handler.prepare("A");
+        handler.save(crawled("AC8100-B"), ctx);   // 대표품번으로만 걸린다
+        handler.save(crawled("AC8100-A"), ctx);   // 품번이 통째로 같다
+
+        // 확실한 짝의 사진이 남는다. 순서가 아니라 확신이 승자를 정한다.
+        assertThat(target.getImageUrl()).isEqualTo("/img/A_AC8100-A.png");
+        assertThat(counters(ctx).rowsAffected()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("원형 일치가 먼저 자리를 잡으면 대표품번 짝은 덮지 못한다")
+    void masterOnlyCannotOverwriteFullMatch() throws Exception {
+        VendorProduct target = set(1L, "AC8100-A", "AC8100", null);
+        indexHas(target);
+        when(vendorProductRepository.findAllById(any())).thenReturn(List.of(target));
+        when(imageDownloadService.download(anyString(), anyString()))
+                .thenReturn(new ImageDownloadService.DownloadResult("/abs/a.png", "/img/A_AC8100-A.png"));
+
+        Object ctx = handler.prepare("A");
+        handler.save(crawled("AC8100-A"), ctx);   // 원형 일치
+        handler.save(crawled("AC8100-B"), ctx);   // 대표품번만 일치 — 물러나야 한다
+
+        assertThat(target.getImageUrl()).isEqualTo("/img/A_AC8100-A.png");
+        // 물러났으므로 두 번째 제품은 내려받지도 않는다
+        verify(imageDownloadService, times(1)).download(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("내려받기가 실패하면 잡아 둔 자리를 놓아준다 — 뒤에 오는 짝을 막지 않는다")
+    void releasesClaimWhenDownloadFails() throws Exception {
+        VendorProduct target = set(1L, "AC8100-A", "AC8100", null);
+        indexHas(target);
+        when(imageDownloadService.download(anyString(), anyString()))
+                .thenThrow(new java.io.IOException("받기 실패"));
+
+        Object ctx = handler.prepare("A");
+        handler.save(crawled("AC8100-B"), ctx);
+
+        assertThat(counters(ctx).downloadFailed()).isEqualTo(1);
+        assertThat(counters(ctx).rowsAffected()).isZero();
+        assertThat(counters(ctx).rowsFilled()).isZero();
     }
 
     @Test
