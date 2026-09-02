@@ -63,4 +63,16 @@ public class VendorProductRelation extends BaseEntity {
      */
     @Column(name = "set_hash", length = 64)
     private String setHash;
+
+    /**
+     * <b>이 세트에 적힌 그대로의 부속 이름</b> (G-4).
+     *
+     * <p>{@code VendorProduct.productName}은 품번당 하나라 파일에서 마지막에 나온 이름으로 통일된다.
+     * A사 33종이 여러 이름으로 등장하는데 <b>27종에서 최빈값이 아닌 이름</b>이 이겼고,
+     * 오타가 이기는 경우까지 있었다. 세트마다 다른 이름으로 적힌 것을 살리려면 관계에 둬야 한다.
+     *
+     * <p>null이면 조회가 {@code VendorProduct.productName}으로 되돌아간다(하위호환·B사 불변).
+     */
+    @Column(name = "part_name", length = 200)
+    private String partName;
 }

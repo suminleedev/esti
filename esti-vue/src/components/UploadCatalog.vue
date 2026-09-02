@@ -316,7 +316,8 @@ function partsSum(id) {
  * 전부 경고로 내면 실제 오류가 그 안에 묻힌다.
  */
 function partsStatus(p) {
-  return partsSumStatus(p.unitPrice, partsOf(p.vendorItemPriceId), p.productName)
+  // mainUnitPrice가 있으면(A사) 본품을 더해 대조한다(G-2). 없으면(B사) 종전 판정 그대로.
+  return partsSumStatus(p.unitPrice, partsOf(p.vendorItemPriceId), p.productName, p.mainUnitPrice)
 }
 
 // 공급사 바꾸면 0페이지부터 다시 조회

@@ -165,8 +165,11 @@ public class VendorCatalogImporter {
         //
         // 여기에 세트 해시가 더 붙는다(G-1) — priceBasis만으로는 같은 품번의 여러 세트가 한 행으로
         // 접혀 세트가가 하나만 남는다. A사에서 19종의 서로 다른 세트가 24개가 그렇게 덮였다.
+        // 본품 단가는 세트가와 별개로 남긴다(G-2) — A사는 세트가 = 본품 + 부속합이라
+        // 이게 없으면 화면이 그 등식으로 대조할 수 없다. B사는 본품이 부속 목록 안이라 null.
+        BigDecimal ownPrice = set.setPrice() != null ? mainItem.unitPrice() : null;
         upsertPrice(vendor, mainProduct, mainItem, mainPrice, mainRemark, ITEM_TYPE_SET,
-                set.priceBasis(), set.setHash(), set.partsSummary());
+                set.priceBasis(), set.setHash(), set.partsSummary(), ownPrice);
 
         // 부속품 + 관계
         //
@@ -192,9 +195,9 @@ public class VendorCatalogImporter {
 
             // 공유 부속 단가는 코드당 1건 유지(D13) → priceBasis=null, setHash=null
             upsertPrice(vendor, partProduct, part, part.unitPrice(), part.remark(), ITEM_TYPE_PART,
-                    null, null, null);
+                    null, null, null, null);
             upsertRelation(mainProduct, partProduct, part.relationType(),
-                    partCounts.get(partKey(part)), set.setHash());
+                    partCounts.get(partKey(part)), set.setHash(), part.productName());
         }
         return mainRes.created();
     }
@@ -347,7 +350,7 @@ public class VendorCatalogImporter {
      */
     private void upsertPrice(Vendor vendor, VendorProduct product, VendorParsedItem item,
                             BigDecimal price, String remark, String priceType, String priceBasis,
-                            String setHash, String setSummary) {
+                            String setHash, String setSummary, BigDecimal mainUnitPrice) {
         String proposalCode = item.productCode();
 
         VendorItemPrice vip;
@@ -387,13 +390,14 @@ public class VendorCatalogImporter {
         vip.setPriceBasis(priceBasis);
         vip.setSetHash(setHash);
         vip.setSetSummary(setSummary);
+        vip.setMainUnitPrice(mainUnitPrice);
         vip.setCurrency("KRW");
 
         vendorItemPriceRepository.save(vip);
     }
 
     private void upsertRelation(VendorProduct source, VendorProduct target, String relationType,
-                                int quantity, String setHash) {
+                                int quantity, String setHash, String partName) {
         if (source.getId() != null && source.getId().equals(target.getId())) return; // 자기 참조 방지
 
         String rel = (relationType != null && !relationType.isBlank())
@@ -409,10 +413,12 @@ public class VendorCatalogImporter {
                 .findBySourceProductAndTargetProductAndRelationTypeAndSetHash(source, target, rel, setHash)
                 .orElse(null);
         if (existing != null) {
-            if (!Integer.valueOf(qty).equals(existing.getQuantity())) {
-                existing.setQuantity(qty);
-                vendorProductRelationRepository.save(existing);
+            boolean dirty = false;
+            if (!Integer.valueOf(qty).equals(existing.getQuantity())) { existing.setQuantity(qty); dirty = true; }
+            if (partName != null && !partName.equals(existing.getPartName())) {
+                existing.setPartName(partName); dirty = true;
             }
+            if (dirty) vendorProductRelationRepository.save(existing);
             return;
         }
 
@@ -423,6 +429,7 @@ public class VendorCatalogImporter {
                         .relationType(rel)
                         .quantity(qty)
                         .setHash(setHash)
+                        .partName(partName)
                         .build()
         );
     }
