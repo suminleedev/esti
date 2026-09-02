@@ -98,7 +98,9 @@ class ImageDownloadServiceTest {
     void sanitizesFileName() throws Exception {
         ImageDownloadService.DownloadResult result = service.download(url("image/jpeg"), "B_UB-FH6510(G)");
 
-        assertThat(result.relativePath()).endsWith("/B_UB-FH6510_G_.jpg");
+        // 확장자가 .png인 것은 이 테스트의 관심사가 아니다 — 서버가 image/jpeg라고 말하면서
+        // PNG 바이트를 주고, 판별이 바이트를 따르기 때문이다. 여기서 볼 것은 괄호가 걷혔는가다.
+        assertThat(result.relativePath()).endsWith("/B_UB-FH6510_G_.png");
     }
 
     @Test
