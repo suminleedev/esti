@@ -11,11 +11,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 @Slf4j
 @Component
@@ -54,16 +52,6 @@ public class AstdCrawler implements ProductImageCrawler {
     @Override
     public String vendorCode() {
         return vendorCode;
-    }
-
-    @Override
-    public List<String> collectProductUrls() {
-        return Collections.emptyList();
-    }
-
-    @Override
-    public Optional<CrawledProduct> crawlProduct(String productUrl) {
-        return Optional.empty();
     }
 
     @Override

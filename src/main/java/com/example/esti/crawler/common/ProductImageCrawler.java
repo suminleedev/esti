@@ -1,8 +1,6 @@
 package com.example.esti.crawler.common;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 public interface ProductImageCrawler {
     // 코드 내부 식별용
@@ -10,10 +8,6 @@ public interface ProductImageCrawler {
 
     // DB 매칭용
     String vendorCode();  // A, B
-
-    List<String> collectProductUrls() throws Exception;
-
-    Optional<CrawledProduct> crawlProduct(String productUrl) throws Exception;
 
     /**
      * 수집 결과를 부분 실패 정보와 함께 돌려준다.
@@ -23,14 +17,13 @@ public interface ProductImageCrawler {
         return CrawlResult.singleSource(crawlAllProducts());
     }
 
-    // 목록 기반 크롤링 : ASTD
-    default List<CrawledProduct> crawlAllProducts() throws Exception {
-        List<CrawledProduct> results = new ArrayList<>();
-
-        for (String productUrl : collectProductUrls()) {
-            crawlProduct(productUrl).ifPresent(results::add);
-        }
-
-        return results;
-    }
+    /**
+     * 목록을 돌며 전량을 수집한다.
+     *
+     * <p>예전에는 {@code collectProductUrls()}로 상세 URL을 모으고 {@code crawlProduct()}로
+     * 한 건씩 여는 기본 구현이 있었다. <b>두 사이트 모두 리스트 HTML에 필요한 것이 다 들어 있어
+     * 상세 페이지를 열 이유가 없었고, 구현체 둘 다 그 메서드를 빈 스텁으로 두고 이쪽만 구현했다.</b>
+     * 아무도 호출하지 않는 경로라 지웠다.
+     */
+    List<CrawledProduct> crawlAllProducts() throws Exception;
 }

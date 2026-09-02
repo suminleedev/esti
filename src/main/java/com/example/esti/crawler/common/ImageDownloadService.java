@@ -42,8 +42,6 @@ public class ImageDownloadService {
 
         String fileName = sanitize(preferredFileName);
 
-        /* 이미지 재크롤링 시 기존 파일 덮어쓰기 방식으로 변경 */
-
         HttpURLConnection conn = (HttpURLConnection) new URL(sourceUrl).openConnection();
         conn.setConnectTimeout(5_000);
         conn.setReadTimeout(30_000);
