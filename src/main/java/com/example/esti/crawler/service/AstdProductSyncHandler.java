@@ -46,6 +46,14 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
     private static final String MAKER = "ASTD";
     private static final String ITEM_TYPE_SET = "SET";
 
+    /**
+     * 단종 표시. 단가표가 제품명 안에 {@code (단종)}으로 적어 두고, 따로 상태 컬럼은 없다.
+     *
+     * <p>{@code 샤워욕조수전(단종)(단니쁠)}처럼 뒤에 괄호가 더 붙는 경우가 있어 부분 문자열로 본다.
+     * B사 제품명에는 이 표기가 한 건도 없어 A사 전용 규칙이다.
+     */
+    private static final String DISCONTINUED_MARK = "단종";
+
     private final ImageDownloadService imageDownloadService;
     private final VendorProductRepository vendorProductRepository;
 
@@ -71,6 +79,7 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
         Map<String, List<Long>> idsByMasterCode = new HashMap<>();
         Map<String, List<Long>> idsByFullCode = new HashMap<>();
         Set<Long> idsWithImage = new HashSet<>();
+        int discontinuedSkipped = 0;
 
         for (VendorProduct product :
                 vendorProductRepository.findAllByVendor_VendorCodeAndItemType(vendorCode, ITEM_TYPE_SET)) {
@@ -78,6 +87,19 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
             String fullCode = normalizeCode(product.getProductCode());
             if (fullCode == null || fullCode.isBlank()) {
                 continue;   // 품번 없는 행은 매칭 키가 없다
+            }
+
+            // 단종품은 인덱스에 넣지 않는다. 사진을 받지도, 다른 행에 사진을 대주지도 않는다.
+            //
+            // 사이트에는 단종 개념이 없어 단종품과 정확히 짝이 맞는 사진이 올라와 있기도 하다.
+            // 그래도 통째로 뺀다 — 팔지 않는 제품에 사진이 필요하지 않고, 규칙이 하나면
+            // "단종품에는 사진을 붙이지 않는다"가 예외 없이 성립한다.
+            //
+            // 인덱스에서 빼는 것과 저장 직전에 거르는 것은 다르다. 뒤쪽이면 단종 행이 자리를
+            // 먼저 잡았다가 쓰지 않고 끝나 그 자리가 빈 채로 남는다.
+            if (isDiscontinued(product)) {
+                discontinuedSkipped++;
+                continue;
             }
 
             idsByFullCode.computeIfAbsent(fullCode, k -> new ArrayList<>()).add(product.getId());
@@ -97,8 +119,9 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
             }
         }
 
-        log.info("[{}] SET 인덱스 준비 — 대표품번 {}종 / 원형 품번 {}종 (이미지 보유 {}행)",
-                MAKER, idsByMasterCode.size(), idsByFullCode.size(), idsWithImage.size());
+        log.info("[{}] SET 인덱스 준비 — 대표품번 {}종 / 원형 품번 {}종 (이미지 보유 {}행, 단종 제외 {}행)",
+                MAKER, idsByMasterCode.size(), idsByFullCode.size(), idsWithImage.size(),
+                discontinuedSkipped);
 
         return new MatchContext(idsByMasterCode, idsByFullCode, idsWithImage);
     }
@@ -234,6 +257,11 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
 
             vendorProductRepository.save(product);
         }
+    }
+
+    private boolean isDiscontinued(VendorProduct product) {
+        String name = product.getProductName();
+        return name != null && name.contains(DISCONTINUED_MARK);
     }
 
     private String resolveSourceUrl(CrawledProduct crawled) {

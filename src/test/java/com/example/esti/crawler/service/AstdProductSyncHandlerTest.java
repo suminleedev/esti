@@ -44,6 +44,16 @@ class AstdProductSyncHandlerTest {
                 .build();
     }
 
+    private VendorProduct discontinued(Long id, String productCode, String masterCode) {
+        return VendorProduct.builder()
+                .id(id)
+                .productCode(productCode)
+                .masterCode(masterCode)
+                .itemType("SET")
+                .productName("변기솔 (단종)")
+                .build();
+    }
+
     private CrawledProduct crawled(String productCode) {
         return CrawledProduct.builder()
                 .maker("ASTD").vendorCode("A").productCode(productCode)
@@ -266,6 +276,32 @@ class AstdProductSyncHandlerTest {
         assertThat(counters(ctx).skippedNoImage()).isEqualTo(1);
         assertThat(counters(ctx).notInDb()).isEqualTo(1);
         assertThat(counters(ctx).rowsAffected()).isZero();
+    }
+
+    @Test
+    @DisplayName("단종품은 품번이 딱 맞아도 사진을 받지 않는다")
+    void skipsDiscontinuedEvenOnExactCode() {
+        indexHas(discontinued(1L, "FH1046-0GAK490AS", "FH1046"));
+
+        Object ctx = handler.prepare("A");
+        handler.inspect(crawled("FH1046-0GAK490AS"), ctx);
+
+        assertThat(counters(ctx).notInDb()).isEqualTo(1);
+        assertThat(counters(ctx).rowsAffected()).isZero();
+    }
+
+    @Test
+    @DisplayName("단종품은 다른 행에 사진을 대주지도 않는다 — 인덱스에서 통째로 빠진다")
+    void discontinuedRowsAreNotEvenInTheIndex() {
+        // 같은 대표품번 아래 단종 1행 + 현행 1행. 단종 행은 자리를 잡지도, 경쟁하지도 않는다.
+        indexHas(discontinued(1L, "FH1046-0GAK490AS", "FH1046"),
+                 set(2L, "FH1046-6DAK720AJ", "FH1046", null));
+
+        Object ctx = handler.prepare("A");
+        handler.inspect(crawled("FH1046-0EAK400AS"), ctx);
+
+        // 현행 행 하나만 잡힌다. 단종 행이 인덱스에 있었다면 2행이 됐을 것이다.
+        assertThat(counters(ctx).rowsAffected()).isEqualTo(1);
     }
 
     @Test
