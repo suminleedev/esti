@@ -91,4 +91,16 @@ public class VendorItemPrice {
      */
     @Column(name = "set_hash", length = 64)
     private String setHash;
+
+    /**
+     * 구성 요약 — 목록에서 세트를 눈으로 가르기 위한 한 줄 (예: {@code "긴다리 · 앙카120"}).
+     *
+     * <p>세트 축을 넣으면 같은 품번의 여러 세트가 각각의 행이 되는데, A사에서 쪼개지는 24묶음 중
+     * <b>22묶음은 제품명까지 같다.</b> 요약이 없으면 "같은 행이 두 개"로 보인다.
+     * 목록에서 행마다 부속을 끌어오면 N+1이라 적재 시점에 만들어 둔다({@code VendorProductSet.partsSummary()}).
+     *
+     * <p>대표품목(SET) 행에만 채운다. nullable인 이유는 {@link #setHash}와 같다.
+     */
+    @Column(name = "set_summary", length = 200)
+    private String setSummary;
 }

@@ -372,6 +372,11 @@
                   <div class="flex-grow-1">
                     <div class="fw-bold">{{ item.productName }}</div>
                     <small class="text-muted">{{ item.mainItemCode }} · {{ item.vendorName}}</small>
+                    <!--
+                      구성 요약 (G-1) — 같은 품번의 여러 세트가 각각 행으로 오므로 이걸로 가른다.
+                      제안서에 담을 때 세트가가 스냅샷되니, 여기서 맞는 구성을 골라야 금액이 맞는다.
+                    -->
+                    <div v-if="item.setSummary" class="small text-muted">{{ item.setSummary }}</div>
                     <div class="small text-muted">{{ item.specs }}</div> <!-- 규격 -->
                   </div>
                   <div class="text-end small flex-shrink-0">

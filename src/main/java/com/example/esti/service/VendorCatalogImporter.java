@@ -166,7 +166,7 @@ public class VendorCatalogImporter {
         // 여기에 세트 해시가 더 붙는다(G-1) — priceBasis만으로는 같은 품번의 여러 세트가 한 행으로
         // 접혀 세트가가 하나만 남는다. A사에서 19종의 서로 다른 세트가 24개가 그렇게 덮였다.
         upsertPrice(vendor, mainProduct, mainItem, mainPrice, mainRemark, ITEM_TYPE_SET,
-                set.priceBasis(), set.setHash());
+                set.priceBasis(), set.setHash(), set.partsSummary());
 
         // 부속품 + 관계
         //
@@ -191,7 +191,8 @@ public class VendorCatalogImporter {
                     part.unit()).product();
 
             // 공유 부속 단가는 코드당 1건 유지(D13) → priceBasis=null, setHash=null
-            upsertPrice(vendor, partProduct, part, part.unitPrice(), part.remark(), ITEM_TYPE_PART, null, null);
+            upsertPrice(vendor, partProduct, part, part.unitPrice(), part.remark(), ITEM_TYPE_PART,
+                    null, null, null);
             upsertRelation(mainProduct, partProduct, part.relationType(),
                     partCounts.get(partKey(part)), set.setHash());
         }
@@ -346,7 +347,7 @@ public class VendorCatalogImporter {
      */
     private void upsertPrice(Vendor vendor, VendorProduct product, VendorParsedItem item,
                             BigDecimal price, String remark, String priceType, String priceBasis,
-                            String setHash) {
+                            String setHash, String setSummary) {
         String proposalCode = item.productCode();
 
         VendorItemPrice vip;
@@ -385,6 +386,7 @@ public class VendorCatalogImporter {
         vip.setPriceType(priceType);
         vip.setPriceBasis(priceBasis);
         vip.setSetHash(setHash);
+        vip.setSetSummary(setSummary);
         vip.setCurrency("KRW");
 
         vendorItemPriceRepository.save(vip);

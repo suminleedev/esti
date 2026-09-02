@@ -177,6 +177,47 @@ class VendorCatalogSetAxisTest {
                 .hasSize(1);
     }
 
+    @Test
+    void 세트가까지_같으면_구성_요약만이_행을_가른다() {
+        // 목록에서 가장 어려운 경우 — A사 상업용 소변기(센서 배터리/전기식)가 이 모양이다.
+        // 품번·소분류·세트가가 전부 같고 부속만 다르다. 요약이 없으면 화면에서 구별할 수단이 없다.
+        given(parserFactory.getParser("A")).willReturn(parserReturning(List.of(
+                set("100", part("S-BAT", "내장형센서(배터리)")),
+                set("100", part("S-ELE", "내장형센서(전기식)")))));
+        importer.importVendorCatalog("A", DUMMY, null);
+
+        Vendor vendor = vendorRepository.findByVendorCode("A").orElseThrow();
+        VendorProduct main = productRepository.findByVendorAndProductCode(vendor, MAIN_CODE).orElseThrow();
+
+        List<VendorItemPrice> rows = priceRepository
+                .findAllByVendorAndVendorProductAndPriceTypeAndPriceBasis(
+                        vendor, main, VendorItemPrice.PRICE_TYPE_SET, "세면기");
+
+        assertThat(rows).hasSize(2);
+        assertThat(rows).extracting(VendorItemPrice::getSetSummary)
+                .as("세트가가 같으니 요약이 유일한 구분 수단이다")
+                .containsExactlyInAnyOrder("내장형센서(배터리)", "내장형센서(전기식)");
+    }
+
+    @Test
+    void 구성_요약은_부속이_많으면_접는다() {
+        VendorProductSet many = set("100",
+                part("P1", "가"), part("P2", "나"), part("P3", "다"), part("P4", "라"), part("P5", "마"));
+        assertThat(many.partsSummary()).isEqualTo("가 · 나 · 다 외 2건");
+    }
+
+    @Test
+    void 부속이_없으면_구성_요약이_없다() {
+        assertThat(set("100").partsSummary()).isNull();
+    }
+
+    @Test
+    void 구성_요약은_엑셀_순서를_따른다() {
+        // 정체성(setHash)은 순서에 흔들리면 안 되지만, 표시는 드릴다운과 같은 순서여야 한다.
+        assertThat(set("100", part("P-B", "나중"), part("P-A", "먼저")).partsSummary())
+                .isEqualTo("나중 · 먼저");
+    }
+
     // ====== 헬퍼 ======
 
     private void importTwoSets() {
