@@ -28,9 +28,14 @@ class VendorALatestCatalogTest {
 
     private static final Path LATEST = Path.of("docs/samples/A사 단가표_2021최신.xls");
 
-    /** 원본 B열 12종을 저장 어휘로 옮긴 결과(G-2). {@code 매립형 욕조&부속}·{@code 스탠딩욕조}가 합쳐져 11종이다. */
+    /**
+     * 원본 B열 12종을 저장 어휘로 옮긴 결과(G-2). {@code 매립형 욕조&부속}·{@code 스탠딩욕조}가 합쳐져 11종이다.
+     *
+     * <p>{@code 수전}은 <b>원본 그대로 둔다</b>(분류 후속 ①). 예전에는 {@code 세면수전}으로 좁혔는데
+     * 그 구간에 샤워·욕조 수전이 섞여 있어 90종이 오분류됐다.
+     */
     private static final Set<String> EXPECTED_LARGE_CATEGORIES = Set.of(
-            "양변기", "비데", "세면기", "욕조", "세면수전", "샤워수전",
+            "양변기", "비데", "세면기", "욕조", "수전", "샤워수전",
             "주방수전", "액세서리", "발코니수전", "상업용제품", "부속");
 
     private List<VendorProductSet> parseLatest() {
@@ -86,7 +91,7 @@ class VendorALatestCatalogTest {
         Set<String> rows = sets.stream()
                 .map(s -> key(s) + "|" + s.categoryLarge() + "|" + s.setHash())
                 .collect(Collectors.toSet());
-        assertEquals(910, rows.size(), "세트 축 적용 후 카탈로그 행 수");
+        assertEquals(909, rows.size(), "세트 축 적용 후 카탈로그 행 수");
 
         // 대표품목 하나에 부속 구성이 다른 세트가 2개 이상 = 예전에 한 덩어리로 합쳐지던 것
         Map<String, Set<String>> hashesByMain = new HashMap<>();
@@ -118,6 +123,57 @@ class VendorALatestCatalogTest {
     /** 대표품목 식별자 — 코드가 없으면 이름(임포터의 제품 식별과 같은 축). */
     private static String key(VendorProductSet s) {
         return s.main().productCode() != null ? s.main().productCode() : "NAME:" + s.main().productName();
+    }
+
+    @Test
+    void 수전_구간의_소분류가_제품명으로_갈린다() {
+        // 분류 후속 ①. 원본은 이 구간(816행)에 C 라벨을 하나만 두고 시리즈 단위로 묶었다.
+        // 좁혀서 세면수전으로 못 박으면 샤워·욕조 수전이 그 안에 묻힌다.
+        Map<String, Long> smalls = parseLatest().stream()
+                .filter(s -> "수전".equals(s.categoryLarge()))
+                .collect(Collectors.groupingBy(
+                        s -> s.categorySmall() == null ? "(없음)" : s.categorySmall(),
+                        Collectors.counting()));
+
+        // 버킷은 지어낸 게 아니라 실데이터 분포에서 뽑았다 — 아래가 전부 3건 이상이다.
+        for (String expected : List.of("세면수전", "샤워수전", "샤워욕조수전", "욕조수전",
+                "데크샤워욕조수전", "데크욕조수전", "매립세면수전", "매립샤워수전",
+                "매립샤워욕조수전", "매립욕조수전", "수전부속")) {
+            assertTrue(smalls.containsKey(expected) || "욕조수전".equals(expected),
+                    "수전 소분류 '" + expected + "'가 있어야 함 (실제: " + smalls.keySet() + ")");
+        }
+        assertFalse(smalls.containsKey("(없음)"), "수전 구간은 소분류가 비면 안 된다");
+    }
+
+    @Test
+    void 예전에_세면수전으로_굳던_샤워욕조수전이_제자리를_찾는다() {
+        // 분류 후속 ①의 핵심. FB/FC는 샤워·욕조 수전 접두어다.
+        List<VendorProductSet> faucets = parseLatest().stream()
+                .filter(s -> "수전".equals(s.categoryLarge()))
+                .filter(s -> s.main().productCode() != null
+                        && s.main().productCode().matches("^F[BC].*"))
+                .toList();
+
+        assertFalse(faucets.isEmpty());
+        assertTrue(faucets.stream().noneMatch(s -> "세면수전".equals(s.categorySmall())),
+                "샤워·욕조 수전 접두어인데 소분류가 세면수전이면 안 됨");
+    }
+
+    @Test
+    void 부속_구간의_도기_완제품이_제_대분류로_간다() {
+        // 분류 후속 ②. 원본이 파일 끝에 파티오 시리즈를 기타부속 아래 적어 놨다.
+        List<VendorProductSet> sets = parseLatest();
+
+        assertTrue(sets.stream().noneMatch(s -> "부속".equals(s.categoryLarge())
+                        && s.main().productName() != null
+                        && s.main().productName().startsWith("파티오")),
+                "파티오 완제품이 부속에 남으면 안 됨");
+
+        // 같은 구간의 진짜 부속은 그대로 둔다 — 접두어가 도기 계열이어도 마찬가지다.
+        assertTrue(sets.stream().anyMatch(s -> "부속".equals(s.categoryLarge())
+                        && s.main().productName() != null
+                        && s.main().productName().contains("트랩")),
+                "트랩은 부속에 남아야 함(접두어만 보면 도기로 오인된다)");
     }
 
     @Test
