@@ -17,9 +17,12 @@ import java.util.UUID;
 public class ImageDownloadService {
 
     private final Path rootDir;
+    private final String userAgent;
 
-    public ImageDownloadService(@Value("${app.crawler.image-dir}") String rootDir) {
+    public ImageDownloadService(@Value("${app.crawler.image-dir}") String rootDir,
+                                @Value("${app.crawler.user-agent}") String userAgent) {
         this.rootDir = Path.of(rootDir).toAbsolutePath().normalize();
+        this.userAgent = userAgent;
     }
 
     /**
@@ -44,6 +47,12 @@ public class ImageDownloadService {
         HttpURLConnection conn = (HttpURLConnection) new URL(sourceUrl).openConnection();
         conn.setConnectTimeout(5_000);
         conn.setReadTimeout(30_000);
+
+        // HTML은 크롤러가 UA를 실어 보내는데 이미지는 기본 UA로 나가고 있었다. 지금은 양쪽 다 200이라
+        // 무해하지만, 한쪽만 신원이 다른 상태라 hotlink 차단이 켜지면 이미지만 조용히 깨진다.
+        if (userAgent != null && !userAgent.isBlank()) {
+            conn.setRequestProperty("User-Agent", userAgent);
+        }
 
         try (InputStream in = conn.getInputStream()) {
             if (!hasImageExtension(fileName)) {

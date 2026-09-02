@@ -36,10 +36,14 @@ class ImageDownloadServiceTest {
 
     private ImageDownloadService service;
 
+    private static final String TEST_USER_AGENT = "EstiTest/1.0";
+    private volatile String lastUserAgent;
+
     @BeforeEach
     void startServer() throws Exception {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
+            lastUserAgent = exchange.getRequestHeaders().getFirst("User-Agent");
             // 경로에 담긴 값을 그대로 Content-Type으로 돌려준다 (/type/image%2Fpng)
             String contentType = exchange.getRequestURI().getPath().substring("/type/".length());
             exchange.getResponseHeaders().add("Content-Type", java.net.URLDecoder.decode(
@@ -50,7 +54,7 @@ class ImageDownloadServiceTest {
         });
         server.start();
         baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
-        service = new ImageDownloadService(imageDir.toString());
+        service = new ImageDownloadService(imageDir.toString(), TEST_USER_AGENT);
     }
 
     @AfterEach
@@ -60,6 +64,14 @@ class ImageDownloadServiceTest {
 
     private String url(String contentType) {
         return baseUrl + "/type/" + contentType.replace("/", "%2F") + "/img";
+    }
+
+    @Test
+    @DisplayName("이미지 요청에도 크롤러와 같은 UA를 싣는다 — 한쪽만 신원이 다르면 조용히 깨진다")
+    void sendsConfiguredUserAgent() throws Exception {
+        service.download(url("image/png"), "B_UA_CHECK");
+
+        assertThat(lastUserAgent).isEqualTo(TEST_USER_AGENT);
     }
 
     @Test
