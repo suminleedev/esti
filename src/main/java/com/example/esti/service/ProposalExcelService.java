@@ -48,7 +48,15 @@ public class ProposalExcelService {
     /** 내려받을 엑셀 1건 — 내용과 파일명. 파일명 규칙이 양식마다 달라 함께 돌려준다. */
     public record ExcelDownload(byte[] content, String fileName) {}
 
-    /** 제안서(고객 제출용) — 8행 카드 × 4열 그리드. */
+    /**
+     * 제안서(고객 제출용) — 8행 카드 × 4열 그리드.
+     *
+     * <p><b>견적번호를 찍지 않는다.</b> 채번은 {@link #exportQuote}에서만 일어나므로,
+     * 제안서만 여러 번 출력해도 {@code quoteNo}는 계속 비어 있다. 원본 양식
+     * ({@code docs/samples/제안서_sample.xlsx})에 견적번호 자리가 없기 때문이고,
+     * 카드가 «1세트당 가격»을 보여주는 문서인 것과 같은 이유다 — 금액을 확정해 청구하는 문서는 견적서다.
+     * QA에서 이 비대칭을 결함으로 오인한 적이 있어(F-019) 여기 적어 둔다.
+     */
     public ExcelDownload exportProposal(Long proposalId) {
         Proposal proposal = loadSentProposal(proposalId);
         byte[] content = ProposalCardExcelWriter.write(proposal, lines(proposalId));
