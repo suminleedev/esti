@@ -15,6 +15,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
 
 import java.util.List;
 
@@ -37,7 +38,7 @@ public class ProposalController {
      * */
     /* 임시저장 */
     @PostMapping("/drafts")
-    public ResponseEntity<ProposalResponse> createDraft(@RequestBody ProposalRequest req) throws Exception {
+    public ResponseEntity<ProposalResponse> createDraft(@Valid @RequestBody ProposalRequest req) throws Exception {
         return ResponseEntity.ok(service.createDraft(req));
     }
 
@@ -45,7 +46,7 @@ public class ProposalController {
     @PutMapping("/{id}/draft")
     public ResponseEntity<ProposalResponse> updateDraft(
             @PathVariable Long id,
-            @RequestBody ProposalRequest req) throws Exception {
+            @Valid @RequestBody ProposalRequest req) throws Exception {
 
         return ResponseEntity.ok(service.updateDraft(id, req));
     }
@@ -54,14 +55,14 @@ public class ProposalController {
     @PostMapping("/{id}/submit")
     public ResponseEntity<ProposalResponse> submit(
             @PathVariable Long id,
-            @RequestBody ProposalRequest req) throws Exception {
+            @Valid @RequestBody ProposalRequest req) throws Exception {
 
         return ResponseEntity.ok(service.submit(id, req));
     }
 
     /* 신규 작성 후 제출 */
     @PostMapping("/submit")
-    public ResponseEntity<ProposalResponse> submitNew(@RequestBody ProposalRequest req) throws Exception {
+    public ResponseEntity<ProposalResponse> submitNew(@Valid @RequestBody ProposalRequest req) throws Exception {
         return ResponseEntity.ok(service.submitNew(req));
     }
 

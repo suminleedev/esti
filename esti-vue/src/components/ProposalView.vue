@@ -830,6 +830,17 @@ const lines = reactive([])
 /* ====== 공통 유틸 ====== */
 function toNumber(value) { return Number(value ?? 0) }
 
+/**
+ * 서버가 준 사유를 그대로 보여준다. 없을 때만 fallback을 쓴다.
+ *
+ * 백엔드가 «현장명은 200자까지 입력할 수 있습니다.»처럼 어느 필드가 왜 걸렸는지 짚어 주는데,
+ * 여기서 뭉뚱그려 "저장 중 오류가 발생했습니다"로 덮으면 그 정보가 사용자에게 닿지 않는다(F-024).
+ * MasterSettingsView의 같은 이름 함수와 동작을 맞췄다.
+ */
+function errorMessage(e, fallback) {
+  return e?.response?.data?.message || fallback
+}
+
 function newUid() {
   return typeof crypto !== 'undefined' && crypto.randomUUID
     ? crypto.randomUUID()
@@ -1432,7 +1443,7 @@ async function saveDraft () {
     }
   } catch (e) {
     console.error('임시저장 실패', e)
-    toast.error('임시저장 중 오류가 발생했습니다.')
+    toast.error(errorMessage(e, '임시저장 중 오류가 발생했습니다.'))
   }
 }
 
@@ -1464,7 +1475,7 @@ async function submit() {
     isEditMode.value = false
   } catch (e) {
     console.error('제안서 저장 실패', e)
-    toast.error('제안서 저장 중 오류가 발생했습니다.')
+    toast.error(errorMessage(e, '제안서 저장 중 오류가 발생했습니다.'))
   }
 }
 
