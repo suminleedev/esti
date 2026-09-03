@@ -55,11 +55,17 @@ function onVendorFileChange(e) {
 const vendorJobId = ref(null)
 let progressTimer = null
 
+// 진행률 조회가 연속으로 몇 번 실패하면 포기할지 (F-011).
+// 700ms 주기라 5회면 약 3.5초 — 순간 끊김은 넘기고 진짜 단절만 잡는 선이다.
+const POLL_FAIL_LIMIT = 5
+let progressFailCount = 0
+
 function stopProgressPolling() {
   if (progressTimer) {
     clearInterval(progressTimer)
     progressTimer = null
   }
+  progressFailCount = 0
 }
 
 /**
@@ -73,6 +79,7 @@ async function startProgressPolling(jobId) {
     try {
       const res = await axios.get(`/api/vendor-catalog/upload-progress/${jobId}`)
       const data = res.data || {}
+      progressFailCount = 0   // 한 번이라도 응답을 받으면 실패 누적을 지운다
 
       // 서버가 주는 percent(0~100)를 그대로 쓰되,
       // 업로드 전송을 0~30에서 이미 사용하므로,
@@ -120,8 +127,21 @@ async function startProgressPolling(jobId) {
         await loadVendorCatalog()
       }
     } catch (e) {
-      // 네트워크 순간 오류 정도는 무시해도 됨
-      console.error('진행률 조회 실패', e)
+      // 순간 끊김은 넘기되, 계속 실패하면 멈추고 알린다 (F-011).
+      // 예전에는 여기서 로그만 남기고 타이머를 그대로 뒀다. 그래서 업로드 중 백엔드가 죽으면
+      // 진행바가 중간값에 멈춘 채 "DB 저장 중..."이 계속 떠 있고, 콘솔에만 오류가 무한히 쌓였다.
+      progressFailCount += 1
+      console.error(`진행률 조회 실패 (${progressFailCount}/${POLL_FAIL_LIMIT})`, e)
+
+      if (progressFailCount >= POLL_FAIL_LIMIT) {
+        stopProgressPolling()
+        vendorJobId.value = null      // 멈춘 진행바를 걷는다
+        vendorUploading.value = false // 버튼을 다시 쓸 수 있게 한다
+        vendorMessage.value = ''      // 진행 중 문구가 오류 옆에 초록으로 남지 않게 지운다
+        vendorError.value =
+          '서버와 연결이 끊겨 진행 상황을 볼 수 없습니다. ' +
+          '적재는 계속되고 있을 수 있으니, 잠시 후 목록을 새로고침해 확인하세요.'
+      }
     }
   }, 700) // 0.7초마다 폴링
 }
