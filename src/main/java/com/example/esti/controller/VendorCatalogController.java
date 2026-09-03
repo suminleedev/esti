@@ -3,6 +3,9 @@ package com.example.esti.controller;
 import com.example.esti.dto.VendorCatalogUpdateRequest;
 import com.example.esti.dto.VendorCatalogView;
 import com.example.esti.dto.VendorProductPartView;
+import com.example.esti.exception.BadRequestException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.example.esti.progress.ImportProgress;
 import com.example.esti.progress.ImportProgressStore;
 import com.example.esti.service.CatalogImportAsyncService;
@@ -34,6 +37,7 @@ public class VendorCatalogController {
     private final VendorCatalogCommandService vendorCatalogCommandService;
     private final CatalogImportAsyncService catalogImportAsyncService;
     private final ImportProgressStore progressStore;
+    private final ObjectMapper objectMapper;
     /**
      * 공급사별 카탈로그 엑셀 업로드 (비동기 + 진행률 job)
      * 예:
@@ -149,14 +153,27 @@ public class VendorCatalogController {
     }
 
     /**
-     * 카탈로그 행(가격 라인) 수정
+     * 카탈로그 행(가격 라인) 수정 — <b>전체 교체</b>다.
      * PUT /api/vendor-catalog/{vendorItemPriceId}
+     *
+     * 본문을 바로 DTO로 받지 않고 {@link ObjectNode}로 한 번 받는 이유는, 빠진 키를 잡기 위해서다(F-017).
+     * DTO로 바로 바인딩하면 «안 보낸 필드»와 «null로 보낸 필드»가 똑같이 null이 되어,
+     * 단가만 담아 보내도 나머지가 조용히 지워졌다. 여기서 키 존재를 먼저 확인해 400으로 돌려준다.
      */
     @PutMapping("/{vendorItemPriceId}")
     public ResponseEntity<VendorCatalogView> updateVendorCatalog(
             @PathVariable Long vendorItemPriceId,
-            @RequestBody VendorCatalogUpdateRequest request
+            @RequestBody ObjectNode body
     ) {
+        List<String> missing = VendorCatalogUpdateRequest.requiredKeys().stream()
+                .filter(key -> !body.has(key))
+                .toList();
+        if (!missing.isEmpty()) {
+            throw new BadRequestException(
+                    "카탈로그 수정은 전체 교체입니다. 빠진 항목: " + String.join(", ", missing));
+        }
+
+        VendorCatalogUpdateRequest request = objectMapper.convertValue(body, VendorCatalogUpdateRequest.class);
         return ResponseEntity.ok(
                 vendorCatalogCommandService.update(vendorItemPriceId, request)
         );
