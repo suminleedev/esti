@@ -51,6 +51,18 @@ public final class ProposalCardExcelWriter {
     /** 카드 블록이 시작하는 행(0-based) = R5. 위 4행은 제목·총액·세대당·소계다. */
     private static final int FIRST_BLOCK_ROW = 4;
 
+    /**
+     * 한 페이지에 넣을 블록 수 (F-023).
+     *
+     * <p>블록 하나가 카드 한 줄(8행 × 4열)이라 <b>페이지는 반드시 블록 경계에서 넘어가야 한다.</b>
+     * 예전에는 페이지 나누기를 하나도 두지 않아 엑셀이 알아서 잘랐고, 그러면 카드가 반으로 갈렸다.
+     *
+     * <p>4로 둔 이유는 세로 축소율 때문이다. 블록 높이 합이 195pt이고 A4 가로 인쇄면이 약 487pt라
+     * 4블록(780pt)을 담으려면 62%로 줄어야 하는데, 가로 폭을 한 장에 맞추는 축소율이 이미
+     * 그와 비슷한 수준이라 <b>이 값 때문에 글씨가 더 작아지지는 않는다.</b>
+     */
+    private static final int BLOCKS_PER_PAGE = 4;
+
     /** 카드 열별 시작 컬럼(0-based). 각 카드는 여기서부터 이미지·라벨·값 3칸이다. */
     private static final int[] CARD_START_COL = {0, 3, 6, 9};
 
@@ -98,7 +110,7 @@ public final class ProposalCardExcelWriter {
             sheet.getPrintSetup().setLandscape(true);
             sheet.setFitToPage(true);
             sheet.getPrintSetup().setFitWidth((short) 1);
-            sheet.getPrintSetup().setFitHeight((short) 0); // 세로는 블록 수만큼 자연스럽게 넘긴다
+            applyPageBreaks(sheet, blocks);
 
             wb.write(out);
             return out.toByteArray();
@@ -157,6 +169,27 @@ public final class ProposalCardExcelWriter {
                 cell(r4, start + 2, columnSums[c], styles.subtotal);
             }
         }
+    }
+
+    /**
+     * 페이지가 블록 경계에서만 넘어가게 한다 (F-023).
+     *
+     * <p>블록 경계마다 <b>수동</b> 페이지 나누기를 넣고, 그렇게 생기는 페이지 수를
+     * {@code fitHeight}로 함께 알려 준다. 나누기만 넣고 세로를 «무제한»으로 두면
+     * 축소율에 따라 엑셀이 그 사이에 자동 나누기를 하나 더 끼워 카드가 갈릴 수 있다.
+     * 몇 장인지 못 박아야 그 안에 들어가도록 축소율이 정해진다.
+     */
+    private static void applyPageBreaks(Sheet sheet, int blocks) {
+        if (blocks <= 0) {
+            sheet.getPrintSetup().setFitHeight((short) 1);
+            return;
+        }
+        for (int block = BLOCKS_PER_PAGE; block < blocks; block += BLOCKS_PER_PAGE) {
+            // setRowBreak은 «그 행 다음»에서 끊는다 — 블록의 첫 행 바로 앞을 지정한다.
+            sheet.setRowBreak(FIRST_BLOCK_ROW + block * BLOCK_ROWS - 1);
+        }
+        int pages = (blocks + BLOCKS_PER_PAGE - 1) / BLOCKS_PER_PAGE;
+        sheet.getPrintSetup().setFitHeight((short) pages);
     }
 
     private static String title(Proposal proposal) {

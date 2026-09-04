@@ -254,6 +254,70 @@ class ProposalCardExcelWriterTest {
         return l;
     }
 
+    /* ===================== 페이지 나누기 (F-023) ===================== */
+
+    /**
+     * 카드가 페이지 경계에 걸치지 않는다.
+     *
+     * <p>블록(8행)이 카드 한 줄이라 페이지는 블록 경계에서만 넘어가야 한다.
+     * 예전에는 나누기를 하나도 두지 않아 엑셀이 알아서 잘랐고, 그러면 카드가 반으로 갈렸다.
+     */
+    @Test
+    @DisplayName("페이지 나누기가 모두 블록 경계에 있다")
+    void 페이지_나누기는_블록_경계에만_있다() throws Exception {
+        // 한 열에 카드를 여러 장 쌓아 블록이 여러 개 생기게 한다
+        List<ProposalLine> lines = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            lines.add(line("욕실1", "양변기", "CODE-" + i, "양변기", 100_000, 1, false));
+        }
+
+        try (Workbook wb = open(ProposalCardExcelWriter.write(sampleProposal(), lines))) {
+            Sheet sheet = wb.getSheetAt(0);
+            int[] breaks = sheet.getRowBreaks();
+
+            assertThat(breaks).as("10블록이면 나누기가 생겨야 한다").isNotEmpty();
+            for (int rowBreak : breaks) {
+                // setRowBreak(n)은 n 다음에서 끊는다 → 다음 페이지 첫 행은 n+1이고
+                // 그 행이 블록의 첫 행(= 머리글 4행 뒤로 8행 배수)이어야 한다.
+                int firstRowOfNextPage = rowBreak + 1;
+                assertThat((firstRowOfNextPage - 4) % 8)
+                        .as("행 %d에서 끊겼다 — 블록 한가운데라 카드가 갈린다", firstRowOfNextPage)
+                        .isZero();
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("몇 장짜리인지 못 박는다 — 안 그러면 엑셀이 사이에 자동 나누기를 끼운다")
+    void 페이지_수를_지정한다() throws Exception {
+        List<ProposalLine> lines = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            lines.add(line("욕실1", "양변기", "CODE-" + i, "양변기", 100_000, 1, false));
+        }
+
+        try (Workbook wb = open(ProposalCardExcelWriter.write(sampleProposal(), lines))) {
+            PrintSetup print = wb.getSheetAt(0).getPrintSetup();
+            assertThat(print.getFitHeight()).as("10블록 / 4 = 3장").isEqualTo((short) 3);
+            assertThat(print.getFitWidth()).as("가로는 한 장 유지").isEqualTo((short) 1);
+        }
+    }
+
+    @Test
+    @DisplayName("카드가 한 장뿐이면 나눌 것도 없다")
+    void 카드가_적으면_나누기가_없다() throws Exception {
+        List<ProposalLine> lines = List.of(line("욕실1", "양변기", "CODE-1", "양변기", 100_000, 1, false));
+
+        try (Workbook wb = open(ProposalCardExcelWriter.write(sampleProposal(), lines))) {
+            Sheet sheet = wb.getSheetAt(0);
+            assertThat(sheet.getRowBreaks()).isEmpty();
+            assertThat(sheet.getPrintSetup().getFitHeight()).isEqualTo((short) 1);
+        }
+    }
+
+    private Workbook open(byte[] bytes) throws Exception {
+        return WorkbookFactory.create(new ByteArrayInputStream(bytes));
+    }
+
     /* ===================== 셀 읽기 ===================== */
 
     private String text(Sheet sheet, int row, int col) {
