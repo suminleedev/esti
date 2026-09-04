@@ -89,4 +89,56 @@ class CatalogImportBIntegrationTest {
         assertThat(priceRepository.count()).as("재업로드 후 가격 수 불변").isEqualTo(prices1);
         assertThat(relationRepository.count()).as("재업로드 후 관계 수 불변").isEqualTo(relations1);
     }
+
+    /**
+     * F-010 재발 방지 — 크롤러가 붙인 이미지를 단가표 재업로드가 덮지 않는다.
+     *
+     * <p>이미지의 정본은 크롤러다(크롤러 핸들러 주석: "이미지와 출처만 갱신한다").
+     * 그런데 임포터가 임베디드 이미지를 무조건 덮어써서, 단가표를 다시 올리는 것만으로
+     * 크롤링 이미지가 저해상 썸네일로 되돌아갔다. QA 1단계에서 149건이 이렇게 갈렸다.
+     */
+    @Test
+    void 크롤링_이미지는_단가표를_다시_올려도_유지된다() {
+        requireSample(SAMPLE);
+
+        // 1) 최초 적재 — 엑셀 임베디드 이미지가 붙는다
+        service.importVendorCatalog("B", SAMPLE);
+        Vendor b = vendorRepository.findByVendorCode("B").orElseThrow();
+        VendorProduct mc921 = productRepository.findByVendorAndProductCode(b, "MC921")
+                .orElseThrow(() -> new AssertionError("MC921 대표품목 미적재"));
+        assertThat(mc921.getImageUrl()).as("전제: 최초 적재로 엑셀 이미지가 붙는다").isNotBlank();
+
+        // 2) 크롤러가 더 나은 이미지로 갈아끼운 상태를 만든다
+        String crawled = "/uploads/product-images/B_MC-921_crawled.png";
+        mc921.setImageUrl(crawled);
+        productRepository.saveAndFlush(mc921);
+
+        // 3) 같은 단가표를 다시 올린다
+        service.importVendorCatalog("B", SAMPLE);
+
+        VendorProduct after = productRepository.findByVendorAndProductCode(b, "MC921").orElseThrow();
+        assertThat(after.getImageUrl())
+                .as("재업로드가 크롤링 이미지를 덮지 않는다")
+                .isEqualTo(crawled);
+    }
+
+    /** 이미지가 없던 제품은 단가표 재업로드로 채워진다 — 가드가 빈칸까지 막으면 안 된다. */
+    @Test
+    void 이미지가_없으면_단가표_재업로드가_채운다() {
+        requireSample(SAMPLE);
+
+        service.importVendorCatalog("B", SAMPLE);
+        Vendor b = vendorRepository.findByVendorCode("B").orElseThrow();
+        VendorProduct mc921 = productRepository.findByVendorAndProductCode(b, "MC921").orElseThrow();
+
+        // 이미지를 지운 상태로 되돌린다
+        mc921.setImageUrl(null);
+        productRepository.saveAndFlush(mc921);
+
+        service.importVendorCatalog("B", SAMPLE);
+
+        assertThat(productRepository.findByVendorAndProductCode(b, "MC921").orElseThrow().getImageUrl())
+                .as("빈 이미지는 다시 채워진다")
+                .isNotNull().startsWith("/uploads/product-images/");
+    }
 }

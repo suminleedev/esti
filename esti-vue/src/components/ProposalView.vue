@@ -706,19 +706,25 @@ const {
 } = useMasterCodes()
 const marginOptions = [10, 15, 20, 25, 30] // 마진율
 
-const form = reactive({
-  projectName: '',
-  manager: '',
-  date: new Date().toISOString().slice(0, 10),
-  apartmentType: '',
-  households: null,
-  note: '',
-  clientName: '',   // 제출처(건설사) — 견적서 머리글
-  quoteTerms: '',   // 견적서 조건 문구(줄바꿈 구분). 비면 기본 문구가 나간다
-  areas: [],
-  requiredCategories: [],
-  globalMarginRate: 10
-})
+// 새 제안서의 초기값. 이 화면은 신규·상세를 겸하므로(`/proposal` ↔ `/proposal/:id`)
+// 기본값을 한 곳에 두고 resetForm()이 같은 값을 다시 쓰게 한다 — 두 벌로 나뉘면 어긋난다.
+function blankForm () {
+  return {
+    projectName: '',
+    manager: '',
+    date: new Date().toISOString().slice(0, 10),
+    apartmentType: '',
+    households: null,
+    note: '',
+    clientName: '',   // 제출처(건설사) — 견적서 머리글
+    quoteTerms: '',   // 견적서 조건 문구(줄바꿈 구분). 비면 기본 문구가 나간다
+    areas: [],
+    requiredCategories: [],
+    globalMarginRate: 10
+  }
+}
+
+const form = reactive(blankForm())
 
 // 선택지는 마스터 + 이 제안서가 이미 든 값의 합집합이다(withSaved 주석 참조)
 const apartmentTypeChoices = computed(() => withSaved(masterApartmentTypes.value, form.apartmentType))
@@ -824,6 +830,17 @@ const lines = reactive([])
 /* ====== 공통 유틸 ====== */
 function toNumber(value) { return Number(value ?? 0) }
 
+/**
+ * 서버가 준 사유를 그대로 보여준다. 없을 때만 fallback을 쓴다.
+ *
+ * 백엔드가 «현장명은 200자까지 입력할 수 있습니다.»처럼 어느 필드가 왜 걸렸는지 짚어 주는데,
+ * 여기서 뭉뚱그려 "저장 중 오류가 발생했습니다"로 덮으면 그 정보가 사용자에게 닿지 않는다(F-024).
+ * MasterSettingsView의 같은 이름 함수와 동작을 맞췄다.
+ */
+function errorMessage(e, fallback) {
+  return e?.response?.data?.message || fallback
+}
+
 function newUid() {
   return typeof crypto !== 'undefined' && crypto.randomUUID
     ? crypto.randomUUID()
@@ -883,6 +900,22 @@ function resetLine () {
     categorySmall: ''
   })
   Object.assign(lineInput, { area: '', category: '', qty: 1, note: '', buildingType: '', optional: false })
+}
+
+/**
+ * 새 제안서 진입 시 화면을 처음 상태로 되돌린다 (F-018).
+ *
+ * 이 컴포넌트는 `/proposal`(신규)과 `/proposal/:id`(상세)가 같이 쓴다. 라우트가 바뀌어도
+ * 같은 컴포넌트라 다시 마운트되지 않으므로, 상세를 보다가 [+ 새 제안서]로 오면
+ * 직전 제안서의 값이 그대로 남아 있었다 — 그대로 저장하면 복제본이 만들어졌다.
+ * 이전에는 lines만 비웠다. form·step·검색어·템플릿 선택까지 함께 되돌린다.
+ */
+function resetForm () {
+  Object.assign(form, blankForm())
+  step.value = 0                 // 항상 STEP 1(기본 정보)에서 시작한다
+  search.value = ''              // 카탈로그 검색어
+  selectedTemplateId.value = ''  // 템플릿 선택
+  resetLine()                    // 담기 전 후보/입력칸
 }
 
 /* ====== 마진 계산 ====== */
@@ -1410,7 +1443,7 @@ async function saveDraft () {
     }
   } catch (e) {
     console.error('임시저장 실패', e)
-    toast.error('임시저장 중 오류가 발생했습니다.')
+    toast.error(errorMessage(e, '임시저장 중 오류가 발생했습니다.'))
   }
 }
 
@@ -1442,7 +1475,7 @@ async function submit() {
     isEditMode.value = false
   } catch (e) {
     console.error('제안서 저장 실패', e)
-    toast.error('제안서 저장 중 오류가 발생했습니다.')
+    toast.error(errorMessage(e, '제안서 저장 중 오류가 발생했습니다.'))
   }
 }
 
@@ -1598,6 +1631,7 @@ watch(
   (id) => {
     if (id) loadProposal(id)
     else {
+      resetForm()
       proposalStatus.value = 'DRAFT'
       isEditMode.value = true
       lines.splice(0, lines.length)

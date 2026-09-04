@@ -5,6 +5,7 @@ import UploadCatalog from '../components/UploadCatalog.vue'
 import ProposalView from "@/components/ProposalView.vue";
 import ProposalList from "@/components/ProposalList.vue";
 import MasterSettingsView from "@/components/MasterSettingsView.vue";
+import NotFoundView from "@/components/NotFoundView.vue";
 
 const routes = [
   { path: "/", name: "home", component: HomeView, meta: { title: '홈' } },
@@ -14,6 +15,9 @@ const routes = [
   { path: '/proposal/:id', name: 'proposal-detail', component: ProposalView, props: true, meta: { title: '제안서 상세' } }, // 같은 화면 재사용 (id 있으면 조회 모드)
   // 설정은 기존 화면을 건드리지 않는 별도 라우트다(M-8). 향후 설정이 늘면 /settings 아래로 모은다.
   { path: '/settings/master', name: 'settings-master', component: MasterSettingsView, meta: { title: '마스터 관리' } },
+  // 맨 아래에 둔다 — 위 라우트에 안 걸린 주소만 여기로 온다(F-027).
+  // 없으면 본문이 빈 화면이 되어 로딩 중인지 주소가 틀린 건지 알 수 없다.
+  { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundView, meta: { title: '찾을 수 없는 페이지' } },
 ]
 
 const router = createRouter({

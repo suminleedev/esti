@@ -3,6 +3,10 @@ package com.example.esti.controller;
 import com.example.esti.dto.VendorCatalogUpdateRequest;
 import com.example.esti.dto.VendorCatalogView;
 import com.example.esti.dto.VendorProductPartView;
+import com.example.esti.excel.VendorExcelParserFactory;
+import com.example.esti.exception.BadRequestException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.example.esti.progress.ImportProgress;
 import com.example.esti.progress.ImportProgressStore;
 import com.example.esti.service.CatalogImportAsyncService;
@@ -23,6 +27,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 @RestController
@@ -30,10 +36,16 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class VendorCatalogController {
 
+    /** 업로드가 받아들일 수 있는 확장자. 화면(`UploadCatalog.vue`)의 검사와 같은 목록이다. */
+    private static final Set<String> UPLOAD_EXTENSIONS = Set.of("xlsx", "xls");
+
     private final VendorCatalogQueryService vendorCatalogQueryService;
     private final VendorCatalogCommandService vendorCatalogCommandService;
     private final CatalogImportAsyncService catalogImportAsyncService;
     private final ImportProgressStore progressStore;
+    private final ObjectMapper objectMapper;
+    private final VendorExcelParserFactory parserFactory;
+
     /**
      * 공급사별 카탈로그 엑셀 업로드 (비동기 + 진행률 job)
      * 예:
@@ -47,6 +59,12 @@ public class VendorCatalogController {
             @PathVariable String vendorCode,
             @RequestParam("file") MultipartFile file
     ) {
+        // 0) 받을 수 있는 요청인지 먼저 본다 (F-009).
+        //    전에는 무엇이 오든 200 + jobId로 받고 임시파일까지 쓴 뒤 비동기 단계에서 실패했다.
+        //    화면 쪽 검사만 있어서 API를 직접 부르면 그대로 통과했다.
+        //    여기서 막으면 잘못된 요청이 디스크에도, 진행률 저장소에도 자국을 남기지 않는다.
+        requireUploadable(vendorCode, file);
+
         // 1) 진행률 job 생성
         String jobId = progressStore.createJob();
 
@@ -149,14 +167,49 @@ public class VendorCatalogController {
     }
 
     /**
-     * 카탈로그 행(가격 라인) 수정
+     * 업로드 요청이 말이 되는지 본다 (F-009). 아니면 {@code 400}으로 바로 돌려준다.
+     *
+     * <p>내용이 진짜 엑셀인지까지는 보지 않는다 — 그건 파서가 열어 보며 판단하고,
+     * 실패하면 «어느 시트에서 무엇이 안 맞는지»까지 알려 준다. 여기서 거르는 것은
+     * <b>열어 볼 필요조차 없는 것들</b>이다.
+     */
+    private void requireUploadable(String vendorCode, MultipartFile file) {
+        if (!parserFactory.supports(vendorCode)) {
+            throw new BadRequestException("지원하지 않는 공급사 코드입니다: " + vendorCode);
+        }
+        if (file == null || file.isEmpty()) {
+            throw new BadRequestException("업로드할 파일이 비어 있습니다.");
+        }
+        String name = file.getOriginalFilename();
+        String ext = (name == null || !name.contains("."))
+                ? "" : name.substring(name.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
+        if (!UPLOAD_EXTENSIONS.contains(ext)) {
+            throw new BadRequestException("엑셀(.xlsx, .xls) 파일만 업로드할 수 있습니다.");
+        }
+    }
+
+    /**
+     * 카탈로그 행(가격 라인) 수정 — <b>전체 교체</b>다.
      * PUT /api/vendor-catalog/{vendorItemPriceId}
+     *
+     * 본문을 바로 DTO로 받지 않고 {@link ObjectNode}로 한 번 받는 이유는, 빠진 키를 잡기 위해서다(F-017).
+     * DTO로 바로 바인딩하면 «안 보낸 필드»와 «null로 보낸 필드»가 똑같이 null이 되어,
+     * 단가만 담아 보내도 나머지가 조용히 지워졌다. 여기서 키 존재를 먼저 확인해 400으로 돌려준다.
      */
     @PutMapping("/{vendorItemPriceId}")
     public ResponseEntity<VendorCatalogView> updateVendorCatalog(
             @PathVariable Long vendorItemPriceId,
-            @RequestBody VendorCatalogUpdateRequest request
+            @RequestBody ObjectNode body
     ) {
+        List<String> missing = VendorCatalogUpdateRequest.requiredKeys().stream()
+                .filter(key -> !body.has(key))
+                .toList();
+        if (!missing.isEmpty()) {
+            throw new BadRequestException(
+                    "카탈로그 수정은 전체 교체입니다. 빠진 항목: " + String.join(", ", missing));
+        }
+
+        VendorCatalogUpdateRequest request = objectMapper.convertValue(body, VendorCatalogUpdateRequest.class);
         return ResponseEntity.ok(
                 vendorCatalogCommandService.update(vendorItemPriceId, request)
         );

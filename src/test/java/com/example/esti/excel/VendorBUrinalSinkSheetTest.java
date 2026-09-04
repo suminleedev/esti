@@ -53,6 +53,7 @@ class VendorBUrinalSinkSheetTest {
 
     @Test
     void req1_대분류가_소변기_수채로_분리되고_시트명통째는_없음() {
+        requireSample(SAMPLE);   // setsOf를 안 거치고 직접 파싱하므로 여기서 가드한다(F-004)
         List<VendorProductSet> all = parser.parseSets(SAMPLE).stream()
                 .filter(s -> s.categoryLarge() != null && s.categoryLarge().contains("소변기"))
                 .toList();

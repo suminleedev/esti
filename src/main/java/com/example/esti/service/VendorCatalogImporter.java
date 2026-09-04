@@ -246,12 +246,22 @@ public class VendorCatalogImporter {
     /**
      * 대표품목 행에 앵커된 임베디드 이미지를 저장하고 imageUrl을 연결(D15). 없으면 무시.
      *
+     * <p><b>이미 이미지가 있으면 건드리지 않는다</b> — 이미지의 정본은 크롤러다.
+     * 크롤러 핸들러들이 "이미지와 출처만 갱신한다. productName·collectionName은 단가표 쪽이 정본"이라고
+     * 소유권을 나눠 놓았는데, 여기서 무조건 덮으면 단가표를 다시 올리는 것만으로
+     * 크롤링 이미지가 저해상 임베디드 썸네일로 되돌아간다(F-010).
+     * 비어 있는 제품만 채워 <b>단가표는 빈칸을 메우고, 갱신은 크롤러가 한다</b>는 관계를 지킨다.
+     *
      * <p>저장한 이미지 파일 자체는 트랜잭션 대상이 아니다 — 적재가 롤백돼도 파일은 디스크에 남는다.
      * 다음 업로드에서 같은 이름으로 덮어쓰이므로 누적 위험은 없다.
      */
     private void applyImage(VendorProduct mainProduct, VendorProductSet set,
                             Map<String, Map<Integer, ExtractedImage>> images) {
         if (set.imageKey() == null || images == null || images.isEmpty()) return;
+
+        // 이미 붙어 있는 이미지는 지키고 디스크 쓰기도 건너뛴다(F-010).
+        String existing = mainProduct.getImageUrl();
+        if (existing != null && !existing.isBlank()) return;
 
         // 이미지 맵은 시트명 키(ExcelImageExtractor). 대분류를 시트명에서 분리·정제하는 시트(비데/기타·갈라시아 등)도
         // set.sheetName()으로 원본 시트명을 보존하므로 categoryLarge와 무관하게 시트명 기준으로 조회한다(§13 sheetName 분리).

@@ -55,11 +55,35 @@ function onVendorFileChange(e) {
 const vendorJobId = ref(null)
 let progressTimer = null
 
+// 진행률 조회가 연속으로 몇 번 실패하면 포기할지 (F-011).
+// 700ms 주기라 5회면 약 3.5초 — 순간 끊김은 넘기고 진짜 단절만 잡는 선이다.
+const POLL_FAIL_LIMIT = 5
+let progressFailCount = 0
+
+// 진행 중인 job을 화면 밖에 적어 둔다 (F-012).
+// jobId가 컴포넌트 안에만 있어서, 목록을 보러 잠깐 다른 화면에 다녀오면
+// 서버는 계속 적재하는데 진행률을 다시 볼 방법이 없었다.
+// localStorage에 두면 화면 이동은 물론 새로고침 뒤에도 이어서 볼 수 있다.
+const JOB_STORAGE_KEY = 'esti.vendorUpload.jobId'
+
+function rememberJob(jobId) {
+  try { localStorage.setItem(JOB_STORAGE_KEY, jobId) } catch { /* 사생활 모드 등 — 없어도 동작에는 지장 없다 */ }
+}
+
+function forgetJob() {
+  try { localStorage.removeItem(JOB_STORAGE_KEY) } catch { /* 위와 같다 */ }
+}
+
+function rememberedJob() {
+  try { return localStorage.getItem(JOB_STORAGE_KEY) } catch { return null }
+}
+
 function stopProgressPolling() {
   if (progressTimer) {
     clearInterval(progressTimer)
     progressTimer = null
   }
+  progressFailCount = 0
 }
 
 /**
@@ -68,11 +92,13 @@ function stopProgressPolling() {
 async function startProgressPolling(jobId) {
   stopProgressPolling()
   vendorJobId.value = jobId
+  rememberJob(jobId)
 
   progressTimer = setInterval(async () => {
     try {
       const res = await axios.get(`/api/vendor-catalog/upload-progress/${jobId}`)
       const data = res.data || {}
+      progressFailCount = 0   // 한 번이라도 응답을 받으면 실패 누적을 지운다
 
       // 서버가 주는 percent(0~100)를 그대로 쓰되,
       // 업로드 전송을 0~30에서 이미 사용하므로,
@@ -92,7 +118,16 @@ async function startProgressPolling(jobId) {
         // vendorUploading.value = false
 
         if (data.error) {
+          // 같은 문구가 두 번 뜨지 않게 진행 문구를 먼저 지운다 (F-008).
+          // 위에서 data.message를 vendorMessage에 넣고 오는데, 템플릿은 그걸 text-success(초록)로
+          // 그린다. 안 지우면 "실패: ..."가 초록으로 한 번, 빨강으로 한 번 — 실패가 성공처럼 보인다.
+          vendorMessage.value = ''
+          // 진행바도 걷는다. 서버는 실패에도 percent를 100으로 주므로(ImportProgressStore.fail)
+          // 그대로 두면 "100% 완료"처럼 읽힌다.
+          vendorJobId.value = null
+          vendorUploading.value = false
           vendorError.value = data.message || '서버 처리 중 오류가 발생했습니다.'
+          forgetJob()
           return
         }
 
@@ -106,6 +141,7 @@ async function startProgressPolling(jobId) {
         }
         vendorMessage.value = ''
         vendorProgress.value = 100
+        forgetJob()          // 끝난 job은 더 이어볼 것이 없다
 
         // 1초 정도 완료 상태 보여주고 UI 종료
         setTimeout(() => {
@@ -120,8 +156,22 @@ async function startProgressPolling(jobId) {
         await loadVendorCatalog()
       }
     } catch (e) {
-      // 네트워크 순간 오류 정도는 무시해도 됨
-      console.error('진행률 조회 실패', e)
+      // 순간 끊김은 넘기되, 계속 실패하면 멈추고 알린다 (F-011).
+      // 예전에는 여기서 로그만 남기고 타이머를 그대로 뒀다. 그래서 업로드 중 백엔드가 죽으면
+      // 진행바가 중간값에 멈춘 채 "DB 저장 중..."이 계속 떠 있고, 콘솔에만 오류가 무한히 쌓였다.
+      progressFailCount += 1
+      console.error(`진행률 조회 실패 (${progressFailCount}/${POLL_FAIL_LIMIT})`, e)
+
+      if (progressFailCount >= POLL_FAIL_LIMIT) {
+        stopProgressPolling()
+        forgetJob()                   // 더 이어볼 수 없는 job이다
+        vendorJobId.value = null      // 멈춘 진행바를 걷는다
+        vendorUploading.value = false // 버튼을 다시 쓸 수 있게 한다
+        vendorMessage.value = ''      // 진행 중 문구가 오류 옆에 초록으로 남지 않게 지운다
+        vendorError.value =
+          '서버와 연결이 끊겨 진행 상황을 볼 수 없습니다. ' +
+          '적재는 계속되고 있을 수 있으니, 잠시 후 목록을 새로고침해 확인하세요.'
+      }
     }
   }, 700) // 0.7초마다 폴링
 }
@@ -182,6 +232,14 @@ async function uploadVendorExcel() {
   } finally {
     vendorUploading.value = false
   }
+}
+
+/**
+ * 목록의 «#» — 페이지를 넘겨도 이어지는 전역 순번 (F-016).
+ * 전에는 페이지마다 1로 되돌아가, 「2,247건 중 몇 번째」를 알 수 없었다.
+ */
+function rowNumber(idx) {
+  return page.value * size.value + idx + 1
 }
 
 /**
@@ -342,8 +400,35 @@ onBeforeUnmount(() => {
   stopProgressPolling()
 })
 
+/**
+ * 화면에 (다시) 들어왔을 때 진행 중인 업로드를 이어서 보여준다 (F-012).
+ *
+ * 적어 둔 job이 아직 살아 있는지 먼저 한 번 물어본다. 이미 끝났거나 서버가 재시작돼
+ * 사라진 job이면 조용히 지우고 아무것도 띄우지 않는다 — 다음에 들어올 때마다
+ * 지난 오류가 되살아나면 그게 더 성가시다.
+ */
+async function resumeProgressIfRunning() {
+  const jobId = rememberedJob()
+  if (!jobId) return
+
+  try {
+    const { data } = await axios.get(`/api/vendor-catalog/upload-progress/${jobId}`)
+    if (data?.done) {          // 끝났거나 사라진 job
+      forgetJob()
+      return
+    }
+    vendorUploading.value = true
+    vendorProgress.value = typeof data?.percent === 'number' ? data.percent : 0
+    if (data?.message) vendorMessage.value = data.message
+    await startProgressPolling(jobId)
+  } catch {
+    forgetJob()               // 물어볼 수도 없으면 이어볼 것도 없다
+  }
+}
+
 onMounted(() => {
   loadVendorCatalog()
+  resumeProgressIfRunning()
 })
 </script>
 
@@ -496,7 +581,7 @@ onMounted(() => {
               <tr>
                 <template v-if="editingProduct && editingProduct.vendorItemPriceId === p.vendorItemPriceId">
                   <!-- 수정 모드 -->
-                  <td>{{ idx + 1 }}</td>
+                  <td>{{ rowNumber(idx) }}</td>
                   <td><input v-model="editingProduct.categoryLarge" class="form-control form-control-sm" /></td>
                   <td><input v-model="editingProduct.categorySmall" class="form-control form-control-sm" /></td>
                   <td><input v-model="editingProduct.productName" class="form-control form-control-sm" /></td>
@@ -531,7 +616,7 @@ onMounted(() => {
                 </template>
                 <template v-else>
                   <!-- 조회 모드 -->
-                  <td>{{ idx + 1 }}</td>
+                  <td>{{ rowNumber(idx) }}</td>
                   <td>{{ p.categoryLarge }}</td>
                   <td>{{ p.categorySmall }}</td>
                   <td>
