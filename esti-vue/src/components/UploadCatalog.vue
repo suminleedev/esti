@@ -118,6 +118,14 @@ async function startProgressPolling(jobId) {
         // vendorUploading.value = false
 
         if (data.error) {
+          // 같은 문구가 두 번 뜨지 않게 진행 문구를 먼저 지운다 (F-008).
+          // 위에서 data.message를 vendorMessage에 넣고 오는데, 템플릿은 그걸 text-success(초록)로
+          // 그린다. 안 지우면 "실패: ..."가 초록으로 한 번, 빨강으로 한 번 — 실패가 성공처럼 보인다.
+          vendorMessage.value = ''
+          // 진행바도 걷는다. 서버는 실패에도 percent를 100으로 주므로(ImportProgressStore.fail)
+          // 그대로 두면 "100% 완료"처럼 읽힌다.
+          vendorJobId.value = null
+          vendorUploading.value = false
           vendorError.value = data.message || '서버 처리 중 오류가 발생했습니다.'
           forgetJob()
           return
@@ -224,6 +232,14 @@ async function uploadVendorExcel() {
   } finally {
     vendorUploading.value = false
   }
+}
+
+/**
+ * 목록의 «#» — 페이지를 넘겨도 이어지는 전역 순번 (F-016).
+ * 전에는 페이지마다 1로 되돌아가, 「2,247건 중 몇 번째」를 알 수 없었다.
+ */
+function rowNumber(idx) {
+  return page.value * size.value + idx + 1
 }
 
 /**
@@ -565,7 +581,7 @@ onMounted(() => {
               <tr>
                 <template v-if="editingProduct && editingProduct.vendorItemPriceId === p.vendorItemPriceId">
                   <!-- 수정 모드 -->
-                  <td>{{ idx + 1 }}</td>
+                  <td>{{ rowNumber(idx) }}</td>
                   <td><input v-model="editingProduct.categoryLarge" class="form-control form-control-sm" /></td>
                   <td><input v-model="editingProduct.categorySmall" class="form-control form-control-sm" /></td>
                   <td><input v-model="editingProduct.productName" class="form-control form-control-sm" /></td>
@@ -600,7 +616,7 @@ onMounted(() => {
                 </template>
                 <template v-else>
                   <!-- 조회 모드 -->
-                  <td>{{ idx + 1 }}</td>
+                  <td>{{ rowNumber(idx) }}</td>
                   <td>{{ p.categoryLarge }}</td>
                   <td>{{ p.categorySmall }}</td>
                   <td>
