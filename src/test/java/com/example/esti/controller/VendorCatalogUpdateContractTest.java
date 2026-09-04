@@ -2,6 +2,7 @@ package com.example.esti.controller;
 
 import com.example.esti.dto.VendorCatalogUpdateRequest;
 import com.example.esti.dto.VendorCatalogView;
+import com.example.esti.excel.VendorExcelParserFactory;
 import com.example.esti.progress.ImportProgressStore;
 import com.example.esti.service.CatalogImportAsyncService;
 import com.example.esti.service.VendorCatalogCommandService;
@@ -40,6 +41,7 @@ class VendorCatalogUpdateContractTest {
     @MockitoBean private VendorCatalogCommandService commandService;
     @MockitoBean private CatalogImportAsyncService importService;
     @MockitoBean private ImportProgressStore progressStore;
+    @MockitoBean private VendorExcelParserFactory parserFactory;   // 업로드 가드가 쓴다(F-009)
 
     /** 화면이 실제로 보내는 모양 — 뷰 객체를 통째로 싣는다(관리 대상 9개 + 그 외). */
     private static final String FULL_BODY = """
