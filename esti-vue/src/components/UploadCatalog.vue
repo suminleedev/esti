@@ -60,6 +60,24 @@ let progressTimer = null
 const POLL_FAIL_LIMIT = 5
 let progressFailCount = 0
 
+// 진행 중인 job을 화면 밖에 적어 둔다 (F-012).
+// jobId가 컴포넌트 안에만 있어서, 목록을 보러 잠깐 다른 화면에 다녀오면
+// 서버는 계속 적재하는데 진행률을 다시 볼 방법이 없었다.
+// localStorage에 두면 화면 이동은 물론 새로고침 뒤에도 이어서 볼 수 있다.
+const JOB_STORAGE_KEY = 'esti.vendorUpload.jobId'
+
+function rememberJob(jobId) {
+  try { localStorage.setItem(JOB_STORAGE_KEY, jobId) } catch { /* 사생활 모드 등 — 없어도 동작에는 지장 없다 */ }
+}
+
+function forgetJob() {
+  try { localStorage.removeItem(JOB_STORAGE_KEY) } catch { /* 위와 같다 */ }
+}
+
+function rememberedJob() {
+  try { return localStorage.getItem(JOB_STORAGE_KEY) } catch { return null }
+}
+
 function stopProgressPolling() {
   if (progressTimer) {
     clearInterval(progressTimer)
@@ -74,6 +92,7 @@ function stopProgressPolling() {
 async function startProgressPolling(jobId) {
   stopProgressPolling()
   vendorJobId.value = jobId
+  rememberJob(jobId)
 
   progressTimer = setInterval(async () => {
     try {
@@ -100,6 +119,7 @@ async function startProgressPolling(jobId) {
 
         if (data.error) {
           vendorError.value = data.message || '서버 처리 중 오류가 발생했습니다.'
+          forgetJob()
           return
         }
 
@@ -113,6 +133,7 @@ async function startProgressPolling(jobId) {
         }
         vendorMessage.value = ''
         vendorProgress.value = 100
+        forgetJob()          // 끝난 job은 더 이어볼 것이 없다
 
         // 1초 정도 완료 상태 보여주고 UI 종료
         setTimeout(() => {
@@ -135,6 +156,7 @@ async function startProgressPolling(jobId) {
 
       if (progressFailCount >= POLL_FAIL_LIMIT) {
         stopProgressPolling()
+        forgetJob()                   // 더 이어볼 수 없는 job이다
         vendorJobId.value = null      // 멈춘 진행바를 걷는다
         vendorUploading.value = false // 버튼을 다시 쓸 수 있게 한다
         vendorMessage.value = ''      // 진행 중 문구가 오류 옆에 초록으로 남지 않게 지운다
@@ -362,8 +384,35 @@ onBeforeUnmount(() => {
   stopProgressPolling()
 })
 
+/**
+ * 화면에 (다시) 들어왔을 때 진행 중인 업로드를 이어서 보여준다 (F-012).
+ *
+ * 적어 둔 job이 아직 살아 있는지 먼저 한 번 물어본다. 이미 끝났거나 서버가 재시작돼
+ * 사라진 job이면 조용히 지우고 아무것도 띄우지 않는다 — 다음에 들어올 때마다
+ * 지난 오류가 되살아나면 그게 더 성가시다.
+ */
+async function resumeProgressIfRunning() {
+  const jobId = rememberedJob()
+  if (!jobId) return
+
+  try {
+    const { data } = await axios.get(`/api/vendor-catalog/upload-progress/${jobId}`)
+    if (data?.done) {          // 끝났거나 사라진 job
+      forgetJob()
+      return
+    }
+    vendorUploading.value = true
+    vendorProgress.value = typeof data?.percent === 'number' ? data.percent : 0
+    if (data?.message) vendorMessage.value = data.message
+    await startProgressPolling(jobId)
+  } catch {
+    forgetJob()               // 물어볼 수도 없으면 이어볼 것도 없다
+  }
+}
+
 onMounted(() => {
   loadVendorCatalog()
+  resumeProgressIfRunning()
 })
 </script>
 
