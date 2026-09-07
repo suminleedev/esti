@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.NavigableMap;
 import java.util.TreeMap;
 
+import static com.example.esti.excel.ExcelParseUtils.blankIfNoContent;
 import static com.example.esti.excel.ExcelParseUtils.isBlank;
 
 /**
@@ -25,7 +26,8 @@ import static com.example.esti.excel.ExcelParseUtils.isBlank;
  * 합계행(G만 있는 행)이 세트 경계이자 대표품목 가격이다.
  * 그룹핑(D16): 직전 연속 부속 합이 합계와 "일치"하면 부속으로 연결, "불일치"면 대표품목(첫 행)만
  * 합계가로 저장하고 {@code needsReview=true}, 나머지 행은 개별 제품으로 저장한다.
- * 신품번(F) 없는 행(D8): 저장하되 제품명 뒤 "(신품번 없음)" 표기, 단가 0.
+ * 신품번(F) 없는 행(D8): 저장하되 제품명 뒤 "(신품번 없음)" 표기, 단가는 G열 그대로(G가 비면 0).
+ * 글자·숫자 없는 칸은 빈 칸으로 본다(D8-1) — 합계행 판정이 잔여 문자에 빗나가지 않게 한다.
  *
  * <p><b>대분류는 B열 라벨 구간에서 온다(A-1·A-2).</b> B열 라벨은 구간 시작보다 일정 행 아래에
  * 얹혀 있어 위치를 그대로 못 쓰지만, 그 어긋남이 일정하다 — {@code 구간 시작 = B라벨 행 − 오프셋}이고
@@ -92,10 +94,12 @@ public class VendorAExcelParser implements VendorExcelParser {
             }
 
             // A(0)·B(1)열은 제외(D11)
-            String colC = getStringCell(row, 2);
-            String colD = getStringCell(row, 3);
-            String colE = getStringCell(row, 4);
-            String colF = getStringCell(row, 5);
+            // 글자·숫자 없는 칸은 빈 칸으로 본다(D8-1) — 합계행은 "C/D/E/F 비고 G만" 으로 가르므로
+            // 백틱 같은 잔여 문자 하나에 판정이 빗나가면 세트가 통째로 닫히지 못한다.
+            String colC = blankIfNoContent(getStringCell(row, 2));
+            String colD = blankIfNoContent(getStringCell(row, 3));
+            String colE = blankIfNoContent(getStringCell(row, 4));
+            String colF = blankIfNoContent(getStringCell(row, 5));
             BigDecimal colG = getNumericCell(row, 6);
 
             boolean cP = !isBlank(colC);

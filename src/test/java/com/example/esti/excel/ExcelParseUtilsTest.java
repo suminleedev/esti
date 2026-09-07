@@ -92,6 +92,17 @@ class ExcelParseUtilsTest {
     }
 
     @Test
+    void blankIfNoContent_글자숫자_없으면_빈칸() {
+        assertNull(blankIfNoContent("``"));       // A사 최신본 합계행에 실제로 남아 있던 형태
+        assertNull(blankIfNoContent("-"));
+        assertNull(blankIfNoContent("   "));
+        assertNull(blankIfNoContent(null));
+        assertEquals("G-0130", blankIfNoContent("G-0130"));
+        assertEquals("폽업", blankIfNoContent("폽업"));
+        assertEquals(" x ", blankIfNoContent(" x "), "내용이 있으면 원본 그대로(트림하지 않는다)");
+    }
+
+    @Test
     void join_orDefault() {
         assertEquals("a b", join("a", "b"));
         assertEquals("a", join("a", null));
