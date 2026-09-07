@@ -250,6 +250,45 @@ class VendorCatalogSetAxisTest {
                 .getMainUnitPrice()).isNull();
     }
 
+    @Test
+    void 대표품목_행의_단가가_곧_세트가면_본품_단가를_남기지_않는다() {
+        // B사 악세사리의 "N품 세트" 행이 이 모양이다 — 단가 칸에 計가 들어 있고 부속은 따로 나열된다.
+        // 그 값을 본품 단가로 넘기면 화면이 세트가를 두 번 더해 맞는 행까지 "확인 필요"로 떨어진다.
+        //
+        // 실제로 그렇게 됐다 — B사 배지가 「일치 98 · 확인필요 13」에서 「일치 0 · 확인필요 99」로
+        // 뒤집혔다(2026-09-07 실측). G-2 커밋 메시지는 "B사는 이 값을 채우지 않는다"고 적었지만
+        // 구현에 조건이 없었고, 그때는 B사를 아직 다시 올리지 않아 측정에 안 잡혔다.
+        given(parserFactory.getParser("A")).willReturn(parserReturning(List.of(
+                setWithMainPrice("100", "100", part("P-A", "수건걸이")))));
+        importer.importVendorCatalog("A", DUMMY, null);
+
+        Vendor vendor = vendorRepository.findByVendorCode("A").orElseThrow();
+        VendorProduct main = productRepository.findByVendorAndProductCode(vendor, MAIN_CODE).orElseThrow();
+
+        assertThat(priceRepository
+                .findAllByVendorAndVendorProductAndPriceTypeAndPriceBasis(
+                        vendor, main, VendorItemPrice.PRICE_TYPE_SET, "세면기"))
+                .allSatisfy(r -> assertThat(r.getMainUnitPrice())
+                        .as("본품이 별개 구성요소가 아니면 남기지 않는다")
+                        .isNull());
+    }
+
+    @Test
+    void 대표품목_단가가_세트가와_다르면_그대로_남긴다() {
+        // 위 조건이 A사 경로까지 삼키면 안 된다 — 그러면 G-2가 없애려던 상태로 되돌아간다.
+        given(parserFactory.getParser("A")).willReturn(parserReturning(List.of(
+                setWithMainPrice("100", "30", part("P-A", "긴다리")))));
+        importer.importVendorCatalog("A", DUMMY, null);
+
+        Vendor vendor = vendorRepository.findByVendorCode("A").orElseThrow();
+        VendorProduct main = productRepository.findByVendorAndProductCode(vendor, MAIN_CODE).orElseThrow();
+
+        assertThat(priceRepository
+                .findAllByVendorAndVendorProductAndPriceTypeAndPriceBasis(
+                        vendor, main, VendorItemPrice.PRICE_TYPE_SET, "세면기"))
+                .allSatisfy(r -> assertThat(r.getMainUnitPrice()).isEqualByComparingTo("30"));
+    }
+
     // ====== G-4 : 부속 표시명 ======
 
     @Test
@@ -294,6 +333,15 @@ class VendorCatalogSetAxisTest {
     private static VendorParsedItem part(String code, String name) {
         return new VendorParsedItem(code, name, null, null,
                 VendorParsedItem.RELATION_ACCESSORY, new BigDecimal("10"), null);
+    }
+
+    /** 본품 단가를 지정하는 세트. {@code set()}은 본품을 50으로 고정한다. */
+    private static VendorProductSet setWithMainPrice(String setPrice, String mainPrice,
+                                                     VendorParsedItem... parts) {
+        VendorParsedItem main = new VendorParsedItem(MAIN_CODE, "세면기", null, null,
+                VendorParsedItem.RELATION_MAIN, new BigDecimal(mainPrice), null);
+        return new VendorProductSet("A", "세면기", "반다리세면기", main, List.of(parts),
+                new BigDecimal(setPrice), false, null, false);
     }
 
     private static VendorProductSet set(String setPrice, VendorParsedItem... parts) {

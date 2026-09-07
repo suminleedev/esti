@@ -271,9 +271,7 @@ public class VendorCatalogImporter {
         //
         // 여기에 세트 해시가 더 붙는다(G-1) — priceBasis만으로는 같은 품번의 여러 세트가 한 행으로
         // 접혀 세트가가 하나만 남는다. A사에서 19종의 서로 다른 세트가 24개가 그렇게 덮였다.
-        // 본품 단가는 세트가와 별개로 남긴다(G-2) — A사는 세트가 = 본품 + 부속합이라
-        // 이게 없으면 화면이 그 등식으로 대조할 수 없다. B사는 본품이 부속 목록 안이라 null.
-        BigDecimal ownPrice = set.setPrice() != null ? mainItem.unitPrice() : null;
+        BigDecimal ownPrice = mainComponentPrice(set, mainItem);
         // 이번 실행이 살린 행으로 표시한다 — 루프가 끝나면 표시되지 않은 것이 사라진 행이다(S2).
         touched.add(upsertPrice(vendor, mainProduct, mainItem, mainPrice, mainRemark, ITEM_TYPE_SET,
                 set.priceBasis(), set.setHash(), set.partsSummary(), ownPrice).getId());
@@ -319,6 +317,31 @@ public class VendorCatalogImporter {
      * <p>부속(PART) 가격행은 건드리지 않는다 — 공유 자원이라 코드당 1건을 유지한다(D13).
      * 다른 세트가 여전히 그 부속을 참조한다.
      */
+    /**
+     * 세트가와 <b>별개로</b> 남길 본품 자체 단가 (G-2). 별개 구성요소가 아니면 {@code null}.
+     *
+     * <p>화면은 이 값이 있으면 {@code 세트가 == 본품 + 부속합}으로 대조하고, 없으면 부속합만 본다.
+     * A사는 세트가 = 본품 + 부속합이라 이게 없으면 그 등식으로 대조할 수 없고, 배지가 전부
+     * "본품 미포함"(info)으로 떨어져 <b>실제 오류가 그 안에 묻힌다</b>(고치기 전 A사 258행이 그랬다).
+     *
+     * <p><b>대표품목 행의 단가가 곧 세트 합계라면 더할 본품이 따로 없다.</b> 그 행 자체가 세트다
+     * (B사 악세사리의 "N품 세트" 행이 이 모양이다 — 단가 칸에 計가 들어 있고 부속은 따로 나열된다).
+     * 그대로 넘기면 화면이 세트가를 두 번 더해 <b>맞는 행까지 "확인 필요"로 떨어진다.</b>
+     *
+     * <p><b>공급사 이름으로 가르지 않는다.</b> 갈라야 하는 것은 공급사가 아니라 원본의 모양이고,
+     * 같은 공급사 안에서도 시트마다 다르다. 이름으로 가르면 새 공급사·새 시트에서 같은 일이 되풀이된다.
+     *
+     * <p>실측(2026-09-07, 부속이 있어 배지가 뜨는 행 기준) — <b>A사 264행 중 0건</b>이
+     * {@code 본품단가 == 세트가}이고, <b>B사 120행 중 119건</b>이 그렇다. 두 모양이 이 조건으로 갈린다.
+     * (부속이 없는 세트는 이 값을 무엇으로 두든 배지가 뜨지 않아 영향이 없다.)
+     */
+    private static BigDecimal mainComponentPrice(VendorProductSet set, VendorParsedItem mainItem) {
+        BigDecimal setPrice = set.setPrice();
+        BigDecimal ownPrice = mainItem.unitPrice();
+        if (setPrice == null || ownPrice == null) return null;
+        return ownPrice.compareTo(setPrice) == 0 ? null : ownPrice;
+    }
+
     private void purgeStaleSetRows(Vendor vendor, VendorProduct mainProduct,
                                    String priceBasis, Set<String> purged) {
         if (mainProduct.getId() == null || priceBasis == null) return;
