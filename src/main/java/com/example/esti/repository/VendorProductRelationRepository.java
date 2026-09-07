@@ -3,6 +3,9 @@ package com.example.esti.repository;
 import com.example.esti.entity.VendorProduct;
 import com.example.esti.entity.VendorProductRelation;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -33,4 +36,14 @@ public interface VendorProductRelationRepository extends JpaRepository<VendorPro
 
     /** 세트 축 도입 전에 적재된 관계를 걷어낸다 — 재적재 한 번으로 낡은 상태가 정리된다. */
     void deleteAllBySourceProductAndSetHashIsNull(VendorProduct sourceProduct);
+
+    /**
+     * 제품을 지우기 직전에 그 제품이 걸린 관계를 <b>양쪽 방향 모두</b> 끊는다.
+     *
+     * <p>대표품목으로 걸린 것만 지우면 부속으로 걸린 행이 남아 없는 제품을 가리킨다.
+     */
+    @Modifying
+    @Query("delete from VendorProductRelation r "
+            + "where r.sourceProduct = :product or r.targetProduct = :product")
+    void deleteAllByProduct(@Param("product") VendorProduct product);
 }

@@ -30,8 +30,10 @@ public class CatalogImportAsyncService {
             progressStore.update(jobId, 30, "엑셀 파싱 중...");
             // 프록시 경유 호출 — 트랜잭션이 이 호출 안에서 열리고 닫힌다.
             ImportResult result = importer.importVendorCatalog(vendorCode, savedPath, jobId);
+            // 정리 건수는 0이면 감춘다 — 평상시 재적재에서는 나올 일이 없어, 보이면 그 자체가 신호다.
             String message = "완료! (총 " + result.total() + "건, 신규 "
-                    + result.created() + " · 갱신 " + result.updated() + ")";
+                    + result.created() + " · 갱신 " + result.updated()
+                    + (result.removed() > 0 ? " · 정리 " + result.removed() : "") + ")";
             progressStore.done(jobId, message, result.created(), result.updated());
         } catch (Exception e) {
             // 여기 도달했을 때 적재분은 이미 롤백된 상태다(부분 적재 없음).

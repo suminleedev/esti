@@ -54,6 +54,20 @@ public interface VendorItemPriceRepository extends JpaRepository<VendorItemPrice
     List<VendorItemPrice> findAllByVendorAndVendorProductAndPriceTypeAndPriceBasis(
             Vendor vendor, VendorProduct product, String priceType, String priceBasis);
 
+    /**
+     * 업로드가 덮은 <b>basis 하나</b>의 대표품목 가격행 전량 — 최신본에서 사라진 행을 걷어내기 위한 조회.
+     *
+     * <p>위 {@code findAllByVendorAndVendorProduct...}는 <b>이번 파일에 여전히 등장하는 제품</b>만
+     * 훑는다. 파일에서 아예 빠진 제품은 순회 대상이 아니라 손이 닿지 않는다. 그래서 제품이 아니라
+     * <b>basis 전체</b>를 한 번 훑어, 이번 실행이 건드리지 않은 행을 가려낸다.
+     *
+     * <p>basis가 범위인 이유는 위와 같다 — 한 공급사를 여러 파일로 나눠 올리므로, 전체를 기준으로
+     * 지우면 이번에 올리지 않은 파일의 제품이 통째로 날아간다. 실측(2026-09-07)으로 <b>같은 공급사
+     * 안에서 basis가 두 파일에 걸치는 경우가 없음</b>을 확인했다.
+     */
+    List<VendorItemPrice> findAllByVendorAndPriceTypeAndPriceBasis(
+            Vendor vendor, String priceType, String priceBasis);
+
     // 제안서 품번이 없는(신품번 없음) 항목의 멱등 upsert용
     Optional<VendorItemPrice> findFirstByVendorAndVendorProduct(Vendor vendor, VendorProduct product);
 
