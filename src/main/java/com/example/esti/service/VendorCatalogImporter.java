@@ -129,11 +129,15 @@ public class VendorCatalogImporter {
         // 최신본에서 사라진 행이다(S2). 부속(PART)은 담지 않는다 — 공유 자원이라 정리 대상이 아니다.
         Set<Long> touched = new HashSet<>();
 
+        // 이번 실행이 이미 쓴 «품번 없는 제품». 이름이 같은 다른 제품이 뒤따라와 같은 행을
+        // 물어 하나로 접히는 것을 막는다 (matchCodelessProduct 참조).
+        Set<Long> claimed = new HashSet<>();
+
         int done = 0;
         int created = 0;
         int updated = 0;
         for (VendorProductSet set : sets) {
-            boolean mainCreated = saveSet(vendor, set, images, purged, touched);
+            boolean mainCreated = saveSet(vendor, set, images, purged, touched, claimed);
             // 대표품목(세트) 단위 집계 — main 있는 세트만 카운트(빈 세트는 saveSet에서 null 처리)
             if (set.main() != null) {
                 if (mainCreated) created++; else updated++;
@@ -237,7 +241,7 @@ public class VendorCatalogImporter {
      */
     private boolean saveSet(Vendor vendor, VendorProductSet set,
                             Map<String, Map<Integer, ExtractedImage>> images,
-                            Set<String> purged, Set<Long> touched) {
+                            Set<String> purged, Set<Long> touched, Set<Long> claimed) {
         VendorParsedItem mainItem = set.main();
         if (mainItem == null) return false;
 
@@ -245,7 +249,7 @@ public class VendorCatalogImporter {
         UpsertResult mainRes = upsertVendorProduct(
                 vendor, mainItem.productCode(), mainItem.productName(),
                 set.categoryLarge(), set.categorySmall(), ITEM_TYPE_SET, mainItem.description(), mainItem.specs(),
-                mainItem.unit());
+                mainItem.unit(), claimed);
         VendorProduct mainProduct = mainRes.product();
 
         // 이 (제품, priceBasis)의 낡은 대표품목 가격행·관계를 처음 만났을 때 한 번만 걷어낸다.
@@ -294,7 +298,7 @@ public class VendorCatalogImporter {
             VendorProduct partProduct = upsertVendorProduct(
                     vendor, part.productCode(), part.productName(),
                     set.categoryLarge(), partCategorySmall, ITEM_TYPE_PART, part.description(), part.specs(),
-                    part.unit()).product();
+                    part.unit(), claimed).product();
 
             // 공유 부속 단가는 코드당 1건 유지(D13) → priceBasis=null, setHash=null
             upsertPrice(vendor, partProduct, part, part.unitPrice(), part.remark(), ITEM_TYPE_PART,
@@ -390,9 +394,61 @@ public class VendorCatalogImporter {
         }
     }
 
+    /**
+     * 품번 없는 제품을 이름으로 되찾는다 — <b>분류가 바뀌어도</b> 같은 제품으로 알아본다.
+     *
+     * <p>예전에는 {@code 이름 + 대분류 + 소분류}로만 찾았다. 그래서 <b>분류를 재편하는 재적재에서
+     * 매칭이 통째로 빗나가 중복이 생겼다</b>(2026-09-02에 6건). 소분류가 없는 구간(A사 액세서리 등)에서는
+     * 아예 조회를 건너뛰어 매번 새로 만들기까지 했다.
+     *
+     * <p>그렇다고 이름만으로 묶으면 반대로 <b>서로 다른 제품이 한 행으로 병합된다</b> — 이름이 같고
+     * 분류가 다른 품번 없는 항목이 한 파일에 둘 있을 수 있다. 그래서 순서를 둔다:
+     *
+     * <ol>
+     *   <li>이름 + 분류가 그대로 맞는 것이 있으면 그것 (종전 동작)</li>
+     *   <li>없으면, 이름이 같은 품번 없는 제품이 <b>딱 하나</b>이고 <b>이번 실행이 아직 쓰지 않았다면</b>
+     *       그것 — 분류만 바뀐 같은 제품으로 본다</li>
+     *   <li>여럿이면 가리지 않고 새로 만든다 (종전과 같은 결과. 잘못 합치느니 늘어나는 편이 낫다)</li>
+     * </ol>
+     *
+     * <p>{@code claimed}가 2)의 안전장치다. 이게 없으면 이름이 같은 두 제품을 한 파일에서 읽을 때
+     * <b>두 번째가 첫 번째를 물어 하나로 접힌다.</b> 이미 이번에 쓴 행은 후보에서 뺀다.
+     */
+    private VendorProduct matchCodelessProduct(Vendor vendor, String productName,
+                                               String categoryLarge, String categorySmall,
+                                               Set<Long> claimed) {
+        List<VendorProduct> sameName =
+                vendorProductRepository.findAllByVendorAndProductCodeIsNullAndProductName(vendor, productName);
+        if (sameName.isEmpty()) return null;
+
+        // 1) 분류까지 그대로 맞는 것
+        VendorProduct exact = sameName.stream()
+                .filter(p -> !claimed.contains(p.getId()))
+                .filter(p -> Objects.equals(p.getCategoryLarge(), categoryLarge)
+                        && Objects.equals(p.getCategorySmall(), categorySmall))
+                .findFirst()
+                .orElse(null);
+        if (exact != null) return exact;
+
+        // 2) 분류가 달라졌을 뿐인 같은 제품 — 후보가 하나로 좁혀질 때만
+        List<VendorProduct> free = sameName.stream()
+                .filter(p -> !claimed.contains(p.getId()))
+                .toList();
+        if (free.size() == 1) {
+            VendorProduct only = free.get(0);
+            logger.info("[Import] 품번 없는 제품 '{}'의 분류가 바뀐 것으로 보고 같은 행에 잇는다: {}/{} → {}/{}",
+                    productName, only.getCategoryLarge(), only.getCategorySmall(), categoryLarge, categorySmall);
+            return only;
+        }
+
+        // 3) 모호하면 새로 만든다
+        return null;
+    }
+
     private UpsertResult upsertVendorProduct(Vendor vendor, String productCode, String productName,
                                              String categoryLarge, String categorySmall, String itemType,
-                                             String description, String specs, String unit) {
+                                             String description, String specs, String unit,
+                                             Set<Long> claimed) {
         VendorProduct product = null;
 
         // 1) 코드(품번)가 있으면 코드로만 식별 — 공급사 범위 내.
@@ -401,15 +457,9 @@ public class VendorCatalogImporter {
         if (productCode != null) {
             product = vendorProductRepository.findByVendorAndProductCode(vendor, productCode).orElse(null);
         }
-        // 2) 코드가 아예 없는 항목(A사 신품번 없음 등)만 이름 + 대/소분류로 멱등 매칭
-        else if (productName != null && categoryLarge != null && categorySmall != null) {
-            product = vendorProductRepository
-                    .findAllByProductNameAndCategoryLargeAndCategorySmall(productName, categoryLarge, categorySmall)
-                    .stream()
-                    .filter(p -> p.getVendor() != null
-                            && vendor.getVendorCode().equals(p.getVendor().getVendorCode()))
-                    .findFirst()
-                    .orElse(null);
+        // 2) 코드가 아예 없는 항목(A사 신품번 없음 등)은 이름으로 멱등 매칭
+        else if (productName != null) {
+            product = matchCodelessProduct(vendor, productName, categoryLarge, categorySmall, claimed);
         }
 
         // 3) 신규
@@ -454,7 +504,11 @@ public class VendorCatalogImporter {
             product.setProductCode(productCode);
         }
 
-        return new UpsertResult(vendorProductRepository.save(product), created);
+        VendorProduct saved = vendorProductRepository.save(product);
+        // 품번 없는 제품만 이름으로 되찾으므로, 이번 실행이 쓴 것을 적어 둔다.
+        // 이름이 같은 다른 제품이 뒤따라와 이 행을 물지 않게 한다.
+        if (saved.getProductCode() == null) claimed.add(saved.getId());
+        return new UpsertResult(saved, created);
     }
 
     /**
