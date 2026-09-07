@@ -12,21 +12,27 @@ import com.example.esti.excel.VendorExcelParserFactory;
 import com.example.esti.excel.VendorParsedItem;
 import com.example.esti.excel.VendorProductSet;
 import com.example.esti.progress.ImportProgressStore;
+import com.example.esti.repository.ProposalLineRepository;
 import com.example.esti.repository.VendorItemPriceRepository;
 import com.example.esti.repository.VendorProductRelationRepository;
 import com.example.esti.repository.VendorProductRepository;
 import com.example.esti.repository.VendorRepository;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 공급사 단가표 적재의 <b>트랜잭션 경계</b>. 파싱 결과를 VendorProduct/Relation/ItemPrice로 풀어 upsert한다.
@@ -47,6 +53,8 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class VendorCatalogImporter {
 
+    private static final Logger logger = LoggerFactory.getLogger(VendorCatalogImporter.class);
+
     private static final String ITEM_TYPE_SET = "SET";
     private static final String ITEM_TYPE_PART = "PART";
 
@@ -55,12 +63,22 @@ public class VendorCatalogImporter {
     private final VendorProductRepository vendorProductRepository;
     private final VendorItemPriceRepository vendorItemPriceRepository;
     private final VendorProductRelationRepository vendorProductRelationRepository;
+    private final ProposalLineRepository proposalLineRepository;
     private final ImportProgressStore progressStore;
     private final ExcelImageExtractor imageExtractor;
     private final ImageDownloadService imageDownloadService;
 
     /** 적재 결과 요약 — 총 세트 수와 대표품목 신규/갱신 수. */
-    public record ImportResult(int total, int created, int updated) {}
+    public record ImportResult(int total, int created, int updated, int removed) {}
+
+    /**
+     * 한 basis에서 <b>절반 넘게</b> 사라지면 지우지 않고 경고만 남긴다.
+     *
+     * <p>정상적인 재적재에서 절반이 없어질 리 없다. 그 정도면 파일을 잘못 골랐거나, basis 하나를
+     * 두 파일이 나눠 갖고 있다는 뜻이다(실측으로는 그런 basis가 없지만, 파일이 늘면 생길 수 있다).
+     * <b>가정이 틀렸을 때 데이터가 아니라 로그가 깨지게 한다.</b>
+     */
+    private static final double PURGE_RATIO_LIMIT = 0.5;
 
     /** upsertVendorProduct 결과 — 저장된 제품과 신규 생성 여부. */
     private record UpsertResult(VendorProduct product, boolean created) {}
@@ -107,11 +125,15 @@ public class VendorCatalogImporter {
         // "처음 만났을 때 한 번만" 지운다 — 매번 지우면 방금 넣은 앞 세트를 스스로 지운다. (G-1 / Task 3)
         Set<String> purged = new HashSet<>();
 
+        // 이번 실행이 실제로 넣거나 갱신한 대표품목 가격행. 루프가 끝나면 "이 집합에 없는 것"이
+        // 최신본에서 사라진 행이다(S2). 부속(PART)은 담지 않는다 — 공유 자원이라 정리 대상이 아니다.
+        Set<Long> touched = new HashSet<>();
+
         int done = 0;
         int created = 0;
         int updated = 0;
         for (VendorProductSet set : sets) {
-            boolean mainCreated = saveSet(vendor, set, images, purged);
+            boolean mainCreated = saveSet(vendor, set, images, purged, touched);
             // 대표품목(세트) 단위 집계 — main 있는 세트만 카운트(빈 세트는 saveSet에서 null 처리)
             if (set.main() != null) {
                 if (mainCreated) created++; else updated++;
@@ -126,7 +148,87 @@ public class VendorCatalogImporter {
                 }
             }
         }
-        return new ImportResult(sets.size(), created, updated);
+        if (jobId != null) progressStore.update(jobId, 99, "사라진 행 정리 중...");
+        int removed = sweepVanishedRows(vendor, sets, touched);
+
+        return new ImportResult(sets.size(), created, updated, removed);
+    }
+
+    /**
+     * 최신본에서 <b>사라진</b> 대표품목 가격행과, 그 결과 남겨진 제품을 걷어낸다(S1·S3~S6).
+     *
+     * <p>임포트는 upsert라 갱신만 하고 삭제를 하지 않는다. 파일에서 빠진 행은 DB에 그대로 남아
+     * 카탈로그에 현재 데이터인 얼굴로 선다. {@link #purgeStaleSetRows}는 <b>이번 파일에 여전히
+     * 등장하는 제품</b>만 훑으므로 여기까지 닿지 않는다.
+     *
+     * <p><b>범위는 이번 업로드가 실제로 산출한 basis뿐이다.</b> 한 공급사를 여러 파일로 나눠 올리므로
+     * 전체를 기준으로 지우면 이번에 올리지 않은 파일의 제품이 통째로 날아간다.
+     *
+     * <p>지우지 않는 것: 부속(PART) 가격행(공유 자원, D13), 제안서가 참조 중인 제품,
+     * 그리고 {@link #PURGE_RATIO_LIMIT}를 넘는 basis 전체.
+     *
+     * @return 지운 대표품목 가격행 수
+     */
+    private int sweepVanishedRows(Vendor vendor, List<VendorProductSet> sets, Set<Long> touched) {
+        // S1: 이번 업로드가 책임지는 범위
+        Set<String> coveredBasis = sets.stream()
+                .map(VendorProductSet::priceBasis)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        // 파싱이 아무것도 못 냈으면 손대지 않는다 — 빈 파일로 카탈로그를 비우는 사고를 막는다.
+        if (coveredBasis.isEmpty()) return 0;
+
+        List<VendorItemPrice> toRemove = new ArrayList<>();
+        for (String basis : coveredBasis) {
+            List<VendorItemPrice> inBasis = vendorItemPriceRepository
+                    .findAllByVendorAndPriceTypeAndPriceBasis(vendor, ITEM_TYPE_SET, basis);
+
+            List<VendorItemPrice> vanished = inBasis.stream()
+                    .filter(p -> !touched.contains(p.getId()))
+                    .toList();
+            if (vanished.isEmpty()) continue;
+
+            // S4: 비율 차단기
+            if (vanished.size() > inBasis.size() * PURGE_RATIO_LIMIT) {
+                logger.warn("[Import] basis '{}'에서 {}/{}건이 사라진 것으로 나온다 — 절반을 넘어 정리를 건너뛴다. "
+                                + "파일을 잘못 골랐거나 이 basis가 여러 파일에 걸쳐 있는지 확인할 것.",
+                        basis, vanished.size(), inBasis.size());
+                continue;
+            }
+            toRemove.addAll(vanished);
+        }
+        if (toRemove.isEmpty()) return 0;
+
+        // S5: 그 가격행이 걸고 있던 세트 관계부터 끊는다
+        for (VendorItemPrice p : toRemove) {
+            if (p.getSetHash() != null) {
+                vendorProductRelationRepository
+                        .deleteAllBySourceProductAndSetHash(p.getVendorProduct(), p.getSetHash());
+            }
+        }
+        List<VendorProduct> affected = toRemove.stream()
+                .map(VendorItemPrice::getVendorProduct)
+                .distinct()
+                .toList();
+        vendorItemPriceRepository.deleteAll(toRemove);
+        vendorItemPriceRepository.flush();
+
+        // S6: 가격행이 하나도 안 남은 제품 정리. 제안서가 참조 중이면 남긴다 —
+        //     productId에 외래키가 없어 지우면 끊어진 id만 조용히 남는다.
+        Set<Long> referenced = proposalLineRepository.findReferencedProductIds();
+        List<VendorProduct> orphans = affected.stream()
+                .filter(p -> !referenced.contains(p.getId()))
+                .filter(p -> vendorItemPriceRepository.findFirstByVendorAndVendorProduct(vendor, p).isEmpty())
+                .toList();
+        if (!orphans.isEmpty()) {
+            orphans.forEach(vendorProductRelationRepository::deleteAllByProduct);
+            vendorProductRepository.deleteAll(orphans);
+        }
+
+        logger.info("[Import] 최신본에서 사라진 대표품목 가격행 {}건 정리 (제품 {}건 삭제, basis {}종)",
+                toRemove.size(), orphans.size(), coveredBasis.size());
+        return toRemove.size();
     }
 
     /**
@@ -135,7 +237,7 @@ public class VendorCatalogImporter {
      */
     private boolean saveSet(Vendor vendor, VendorProductSet set,
                             Map<String, Map<Integer, ExtractedImage>> images,
-                            Set<String> purged) {
+                            Set<String> purged, Set<Long> touched) {
         VendorParsedItem mainItem = set.main();
         if (mainItem == null) return false;
 
@@ -168,8 +270,9 @@ public class VendorCatalogImporter {
         // 본품 단가는 세트가와 별개로 남긴다(G-2) — A사는 세트가 = 본품 + 부속합이라
         // 이게 없으면 화면이 그 등식으로 대조할 수 없다. B사는 본품이 부속 목록 안이라 null.
         BigDecimal ownPrice = set.setPrice() != null ? mainItem.unitPrice() : null;
-        upsertPrice(vendor, mainProduct, mainItem, mainPrice, mainRemark, ITEM_TYPE_SET,
-                set.priceBasis(), set.setHash(), set.partsSummary(), ownPrice);
+        // 이번 실행이 살린 행으로 표시한다 — 루프가 끝나면 표시되지 않은 것이 사라진 행이다(S2).
+        touched.add(upsertPrice(vendor, mainProduct, mainItem, mainPrice, mainRemark, ITEM_TYPE_SET,
+                set.priceBasis(), set.setHash(), set.partsSummary(), ownPrice).getId());
 
         // 부속품 + 관계
         //
@@ -358,7 +461,8 @@ public class VendorCatalogImporter {
      * 가격 upsert. {@code priceBasis}(출처 시트)가 있으면 (vendor,product,proposalCode,basis) 기준으로
      * 분리 저장 — 같은 품번이 시트별로 다른 가격(대표품목)일 때 충돌 방지. basis=null이면 코드당 1건(D13).
      */
-    private void upsertPrice(Vendor vendor, VendorProduct product, VendorParsedItem item,
+    /** @return 저장된 가격행. 호출부가 "이번 실행이 살린 행"으로 표시하는 데 쓴다. */
+    private VendorItemPrice upsertPrice(Vendor vendor, VendorProduct product, VendorParsedItem item,
                             BigDecimal price, String remark, String priceType, String priceBasis,
                             String setHash, String setSummary, BigDecimal mainUnitPrice) {
         String proposalCode = item.productCode();
@@ -403,7 +507,7 @@ public class VendorCatalogImporter {
         vip.setMainUnitPrice(mainUnitPrice);
         vip.setCurrency("KRW");
 
-        vendorItemPriceRepository.save(vip);
+        return vendorItemPriceRepository.save(vip);
     }
 
     private void upsertRelation(VendorProduct source, VendorProduct target, String relationType,
