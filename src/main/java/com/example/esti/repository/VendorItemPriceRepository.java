@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -80,6 +81,51 @@ public interface VendorItemPriceRepository extends JpaRepository<VendorItemPrice
     // (선택) 검색까지 하고 싶으면
     // Page<VendorItemPrice> findByVendor_VendorCodeAndProposalItemCodeContaining(
     //        String vendorCode, String keyword, Pageable pageable);
+
+    /**
+     * 카탈로그 화면 검색 (F-015) — 공급사 지정.
+     *
+     * <p><b>서버에서 찾아야 한다.</b> 화면이 서버 페이징이라 클라이언트에서 거르면 <b>지금 보이는
+     * 한 페이지</b>만 뒤지게 된다. 2,247건을 10건씩 보면 225페이지다.
+     *
+     * <p>비교 대상은 제안서 화면 검색과 같은 축이다 — 품번(신·구·제안서), 제품명(제품·공급사 표기),
+     * 분류(대·소), 규격, 비고. {@code vendorName}은 넣지 않는다: 공급사는 옆에 전용 필터가 있고,
+     * 여기 넣으면 공급사명 한 글자에 전건이 걸린다.
+     *
+     * <p>대소문자를 가리지 않으려고 양쪽을 {@code lower}로 눕힌다. 패턴({@code %...%})과
+     * 와일드카드 이스케이프는 서비스가 만들어 넘긴다 — JPQL에서 문자열을 잇지 않으려는 것이다.
+     */
+    @Query("""
+            select vip from VendorItemPrice vip
+             where vip.vendor.vendorCode = :vendorCode
+               and (lower(coalesce(vip.mainItemCode, '')) like :pattern escape '!'
+                 or lower(coalesce(vip.oldItemCode, '')) like :pattern escape '!'
+                 or lower(coalesce(vip.proposalItemCode, '')) like :pattern escape '!'
+                 or lower(coalesce(vip.vendorItemName, '')) like :pattern escape '!'
+                 or lower(coalesce(vip.remark, '')) like :pattern escape '!'
+                 or lower(coalesce(vip.vendorProduct.productName, '')) like :pattern escape '!'
+                 or lower(coalesce(vip.vendorProduct.categoryLarge, '')) like :pattern escape '!'
+                 or lower(coalesce(vip.vendorProduct.categorySmall, '')) like :pattern escape '!'
+                 or lower(coalesce(vip.vendorProduct.specs, '')) like :pattern escape '!')
+            """)
+    Page<VendorItemPrice> searchByVendor(@Param("vendorCode") String vendorCode,
+                                         @Param("pattern") String pattern,
+                                         Pageable pageable);
+
+    /** 카탈로그 화면 검색 (F-015) — 공급사 «전체». 조건은 {@link #searchByVendor}와 같다. */
+    @Query("""
+            select vip from VendorItemPrice vip
+             where lower(coalesce(vip.mainItemCode, '')) like :pattern escape '!'
+                or lower(coalesce(vip.oldItemCode, '')) like :pattern escape '!'
+                or lower(coalesce(vip.proposalItemCode, '')) like :pattern escape '!'
+                or lower(coalesce(vip.vendorItemName, '')) like :pattern escape '!'
+                or lower(coalesce(vip.remark, '')) like :pattern escape '!'
+                or lower(coalesce(vip.vendorProduct.productName, '')) like :pattern escape '!'
+                or lower(coalesce(vip.vendorProduct.categoryLarge, '')) like :pattern escape '!'
+                or lower(coalesce(vip.vendorProduct.categorySmall, '')) like :pattern escape '!'
+                or lower(coalesce(vip.vendorProduct.specs, '')) like :pattern escape '!'
+            """)
+    Page<VendorItemPrice> searchAll(@Param("pattern") String pattern, Pageable pageable);
 
     // 크롤링
     Optional<VendorItemPrice> findByVendor_VendorCodeAndProposalItemCode(String vendorCode, String proposalItemCode);
