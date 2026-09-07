@@ -259,7 +259,8 @@ const apartmentTypeChoices = computed(() =>
 // 페이징
 const {
   page, size, totalPages, totalElements, blockSize, pageNumbers,
-  goToPage, firstPage, lastPage, prevBlock, nextBlock, resetToFirst
+  goToPage, firstPage, lastPage, prevBlock, nextBlock, resetToFirst,
+  applyPage, clearPage
 } = usePagination(loadProposals)
 
 // 제안서 목록 로드
@@ -277,16 +278,12 @@ async function loadProposals () {
       }
     })
 
-    proposals.value = res.data?.content ?? []
-    totalPages.value = res.data?.totalPages ?? 0
-    totalElements.value = res.data?.totalElements ?? 0
-    page.value = res.data?.number ?? page.value // 서버 보정 반영
+    proposals.value = applyPage(res.data)
   } catch (e) {
     console.error('제안서 목록 조회 실패', e)
     toast.error('제안서 목록 조회 중 오류가 발생했습니다.')
     proposals.value = []
-    totalPages.value = 0
-    totalElements.value = 0
+    clearPage()
   } finally {
     loading.value = false
   }
