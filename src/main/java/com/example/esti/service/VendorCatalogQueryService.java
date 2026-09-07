@@ -39,19 +39,47 @@ public class VendorCatalogQueryService {
                 .collect(Collectors.toList());
     }
 
-    // 신규: 페이징
+    // 신규: 페이징 (+ 검색 F-015)
     @Transactional(readOnly = true)
-    public Page<VendorCatalogView> getVendorCatalogPage(String vendorCode, Pageable pageable) {
-        return vendorItemPriceRepository
-                .findByVendor_VendorCode(vendorCode, pageable)
+    public Page<VendorCatalogView> getVendorCatalogPage(String vendorCode, String keyword, Pageable pageable) {
+        String pattern = likePattern(keyword);
+        return (pattern == null
+                ? vendorItemPriceRepository.findByVendor_VendorCode(vendorCode, pageable)
+                : vendorItemPriceRepository.searchByVendor(vendorCode, pattern, pageable))
                 .map(VendorCatalogView::from);
     }
 
-    // 전체 페이지 목록 조회
+    // 전체 페이지 목록 조회 (+ 검색 F-015)
     @Transactional(readOnly = true)
-    public Page<VendorCatalogView> getVendorCatalogPageAll(Pageable pageable) {
-        return vendorItemPriceRepository.findAll(pageable)
+    public Page<VendorCatalogView> getVendorCatalogPageAll(String keyword, Pageable pageable) {
+        String pattern = likePattern(keyword);
+        return (pattern == null
+                ? vendorItemPriceRepository.findAll(pageable)
+                : vendorItemPriceRepository.searchAll(pattern, pageable))
                 .map(VendorCatalogView::from);
+    }
+
+    /** LIKE 이스케이프 문자. {@code \}는 JPQL 문자열 안에서 또 한 번 새는 자리를 만들어 {@code !}를 쓴다. */
+    private static final char LIKE_ESCAPE = '!';
+
+    /**
+     * 검색어를 LIKE 패턴으로 바꾼다. 검색어가 비어 있으면 {@code null} — 호출부가 «검색 안 함»으로 읽는다.
+     *
+     * <p><b>와일드카드를 이스케이프한다.</b> 사용자가 친 {@code %}·{@code _}는 찾으려는 글자지
+     * 패턴이 아니다. 그대로 두면 {@code %}가 전건을, {@code _}가 아무 글자나 물어 온다
+     * (규격에 {@code _}가 흔하다).
+     */
+    private String likePattern(String keyword) {
+        if (keyword == null) return null;
+        String q = keyword.trim().toLowerCase();
+        if (q.isEmpty()) return null;
+
+        StringBuilder sb = new StringBuilder(q.length() + 8).append('%');
+        for (char c : q.toCharArray()) {
+            if (c == '%' || c == '_' || c == LIKE_ESCAPE) sb.append(LIKE_ESCAPE);
+            sb.append(c);
+        }
+        return sb.append('%').toString();
     }
 
     /**

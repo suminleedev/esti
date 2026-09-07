@@ -20,6 +20,16 @@ const {
   goToPage, firstPage, lastPage, prevBlock, nextBlock, resetToFirst
 } = usePagination(loadVendorCatalog)
 
+/* ===== 카탈로그 검색 (F-015) =====
+   서버로 보낸다. 화면이 서버 페이징이라 여기서 거르면 지금 보이는 한 페이지만 뒤지게 된다.
+
+   searchInput = 입력창에 찍히는 값, searchKeyword = 실제로 서버에 나간 값.
+   둘을 나눠야 «검색 결과 N건» 같은 표시가 타이핑 도중에 흔들리지 않는다. */
+const searchInput = ref('')
+const searchKeyword = ref('')
+const SEARCH_DEBOUNCE_MS = 300
+let searchTimer = null
+
 const editingProduct = ref(null) // 수정 중인 제품
 /* ===== 공급사 단가표 엑셀 업로드 상태 ===== */
 const uploadVendorCode = ref('A')   // 업로드 영역 전용 : 기본값 A사
@@ -262,6 +272,8 @@ async function loadVendorCatalog() {
         page: page.value,
         size: size.value,
         sort: 'id,desc', // 서버 엔티티 필드 기준. (DTO의 catalogId로 sort하면 안 먹을 수 있음)
+        // 빈 검색어는 아예 보내지 않는다 — 서버가 종전 경로(전건 페이징)를 그대로 타게 한다
+        ...(searchKeyword.value ? { keyword: searchKeyword.value } : {}),
       }
     })
     // 목록이 바뀌면 펼친 행과 부속 캐시를 버린다(수정·삭제 후 낡은 구성이 남지 않도록)
@@ -385,6 +397,33 @@ watch(filterVendorCode, async () =>{
   await loadVendorCatalog()
 })
 
+/* 검색어를 서버로 보낸다 (F-015).
+   글자마다 요청을 내면 225페이지짜리 테이블을 타이핑 속도로 두드리게 되므로 잠깐 묶는다.
+   결과 건수가 달라지니 반드시 첫 페이지로 되돌린다 — 안 그러면 3페이지를 보던 중에
+   검색해서 결과가 1페이지뿐일 때 빈 화면이 뜬다. */
+watch(searchInput, (v) => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(async () => {
+    const next = v.trim()
+    if (next === searchKeyword.value) return
+    searchKeyword.value = next
+    page.value = 0
+    resetToFirst()
+    await loadVendorCatalog()
+  }, SEARCH_DEBOUNCE_MS)
+})
+
+/** 검색어를 비운다 — 지연을 기다리지 않고 바로 되돌린다. */
+async function clearSearch() {
+  clearTimeout(searchTimer)
+  searchInput.value = ''
+  if (!searchKeyword.value) return
+  searchKeyword.value = ''
+  page.value = 0
+  resetToFirst()
+  await loadVendorCatalog()
+}
+
 // 업로드 중 vendorCode 바꾸면 업로드 중지
 watch(uploadVendorCode, async () => {
   stopProgressPolling()
@@ -398,6 +437,7 @@ watch(uploadVendorCode, async () => {
 // 컴포넌트 unmount 시 타이머 정리
 onBeforeUnmount(() => {
   stopProgressPolling()
+  clearTimeout(searchTimer)   // 화면을 떠난 뒤 지연된 검색이 뒤늦게 뜨지 않게 한다
 })
 
 /**
@@ -527,8 +567,35 @@ onMounted(() => {
     <!-- 카탈로그 목록 -->
     <div class="card list-card">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <span>카탈로그 {{ totalElements.toLocaleString() }}건</span>
+        <span>
+          <template v-if="searchKeyword">
+            검색 결과 {{ totalElements.toLocaleString() }}건
+            <span class="text-muted small">— &laquo;{{ searchKeyword }}&raquo;</span>
+          </template>
+          <template v-else>카탈로그 {{ totalElements.toLocaleString() }}건</template>
+        </span>
         <div class="d-flex align-items-center gap-3">
+          <!-- 검색 (F-015) -->
+          <div class="search-box position-relative">
+            <label class="visually-hidden" for="catalog-search">카탈로그 검색</label>
+            <input
+              id="catalog-search"
+              v-model="searchInput"
+              type="search"
+              class="form-control form-control-sm"
+              placeholder="검색 (품번/제품명/분류/규격)"
+              @keyup.esc="clearSearch"
+            />
+            <button
+              v-if="searchInput"
+              type="button"
+              class="btn btn-sm btn-link search-clear p-0"
+              aria-label="검색어 지우기"
+              @click="clearSearch"
+            >
+              <i class="bi bi-x-circle-fill" />
+            </button>
+          </div>
           <!-- 공급사 필터 -->
           <div class="d-flex align-items-center gap-2">
             <label class="text-muted small mb-0" for="filter-vendorCode">공급사</label>
@@ -550,12 +617,21 @@ onMounted(() => {
         </div>
       </div>
       <div class="card-body p-0">
+        <!-- 검색 중 빈 결과는 «등록된 제품이 없습니다»와 다른 상황이다. 지우고 돌아갈 길을 같이 준다 -->
         <EmptyState
           v-if="loading || vendorCatalogs.length === 0"
           :loading="loading"
-          icon="bi-box-seam"
-          message="등록된 제품이 없습니다"
-        />
+          :icon="searchKeyword ? 'bi-search' : 'bi-box-seam'"
+          :message="searchKeyword
+            ? `«${searchKeyword}»에 해당하는 제품이 없습니다`
+            : '등록된 제품이 없습니다'"
+        >
+          <template v-if="searchKeyword" #cta>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @click="clearSearch">
+              검색어 지우기
+            </button>
+          </template>
+        </EmptyState>
         <div v-else class="table-responsive">
           <div class="table-scroll">
             <table class="table table-sm table-striped table-bordered mb-0 align-middle">
@@ -898,5 +974,39 @@ onMounted(() => {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+}
+/* 카탈로그 검색 (F-015) — 지우기 버튼을 입력창 안쪽에 얹는다 */
+.search-box {
+  width: 240px;
+}
+
+.search-box input {
+  padding-right: 1.9rem;
+}
+
+/* 브라우저 기본 지우기 아이콘은 숨긴다 — 우리 버튼과 겹친다 */
+.search-box input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.search-clear {
+  position: absolute;
+  top: 50%;
+  right: 0.5rem;
+  transform: translateY(-50%);
+  line-height: 1;
+  color: var(--bs-secondary-color, #6c757d);
+  text-decoration: none;
+}
+
+.search-clear:hover {
+  color: var(--bs-body-color, #212529);
+}
+
+@media (max-width: 576px) {
+  .search-box {
+    width: 100%;
+  }
 }
 </style>

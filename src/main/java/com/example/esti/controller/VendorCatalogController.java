@@ -121,31 +121,37 @@ public class VendorCatalogController {
     }
 
     /**
-     * 페이징 목록 조회
-     * GET /api/vendor-catalog/page/B?page=0&size=20&sort=id,desc
+     * 페이징 목록 조회 + 검색
+     * GET /api/vendor-catalog/page/B?page=0&size=20&sort=id,desc&keyword=세면
+     *
+     * <p>{@code keyword}는 선택이다. 없거나 공백뿐이면 종전처럼 전건을 페이징한다.
+     * 검색은 <b>서버에서</b> 한다 — 화면이 서버 페이징이라 클라이언트에서 거르면 지금 보이는
+     * 한 페이지만 뒤지게 된다(F-015).
      */
     @GetMapping("/page/{vendorCode}")
     public ResponseEntity<Page<VendorCatalogView>> getVendorCatalogPage(
             @PathVariable String vendorCode,
+            @RequestParam(required = false) String keyword,
             @PageableDefault(size = 20, sort = "id", direction = Sort.Direction.DESC)
             Pageable pageable
     ) {
         return ResponseEntity.ok(
-                vendorCatalogQueryService.getVendorCatalogPage(vendorCode, pageable)
+                vendorCatalogQueryService.getVendorCatalogPage(vendorCode, keyword, pageable)
         );
     }
 
     /**
-     * 전체 페이징 목록 조회
-     * GET /api/vendor-catalog/page/?page=0&size=20&sort=id,desc
+     * 전체 페이징 목록 조회 + 검색
+     * GET /api/vendor-catalog/page/?page=0&size=20&sort=id,desc&keyword=세면
      */
     @GetMapping("/page/")
     public ResponseEntity<Page<VendorCatalogView>> getVendorCatalogPageAll(
+            @RequestParam(required = false) String keyword,
             @PageableDefault(size = 20, sort = "id", direction = Sort.Direction.DESC)
             Pageable pageable
     ) {
         return ResponseEntity.ok(
-                vendorCatalogQueryService.getVendorCatalogPageAll(pageable)
+                vendorCatalogQueryService.getVendorCatalogPageAll(keyword, pageable)
         );
     }
 
