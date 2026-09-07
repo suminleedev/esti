@@ -302,6 +302,41 @@ class ProposalCardExcelWriterTest {
         }
     }
 
+    /**
+     * 머리글이 페이지마다 반복된다 (F-023 잔여).
+     *
+     * <p>2페이지부터 제목·총액·세대당·열별 소계가 없어, 그 장만 떼어 보면 어느 현장의
+     * 어떤 열인지 알 수 없었다.
+     */
+    @Test
+    @DisplayName("머리글 4행이 페이지마다 반복된다")
+    void 머리글이_페이지마다_반복된다() throws Exception {
+        List<ProposalLine> lines = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            lines.add(line("욕실1", "양변기", "CODE-" + i, "양변기", 100_000, 1, false));
+        }
+
+        try (Workbook wb = open(ProposalCardExcelWriter.write(sampleProposal(), lines))) {
+            CellRangeAddress repeating = wb.getSheetAt(0).getRepeatingRows();
+
+            assertThat(repeating).as("반복 제목행이 지정돼야 한다").isNotNull();
+            assertThat(repeating.getFirstRow()).as("R1부터").isZero();
+            assertThat(repeating.getLastRow())
+                    .as("R4까지 — 제목·총액·세대당·열별 소계")
+                    .isEqualTo(3);
+        }
+    }
+
+    @Test
+    @DisplayName("한 장짜리에도 머리글 반복은 지정해 둔다 — 라인이 늘면 그대로 쓰인다")
+    void 한_장이어도_반복_제목행은_있다() throws Exception {
+        List<ProposalLine> lines = List.of(line("욕실1", "양변기", "CODE-1", "양변기", 100_000, 1, false));
+
+        try (Workbook wb = open(ProposalCardExcelWriter.write(sampleProposal(), lines))) {
+            assertThat(wb.getSheetAt(0).getRepeatingRows()).isNotNull();
+        }
+    }
+
     @Test
     @DisplayName("카드가 한 장뿐이면 나눌 것도 없다")
     void 카드가_적으면_나누기가_없다() throws Exception {
