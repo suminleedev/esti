@@ -18,6 +18,25 @@ final class ExcelParseUtils {
         return s == null || s.trim().isEmpty();
     }
 
+    /**
+     * 글자·숫자가 하나도 없는 셀은 <b>빈 칸으로 본다</b>(그렇지 않으면 원본 그대로).
+     *
+     * <p>이름·품번 칸에 글자도 숫자도 없으면 담긴 뜻이 없다. 사람 눈에는 빈 칸이라 원본에서
+     * 그 자리를 비운 것과 똑같이 읽히는데, {@link #isBlank}만으로는 "값이 있다"가 되어
+     * <b>빈 칸 여부로 행을 가르는 판정이 조용히 빗나간다.</b>
+     *
+     * <p>실제로 A사 최신본의 합계행 한 곳(시트 {@code ASK} 1367행)은 구품번 칸이 백틱 두 개로
+     * 채워져 있어 합계행으로 인식되지 못했다. 그 세트는 닫히지 못했고, 대표품목이 세트가 대신
+     * 단품가를 갖게 됐다({@link VendorAExcelParser} 합계행 판정 참조).
+     */
+    static String blankIfNoContent(String s) {
+        if (s == null) return null;
+        for (int i = 0; i < s.length(); i++) {
+            if (Character.isLetterOrDigit(s.charAt(i))) return s;
+        }
+        return null;
+    }
+
     /** 앞뒤 공백 제거 + 연속 공백 1칸 정규화(비파괴 공백 포함). 빈 값이면 null. */
     static String stripSpace(String s) {
         if (s == null) return null;

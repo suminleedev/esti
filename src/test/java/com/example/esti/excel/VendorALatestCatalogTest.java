@@ -88,10 +88,12 @@ class VendorALatestCatalogTest {
         List<VendorProductSet> sets = parseLatest();
 
         // 카탈로그 행 = (품번, 대분류, 세트해시). 세트 축 전에는 (품번, 대분류)라 881행이었다.
+        // D8-1로 1367행 합계행이 살아나면서 909 → 907. 흩어져 있던 부속이 세트로 흡수되고,
+        // 합계행이 제품으로 둔갑해 만들던 품번 없는 행 하나가 사라진 몫이다.
         Set<String> rows = sets.stream()
                 .map(s -> key(s) + "|" + s.categoryLarge() + "|" + s.setHash())
                 .collect(Collectors.toSet());
-        assertEquals(909, rows.size(), "세트 축 적용 후 카탈로그 행 수");
+        assertEquals(907, rows.size(), "세트 축 적용 후 카탈로그 행 수");
 
         // 대표품목 하나에 부속 구성이 다른 세트가 2개 이상 = 예전에 한 덩어리로 합쳐지던 것
         Map<String, Set<String>> hashesByMain = new HashMap<>();
@@ -177,15 +179,46 @@ class VendorALatestCatalogTest {
     }
 
     @Test
+    void 백틱_합계행에_걸렸던_세트가_제자리에서_닫힌다() {
+        // 1367행 합계행이 구품번 칸의 백틱 때문에 인식되지 않아, 바로 앞 세트가 닫히지 못했다.
+        // 대표품목은 세트가 대신 단품가를 갖고 부속 5건은 개별 제품으로 흩어졌으며,
+        // 세트 합계는 이름이 없는 유령 품목에 붙어 카탈로그에 노출됐다(D8-1).
+        List<VendorProductSet> sets = parseLatest();
+
+        List<VendorProductSet> signature = sets.stream()
+                .filter(s -> "FA1701-0GAK111AA".equals(s.main().productCode()))
+                .toList();
+
+        assertEquals(1, signature.size(), "대표품목이 세트 하나로 잡혀야 함");
+        assertEquals(5, signature.get(0).parts().size(),
+                "폽업·P트랩·패킹·앵글밸브 2개가 부속으로 붙어야 함");
+        assertFalse(signature.get(0).needsReview(),
+                "합계행이 제자리에서 닫히므로 검수 대상이 아니다");
+
+        assertFalse(sets.stream().anyMatch(s -> s.main().productName() != null
+                        && s.main().productName().startsWith("`")),
+                "합계행이 제품으로 둔갑해 남으면 안 됨");
+    }
+
+    @Test
     void 세트_그룹핑은_회귀하지_않는다() {
         List<VendorProductSet> sets = parseLatest();
 
         int items = sets.size() + sets.stream().mapToInt(s -> s.parts().size()).sum();
         long review = sets.stream().filter(VendorProductSet::needsReview).count();
 
-        // 분류만 손댔으므로 합계행 기반 그룹핑 결과는 그대로여야 한다(2021 최신본 실측값).
-        assertEquals(962, sets.size(), "세트 수");
-        assertEquals(1892, items, "품목 총계 = 원본 데이터 행 수");
+        // 2021 최신본 실측값.
+        //
+        // 세트 수가 962에서 956으로 줄어든 것은 D8-1(글자·숫자 없는 칸은 빈 칸으로 본다) 때문이다.
+        // 1367행 합계행이 구품번 칸의 백틱에 걸려 인식되지 않던 동안, 그 앞 세트(1361~1366)는
+        // 닫히지 못한 채 다음 합계행에 밀려 개별 제품 8건 + 세트 1건으로 흩어져 있었다.
+        // 이제 제자리에서 닫혀 세트 1건 + 개별 1건 + 다음 세트 1건이 된다(9 → 3, 즉 −6).
+        //
+        // 품목 총계도 1892에서 1891로 하나 준다. 줄어든 하나가 그 합계행이다 —
+        // 애초에 제품이 아니었으므로, 이제야 "원본 데이터 행 수"가 맞는 값이 됐다.
+        // 검수 건수는 그대로다.
+        assertEquals(956, sets.size(), "세트 수");
+        assertEquals(1891, items, "품목 총계 = 원본 데이터 행 수");
         assertEquals(7, review, "합계≠부속합산으로 검수 필요한 세트");
     }
 }
