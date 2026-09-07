@@ -110,6 +110,7 @@ public final class ProposalCardExcelWriter {
             sheet.getPrintSetup().setLandscape(true);
             sheet.setFitToPage(true);
             sheet.getPrintSetup().setFitWidth((short) 1);
+            applyRepeatingHeader(sheet);
             applyPageBreaks(sheet, blocks);
 
             wb.write(out);
@@ -169,6 +170,22 @@ public final class ProposalCardExcelWriter {
                 cell(r4, start + 2, columnSums[c], styles.subtotal);
             }
         }
+    }
+
+    /**
+     * 머리글 4행을 페이지마다 반복시킨다 (F-023 잔여).
+     *
+     * <p>2페이지부터는 제목·총액·세대당·열별 소계가 없어, 그 장만 떼어 보면 <b>어느 현장의
+     * 어떤 열인지 알 수 없었다.</b> 카드가 경계에 걸리지 않게 하는 것까지만 먼저 했고
+     * 반복 제목행은 남겨 뒀던 몫이다.
+     *
+     * <p><b>축소율은 나빠지지 않는다.</b> {@code fitHeight}는 가장 높은 페이지에 맞춰 배율을
+     * 잡는데, 1페이지는 이미 머리글(145pt) + 4블록(780pt)을 담고 있다. 뒷장이 같은 높이가 될 뿐
+     * 최댓값은 그대로다 — 글씨가 더 작아지지 않는다.
+     */
+    private static void applyRepeatingHeader(Sheet sheet) {
+        // 0-based [0, FIRST_BLOCK_ROW-1] = R1~R4. 열은 제한하지 않는다(-1).
+        sheet.setRepeatingRows(new CellRangeAddress(0, FIRST_BLOCK_ROW - 1, -1, -1));
     }
 
     /**
