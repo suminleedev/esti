@@ -17,7 +17,8 @@ const { confirm } = useConfirm()
 // 페이징
 const {
   page, size, totalPages, totalElements, blockSize, pageNumbers,
-  goToPage, firstPage, lastPage, prevBlock, nextBlock, resetToFirst
+  goToPage, firstPage, lastPage, prevBlock, nextBlock, resetToFirst,
+  applyPage, clearPage
 } = usePagination(loadVendorCatalog)
 
 /* ===== 카탈로그 검색 (F-015) =====
@@ -281,17 +282,11 @@ async function loadVendorCatalog() {
     partsCache.value = {}
     partsErrorId.value = null
 
-    vendorCatalogs.value = res.data?.content ?? []
-    totalPages.value = res.data?.totalPages ?? 0
-    totalElements.value = res.data?.totalElements ?? 0
-
-    // 서버가 보정한 현재 페이지
-    page.value = res.data?.number ?? page.value
+    vendorCatalogs.value = applyPage(res.data)
   } catch (e) {
     console.error('공급사 카탈로그 목록 조회 실패', e)
     vendorCatalogs.value = []
-    totalPages.value = 0
-    totalElements.value = 0
+    clearPage()
   } finally {
     loading.value = false
   }
