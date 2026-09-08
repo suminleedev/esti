@@ -106,7 +106,8 @@ public interface VendorItemPriceRepository extends JpaRepository<VendorItemPrice
                  or lower(coalesce(vip.vendorProduct.productName, '')) like :pattern escape '!'
                  or lower(coalesce(vip.vendorProduct.categoryLarge, '')) like :pattern escape '!'
                  or lower(coalesce(vip.vendorProduct.categorySmall, '')) like :pattern escape '!'
-                 or lower(coalesce(vip.vendorProduct.specs, '')) like :pattern escape '!')
+                 or lower(coalesce(vip.vendorProduct.specs, '')) like :pattern escape '!'
+                 or lower(coalesce(vip.vendorProduct.collectionName, '')) like :pattern escape '!')
             """)
     Page<VendorItemPrice> searchByVendor(@Param("vendorCode") String vendorCode,
                                          @Param("pattern") String pattern,
@@ -124,6 +125,7 @@ public interface VendorItemPriceRepository extends JpaRepository<VendorItemPrice
                 or lower(coalesce(vip.vendorProduct.categoryLarge, '')) like :pattern escape '!'
                 or lower(coalesce(vip.vendorProduct.categorySmall, '')) like :pattern escape '!'
                 or lower(coalesce(vip.vendorProduct.specs, '')) like :pattern escape '!'
+                or lower(coalesce(vip.vendorProduct.collectionName, '')) like :pattern escape '!'
             """)
     Page<VendorItemPrice> searchAll(@Param("pattern") String pattern, Pageable pageable);
 
