@@ -351,10 +351,70 @@ class VendorCatalogSetAxisTest {
                 new BigDecimal(setPrice), false, null, false);
     }
 
+    /** 시리즈명을 지정하는 세트. 나머지는 {@code set()}과 같다. */
+    private static VendorProductSet setWithSeries(String setPrice, String series,
+                                                  VendorParsedItem... parts) {
+        VendorParsedItem main = new VendorParsedItem(MAIN_CODE, "세면기", null, null,
+                VendorParsedItem.RELATION_MAIN, new BigDecimal("50"), null);
+        return new VendorProductSet("A", "세면기", "반다리세면기", main, List.of(parts),
+                new BigDecimal(setPrice), false, null, false, "세면기", "세면기", series);
+    }
+
     private static VendorExcelParser parserReturning(List<VendorProductSet> sets) {
         return new VendorExcelParser() {
             @Override public String getVendorCode() { return "A"; }
             @Override public List<VendorProductSet> parseSets(Path path) { return sets; }
         };
+    }
+
+    // ====== 세트(시리즈)명 ======
+
+    @Test
+    void 시리즈명이_대표품목에_저장된다() {
+        given(parserFactory.getParser("A")).willReturn(parserReturning(List.of(
+                setWithSeries("100", "가나시리즈", part("P-A", "긴다리")))));
+        importer.importVendorCatalog("A", DUMMY, null);
+
+        Vendor vendor = vendorRepository.findByVendorCode("A").orElseThrow();
+        VendorProduct main = productRepository.findByVendorAndProductCode(vendor, MAIN_CODE).orElseThrow();
+
+        assertThat(main.getCollectionName()).isEqualTo("가나시리즈");
+    }
+
+    /**
+     * 부속은 여러 세트가 공유한다(공유 부속 단가가 코드당 1건인 것과 같은 축).
+     * 부속 행에 시리즈를 실으면 <b>마지막으로 적재된 세트의 이름만</b> 남아 거짓이 된다.
+     */
+    @Test
+    void 시리즈명은_부속에는_실리지_않는다() {
+        given(parserFactory.getParser("A")).willReturn(parserReturning(List.of(
+                setWithSeries("100", "가나시리즈", part("P-A", "긴다리")))));
+        importer.importVendorCatalog("A", DUMMY, null);
+
+        Vendor vendor = vendorRepository.findByVendorCode("A").orElseThrow();
+        VendorProduct partProduct = productRepository.findByVendorAndProductCode(vendor, "P-A").orElseThrow();
+
+        assertThat(partProduct.getCollectionName()).isNull();
+    }
+
+    /**
+     * 시리즈명이 없는 시트(B사 전부)는 기존 값을 지우지 않는다 —
+     * {@code description}·{@code specs}와 같은 «빈 값이면 손대지 않는다» 관례다.
+     */
+    @Test
+    void 시리즈명이_없는_적재는_기존_값을_지우지_않는다() {
+        given(parserFactory.getParser("A")).willReturn(parserReturning(List.of(
+                setWithSeries("100", "가나시리즈", part("P-A", "긴다리")))));
+        importer.importVendorCatalog("A", DUMMY, null);
+
+        // 두 번째 적재는 시리즈명 없이 온다
+        given(parserFactory.getParser("A")).willReturn(parserReturning(List.of(
+                set("100", part("P-A", "긴다리")))));
+        importer.importVendorCatalog("A", DUMMY, null);
+
+        Vendor vendor = vendorRepository.findByVendorCode("A").orElseThrow();
+        VendorProduct main = productRepository.findByVendorAndProductCode(vendor, MAIN_CODE).orElseThrow();
+
+        assertThat(main.getCollectionName()).isEqualTo("가나시리즈");
     }
 }

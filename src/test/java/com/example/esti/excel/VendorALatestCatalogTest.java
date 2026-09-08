@@ -9,10 +9,12 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.example.esti.support.TestSamples.requireSample;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -220,5 +222,66 @@ class VendorALatestCatalogTest {
         assertEquals(956, sets.size(), "세트 수");
         assertEquals(1891, items, "품목 총계 = 원본 데이터 행 수");
         assertEquals(7, review, "합계≠부속합산으로 검수 필요한 세트");
+    }
+
+    /* ===================== 세트(시리즈)명 보존 ===================== */
+
+    /**
+     * 원본은 <b>대분류 / 소분류 / 세트명</b> 세 층인데 열은 B·C 둘뿐이라 C가 두 층을 겸한다
+     * (분석서 §4). C 라벨 전용행은 소분류, <b>데이터 행에 얹힌 C값</b>은 세트명이다.
+     * 그 세 번째 층을 여기서 지킨다 — 예전에는 파서가 버렸다.
+     */
+    @Test
+    void 데이터_행에_얹힌_C값이_시리즈명으로_남는다() {
+        List<VendorProductSet> sets = parseLatest();
+
+        long withSeries = sets.stream().filter(s -> s.seriesName() != null).count();
+
+        // 대부분의 세트가 시리즈 구간 안에 있다. 정확한 수는 판본을 타므로 하한만 못박는다.
+        assertTrue(withSeries > sets.size() * 0.9,
+                "시리즈명이 붙은 세트가 너무 적다: " + withSeries + "/" + sets.size());
+    }
+
+    /**
+     * <b>이 기능의 존재 이유</b> — 세면수전 구간은 816행 동안 C 라벨 전용행이 하나도 없어
+     * 소분류가 하나뿐이다. 실질 구분은 C열 시리즈명인데 그걸 버리면 수백 건이 한 덩어리로 뭉친다.
+     * 시리즈명을 살리면 그 안이 갈린다.
+     */
+    @Test
+    void 소분류가_하나뿐인_구간도_시리즈로_갈린다() {
+        List<VendorProductSet> sets = parseLatest();
+
+        Set<String> seriesInFaucet = sets.stream()
+                .filter(s -> "세면수전".equals(s.categorySmall()))
+                .map(VendorProductSet::seriesName)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        assertTrue(seriesInFaucet.size() > 10,
+                "세면수전이 시리즈로 갈리지 않는다: " + seriesInFaucet.size() + "종");
+    }
+
+    /**
+     * 액세서리·발코니수전 구간에는 <b>소분류 라벨이 아예 없다</b>(분석서 §4-4).
+     * 그 구간 C값은 전부 시리즈명이라, 여기가 비면 분류 정보가 대분류 하나로 줄어든다.
+     */
+    @Test
+    void 소분류_라벨이_없는_구간에서도_시리즈명이_채워진다() {
+        List<VendorProductSet> sets = parseLatest();
+
+        for (String large : List.of("액세서리", "발코니수전")) {
+            long filled = sets.stream()
+                    .filter(s -> large.equals(s.categoryLarge()))
+                    .filter(s -> s.seriesName() != null)
+                    .count();
+            assertTrue(filled > 0, large + " 구간에 시리즈명이 하나도 없다");
+        }
+    }
+
+    /** 빈 칸은 null 한 가지로 둔다 — «값이 없다»가 두 모양이면 읽는 쪽이 둘 다 알아야 한다. */
+    @Test
+    void 시리즈명은_빈_문자열로_남지_않는다() {
+        assertTrue(parseLatest().stream().noneMatch(s -> s.seriesName() != null && s.seriesName().isBlank()),
+                "빈 문자열 시리즈명이 있다");
     }
 }
