@@ -114,7 +114,7 @@ class ProposalCardExcelWriterTest {
         assertThat(text(sheet, top + 4, label)).isEqualTo("금액");
         assertThat(numeric(sheet, top + 4, value)).isEqualByComparingTo("152000");
         assertThat(text(sheet, top + 5, label)).isEqualTo("업체");
-        assertThat(text(sheet, top + 5, value)).isEqualTo("이누스 주식회사");
+        assertThat(text(sheet, top + 5, value)).isEqualTo("가나위생 주식회사");
 
         // 원산지는 라벨만 남기고 값은 비운다 (O-1 — 자리 유지 + 공란)
         assertThat(text(sheet, top + 6, label)).isEqualTo("원산지");
@@ -224,7 +224,7 @@ class ProposalCardExcelWriterTest {
     private List<ProposalLine> sampleLines() {
         List<ProposalLine> lines = new ArrayList<>();
         lines.add(line("공용욕실", "양변기", "IC702E", "투피스양변기", 152_000, 1, false,
-                "이누스 주식회사", "앵글밸브포함"));                       // 1열
+                "가나위생 주식회사", "앵글밸브포함"));                       // 1열
         lines.add(line("욕실 공통", "세면기", "L631E", "반다리세면기", 69_000, 2, false));   // 1열
         lines.add(line("주방", "씽크수전", "G-0820", "씽크수전", 57_000, 1, false));         // 2열
         lines.add(line("욕실1", "비데", "IST-N52E", "비데", 143_000, 1, true));             // 3열 (유상옵션)
@@ -234,7 +234,7 @@ class ProposalCardExcelWriterTest {
 
     private ProposalLine line(String area, String category, String code, String categorySmall,
                               int unitPrice, int qty, boolean optional) {
-        return line(area, category, code, categorySmall, unitPrice, qty, optional, "이누스 주식회사", "");
+        return line(area, category, code, categorySmall, unitPrice, qty, optional, "가나위생 주식회사", "");
     }
 
     private ProposalLine line(String area, String category, String code, String categorySmall,
