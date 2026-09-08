@@ -46,7 +46,7 @@ class VendorB2026UrinalSinkSheetTest {
 
         assertEquals("소변기", byCode(sets, "U136").categoryLarge());
         assertEquals("수채", byCode(sets, "S131E").categoryLarge(), "'■ 소제싱크' 아래는 수채");
-        assertEquals(8, sets.stream().filter(s -> "소변기".equals(s.categoryLarge())).count());
+        assertEquals(18, sets.stream().filter(s -> "소변기".equals(s.categoryLarge())).count());
         assertEquals(3, sets.stream().filter(s -> "수채".equals(s.categoryLarge())).count());
     }
 
@@ -87,11 +87,15 @@ class VendorB2026UrinalSinkSheetTest {
     void 전체_회귀_기준값() {
         List<VendorProductSet> sets = parse();
 
-        assertEquals(11, sets.size(), "소변기 8 + 수채 3");
-        assertEquals(47, sets.stream().mapToInt(s -> s.parts().size()).sum(), "구성행 수");
-        assertTrue(sets.stream().allMatch(s -> s.imageKey() != null));
+        assertEquals(21, sets.size(), "소변기 18(기본 8 + 독립 옵션 10) + 수채 3");
+        assertEquals(47, sets.stream().mapToInt(s -> s.parts().size()).sum(),
+                "구성행 수 — 이 시트의 N~P는 좌측과 계열이 안 맞아 전부 독립으로 나간다");
+        // 독립 옵션 제품은 좌측 앵커가 없어 이미지 키가 없다 — 세트에 대해서만 본다.
+        assertTrue(sets.stream().filter(s -> !s.parts().isEmpty()).allMatch(s -> s.imageKey() != null), "이미지 매칭 키");
 
         long mismatch = sets.stream()
+                // 독립 옵션 제품은 부속이 없다 — 대조할 «구성»이 없으므로 이 검사의 대상이 아니다.
+                .filter(s -> !s.parts().isEmpty())
                 .filter(s -> s.setPrice() == null || sumOf(s).compareTo(s.setPrice()) != 0)
                 .count();
         assertEquals(0, mismatch, "구성이 확정된 시트라 計 = 구성합이 전건 성립");

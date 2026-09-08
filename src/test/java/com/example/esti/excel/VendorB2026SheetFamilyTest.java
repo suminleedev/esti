@@ -102,9 +102,9 @@ class VendorB2026SheetFamilyTest {
 
         assertEquals(Map.ofEntries(
                 Map.entry("비데, 기타", 28L),   // 양식 그대로 → 구본 경로(BIDET_ETC)
-                Map.entry("양변기", 39L),       // T1
+                Map.entry("양변기", 45L),       // T1
                 Map.entry("세면기", 56L),       // T2
-                Map.entry("소변기, 수채", 11L), // T3
+                Map.entry("소변기, 수채", 21L), // T3
                 Map.entry("액세사리류", 175L),  // T4
                 Map.entry("부속류", 124L),      // T5
                 Map.entry("수전금구류", 264L),  // T6

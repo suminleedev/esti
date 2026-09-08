@@ -24,6 +24,18 @@ public record VendorParsedItem(
     public static final String RELATION_MAIN = "MAIN";
     public static final String RELATION_ACCESSORY = "ACCESSORY";
 
+    /**
+     * <b>선택 옵션</b> — 세트에 기본 포함되지 않고 «대신 고를 수 있는» 부속.
+     *
+     * <p>B사 도기 시트의 N~P 서브테이블이 이것이다(탱크뚜껑·F/V·감지기…). 원본이 기본 구성을
+     * 왼쪽에, 선택지를 오른쪽에 나눠 적었고 <b>세트가(計)에는 왼쪽만 들어간다.</b>
+     *
+     * <p>그래서 {@code ACCESSORY}와 갈라야 한다 — 합계 대조에 넣으면 «計 ≠ 부속합»이 되어
+     * 멀쩡한 세트가 전부 오류로 뜬다. 세트 정체성({@code setHash})에도 넣지 않는다:
+     * 고를 수 있는 것이 달라졌다고 다른 세트가 되는 것은 아니다.
+     */
+    public static final String RELATION_OPTION = "OPTION";
+
     /** 기존 10-인자 호출 호환 (unit 없음). 단위 컬럼이 없는 시트는 이쪽을 그대로 쓴다. */
     public VendorParsedItem(String productCode, String productName, String oldItemCode,
                             String subItemCode, String relationType, BigDecimal unitPrice,

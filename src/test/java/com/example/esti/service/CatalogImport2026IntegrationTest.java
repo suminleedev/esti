@@ -46,7 +46,8 @@ class CatalogImport2026IntegrationTest {
         requireSample(BOOK);
 
         int sets1 = service.importVendorCatalog("B", BOOK);
-        assertThat(sets1).as("파싱된 세트/제품 수").isEqualTo(763); // §8 잔여 ⑦로 바스 중복 4건 제외
+        assertThat(sets1).as("파싱된 세트/제품 수").isEqualTo(779);
+        // §8 잔여 ⑦로 바스 중복 4건 제외. 779는 잔여 ① 해소분(독립 옵션 16건)이 더해진 값이다.
 
         long products1 = productRepository.count();
         long prices1 = priceRepository.count();
@@ -61,7 +62,7 @@ class CatalogImport2026IntegrationTest {
         // 양변기(T1) — 세로 나열형 세트
         VendorProduct toilet = productRepository.findByVendorAndProductCode(b, "IC552EF").orElseThrow();
         assertThat(relationRepository.findAllBySourceProduct(toilet))
-                .as("도기+부속 4건").hasSize(5);
+                .as("도기+부속 4건 + F/V 1등급 선택 옵션 1건(§8 잔여 ①)").hasSize(6);
 
         // 세면기(T2) — 택일 항목까지 구성으로 보존
         assertThat(productRepository.findByVendorAndProductCode(b, "IL610")).isPresent();
@@ -106,6 +107,8 @@ class CatalogImport2026IntegrationTest {
         assertThat(setPrice).isEqualByComparingTo("160500");
 
         BigDecimal partSum = relationRepository.findAllBySourceProduct(toilet).stream()
+                // 선택 옵션은 計에 안 들어간다 — 원본이 기본 구성만 합산한다(§8 잔여 ①).
+                .filter(rel -> !"OPTION".equals(rel.getRelationType()))
                 .map(rel -> priceRepository.findFirstByVendorAndVendorProduct(b, rel.getTargetProduct())
                         .map(p -> p.getUnitPrice()).orElse(BigDecimal.ZERO))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
