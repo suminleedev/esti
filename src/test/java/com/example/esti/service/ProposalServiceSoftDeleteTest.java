@@ -39,9 +39,12 @@ class ProposalServiceSoftDeleteTest {
         ProposalResponse draft = service.createDraft(req);
         Long id = draft.getId();
 
+        req.setVersion(draft.getVersion());   // 기존 건 수정 경로는 버전을 함께 보낸다 (F-026)
         service.submit(id, req);   // DRAFT → SUBMITTED
         service.delete(id);        // SUBMITTED → 소프트 삭제(deletedAt)
 
+        // 아래는 «소프트 삭제라서» 막히는지를 본다. deletedAt 검사가 버전 검사보다 앞이라
+        // req의 버전이 낡았어도 거절 사유는 여전히 «없는 제안서»다.
         assertThrows(RuntimeException.class, () -> service.send(id));
         assertThrows(RuntimeException.class, () -> service.submit(id, req));
         assertThrows(RuntimeException.class, () -> service.updateDraft(id, req));
@@ -54,6 +57,7 @@ class ProposalServiceSoftDeleteTest {
     void 삭제되지_않은_제안서는_정상_발송된다() throws Exception {
         ProposalRequest req = request("정상발송-검증현장");
         ProposalResponse draft = service.createDraft(req);
+        req.setVersion(draft.getVersion());
         service.submit(draft.getId(), req);
 
         ProposalResponse sent = service.send(draft.getId());

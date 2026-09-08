@@ -25,6 +25,23 @@ public class Proposal extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /**
+     * 낙관적 잠금 버전 (F-026).
+     *
+     * <p><b>JPA가 자동으로 올려 주지만, 그것만으로는 이 결함이 안 막힌다.</b>
+     * JPA의 검사는 «한 트랜잭션 안에서 읽은 뒤 쓰기 전까지» 바뀌었는지만 본다.
+     * 문제가 된 «탭 두 개»는 그 창을 벗어난다 — 탭 B의 트랜잭션은 이미 A가 고친 행을
+     * 읽어 오므로 그 안에서는 아무 모순이 없다.
+     *
+     * <p>그래서 <b>클라이언트가 들고 있던 버전을 함께 보내</b> 서버가 대조한다.
+     * 이 필드는 그 대조에 쓸 «세어지는 값»을 대 준다.
+     *
+     * <p>{@code @Setter}가 붙은 클래스지만 이 값은 <b>직접 세팅하지 않는다.</b> JPA가 관리한다.
+     */
+    @Version
+    @Column(name = "version")
+    private Long version;
+
     // 어떤 템플릿 기반인지 (없으면 null)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "template_id")

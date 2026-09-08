@@ -112,7 +112,10 @@ class ProposalExcelServiceTest {
 
     private Long sentProposal(ProposalRequest.Line... lines) throws Exception {
         ProposalResponse draft = proposalService.createDraft(request(lines));
-        proposalService.submit(draft.getId(), request(lines));
+        // 기존 건을 고치는 경로는 화면이 들고 있던 버전을 함께 보낸다 (F-026).
+        ProposalRequest submitReq = request(lines);
+        submitReq.setVersion(draft.getVersion());
+        proposalService.submit(draft.getId(), submitReq);
         proposalService.send(draft.getId());
         return draft.getId();
     }

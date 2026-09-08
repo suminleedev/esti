@@ -109,12 +109,14 @@ public class ProposalService {
         if (p.getStatus() != Proposal.Status.DRAFT) {
             throw new InvalidStateException("DRAFT 상태에서만 임시저장 수정 가능합니다.");
         }
+        requireCurrentVersion(p, req.getVersion());
 
         applyBasicFields(p, req);
 
         lineRepo.deleteByProposalId(id);
         saveLines(p, req);
 
+        bumpVersion(p);
         return get(id);
     }
 
@@ -126,6 +128,7 @@ public class ProposalService {
         if (p.getStatus() == Proposal.Status.SENT) {
             throw new InvalidStateException("발송 완료된 최종 견적서는 수정할 수 없습니다.");
         }
+        requireCurrentVersion(p, req.getVersion());
 
         validateForSubmit(req); // 강검증
 
@@ -137,6 +140,7 @@ public class ProposalService {
         p.setStatus(Proposal.Status.SUBMITTED);
         proposalRepo.save(p);
 
+        bumpVersion(p);
         return get(id);
     }
 
@@ -484,11 +488,57 @@ public class ProposalService {
     }
 
     /* response dto 반환 */
+    /**
+     * 화면이 들고 있던 버전이 지금 저장된 것과 같은지 본다 (F-026).
+     *
+     * <p><b>왜 클라이언트가 버전을 보내야 하나</b> — JPA의 {@code @Version} 검사만으로는
+     * 이 결함이 안 막힌다. 그 검사는 «한 트랜잭션 안에서 읽은 뒤 쓰기 전까지»만 보는데,
+     * 문제가 된 «탭 두 개»는 그 창을 벗어난다. 탭 B는 이미 A가 고친 행을 읽어 오므로
+     * B의 트랜잭션 안에서는 아무 모순이 없고, 그대로 덮어써진다.
+     *
+     * <p><b>버전이 없으면 거절한다.</b> 그냥 통과시키면 «검사가 있다»고 적어 두고
+     * 실제로는 안 하는 상태가 된다 — 이 결함이 조용했던 것과 같은 종류의 문제다.
+     */
+    private void requireCurrentVersion(Proposal p, Long clientVersion) {
+        if (clientVersion == null) {
+            throw new BadRequestException(
+                    "저장하려면 제안서 버전(version)이 필요합니다. 화면을 새로 고친 뒤 다시 시도해 주세요.");
+        }
+        if (!clientVersion.equals(p.getVersion())) {
+            throw new InvalidStateException(
+                    "다른 곳에서 이미 수정된 제안서입니다. "
+                            + "화면을 새로 고쳐 바뀐 내용을 확인한 뒤 다시 저장해 주세요.");
+        }
+    }
+
+    /**
+     * 버전을 반드시 한 칸 올리고, 올라간 값을 응답에 실을 수 있게 즉시 반영한다 (F-026).
+     *
+     * <p><b>강제 증가가 필요한 이유</b> — 이 화면의 대부분의 수정은 «줄»만 바꾼다.
+     * 그때 {@code proposal} 행 자체는 그대로라 Hibernate가 UPDATE를 내지 않고,
+     * 버전도 안 올라간다. 그러면 줄만 고치는 두 탭은 서로를 못 본다 —
+     * 정작 이 화면에서 가장 흔한 편집이 검사에서 빠지는 것이다.
+     *
+     * <p><b>{@code LockModeType.OPTIMISTIC_FORCE_INCREMENT}는 쓰지 않는다.</b>
+     * 그쪽 증가는 «커밋 직전»에 일어나서, 바로 뒤 {@code get()}이 읽는 값은 여전히 옛 버전이다.
+     * 응답에 옛 버전이 실리면 화면이 그걸 들고 다음 저장을 하다 <b>헛충돌</b>이 난다.
+     * 처음에 그렇게 짰다가 «줄만 바꿔도 버전이 오른다» 테스트에서 걸렸다.
+     *
+     * <p>{@code saveAndFlush}는 올라간 버전을 바로 뒤 {@code get()}이 읽게 하려는 것이다.
+     */
+    private void bumpVersion(Proposal p) {
+        // «만졌다»는 사실을 updatedAt에 남겨 UPDATE를 확정한다.
+        // @PreUpdate는 UPDATE가 이미 예약된 뒤에야 돌므로 여기서 먼저 손대야 한다.
+        p.setUpdatedAt(LocalDateTime.now());
+        proposalRepo.saveAndFlush(p);
+    }
+
     private ProposalResponse toResponse(Proposal p) {
 
         ProposalResponse res = new ProposalResponse();
 
         res.setId(p.getId());
+        res.setVersion(p.getVersion());
         res.setTemplateId(p.getTemplate() != null ? p.getTemplate().getId() : null);
         res.setProjectName(p.getProjectName());
         res.setManager(p.getManager());
