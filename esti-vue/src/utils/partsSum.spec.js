@@ -225,3 +225,24 @@ describe('분기 순서 — 한 입력이 여러 사유에 걸릴 때 무엇이 
     expect(partsSumStatus(0, [part('개스킷', 0)])).toMatchObject({ code: 'NO_SET_PRICE' })
   })
 })
+
+describe('sumParts — 선택 옵션 제외', () => {
+  // B사 도기 시트는 기본 구성을 왼쪽에, 고를 수 있는 것을 오른쪽(N~P)에 나눠 적는다.
+  // 세트가(計)에는 왼쪽만 들어가므로, 옵션을 더하면 멀쩡한 세트가 전부 «합계 불일치»가 된다.
+  it('OPTION은 합계에서 뺀다', () => {
+    const parts = [
+      part('도기', 100),
+      part('시트', 50),
+      { ...part('탱크뚜껑', 9999), relationType: 'OPTION' },
+    ]
+    expect(sumParts(parts)).toBe(150)
+  })
+
+  it('대소문자를 가리지 않는다', () => {
+    expect(sumParts([part('도기', 100), { ...part('옵션', 500), relationType: 'option' }])).toBe(100)
+  })
+
+  it('relationType이 없으면 종전대로 센다', () => {
+    expect(sumParts([part('도기', 100), part('시트', 50)])).toBe(150)
+  })
+})

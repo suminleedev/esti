@@ -27,9 +27,21 @@ function qtyOf(part) {
   return q != null && q >= 1 ? Math.trunc(q) : 1
 }
 
-/** 부속 금액 합. 단가 미상(null)은 0으로 보고, 수량을 곱한다. */
+/** 선택 옵션인가 — 세트에 기본 포함되지 않고 «대신 고를 수 있는» 부속(B사 도기 N~P 서브테이블). */
+function isOption(part) {
+  return (part.relationType ?? '').toUpperCase() === 'OPTION'
+}
+
+/**
+ * 부속 금액 합. 단가 미상(null)은 0으로 보고, 수량을 곱한다.
+ *
+ * 선택 옵션은 빼고 센다 — 원본 세트가(計)가 기본 구성만 합산하므로,
+ * 옵션을 더하면 멀쩡한 세트가 전부 «합계 불일치»로 뜬다.
+ */
 export function sumParts(parts) {
-  return (parts ?? []).reduce((sum, part) => sum + (toNum(part.unitPrice) ?? 0) * qtyOf(part), 0)
+  return (parts ?? [])
+    .filter((part) => !isOption(part))
+    .reduce((sum, part) => sum + (toNum(part.unitPrice) ?? 0) * qtyOf(part), 0)
 }
 
 /** 본품 성격의 부속 건수 — MAIN 슬롯 또는 몸체/도기 계열. */

@@ -32,7 +32,10 @@ class VendorB2026FullBookTest {
     }
 
     private BigDecimal sumOf(VendorProductSet s) {
-        return s.parts().stream().map(VendorParsedItem::unitPrice)
+        return s.parts().stream()
+                // 선택 옵션은 計에 안 들어간다 — 원본이 기본 구성만 합산한다(RELATION_OPTION).
+                .filter(p -> !VendorParsedItem.RELATION_OPTION.equals(p.relationType()))
+                .map(VendorParsedItem::unitPrice)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
@@ -40,8 +43,8 @@ class VendorB2026FullBookTest {
     void 전체_적재량_회귀_기준값() {
         List<VendorProductSet> sets = parse();
 
-        assertEquals(763, sets.size(), "전체 세트/제품 수");
-        assertEquals(449, sets.stream().mapToInt(s -> s.parts().size()).sum(), "구성행 수");
+        assertEquals(779, sets.size(), "전체 세트/제품 수");
+        assertEquals(472, sets.stream().mapToInt(s -> s.parts().size()).sum(), "구성행 수");
         assertEquals(28, sets.stream()
                 .filter(s -> s.main().productName().contains("(가격없음)")).count(), "D8 표기");
     }
@@ -51,8 +54,11 @@ class VendorB2026FullBookTest {
         Map<String, Long> byCat = parse().stream().collect(Collectors.groupingBy(
                 VendorProductSet::categoryLarge, TreeMap::new, Collectors.counting()));
 
+        // 양변기 39→35 / 세면기 56→58 / 소변기 8→10 — 양변기 시트의 «유아용» 구간에서
+        // 세면기 2·소변기 2가 제 대분류로 옮겨 갔다. 품종 축에 «용도» 라벨이 섞여 있어
+        // 시트명을 그대로 대분류로 주면 넷이 양변기로 묶였다(VendorBExcelParser.resolveDogiCategory).
         assertEquals(new TreeMap<>(Map.of(
-                "양변기", 39L, "세면기", 56L, "소변기", 8L, "수채", 3L,
+                "양변기", 41L, "세면기", 58L, "소변기", 20L, "수채", 3L,
                 "비데", 6L, "기타", 22L,
                 "수전금구", 264L, "수전부속", 124L, "악세사리", 175L, "바스", 66L
         )), byCat);

@@ -625,6 +625,35 @@ public class VendorBExcelParser implements VendorExcelParser {
                 setPrice, false, imageKeyOf(r), false));
     }
 
+
+    /**
+     * 도기 3시트 대분류 보정 — <b>품종 축에 «용도» 라벨이 섞여 있는 구간</b>을 바로잡는다.
+     *
+     * <p>양변기 시트 B열(품종)은 {@code 원피스·비데일체형·오토플러싱·화변기·BOX}처럼
+     * 전부 양변기의 하위 품종인데 <b>{@code 유아용}만 «용도»다.</b> 그 구간에는 유아용
+     * 양변기·세면기·소변기가 함께 들어 있어, 시트명을 그대로 대분류로 주면
+     * <b>유아용 세면기·소변기가 양변기로 분류된다.</b> 실측 4세트가 그랬다.
+     *
+     * <p>가르는 축은 <b>품번 접두</b>다 — {@code C}=양변기, {@code L}=세면기(Lavatory),
+     * {@code U}=소변기(Urinal). 부속 구성도 이와 일치한다(자폐수전·자동폽업·아이트랩은 세면기 부속).
+     *
+     * <p><b>최신본 도기 3시트({@link #flushDogiV2})에서만, 접두가 셋 중 하나일 때만 손댄다.</b>
+     * 구본 리더는 건드리지 않는다 — 이 «용도 라벨» 구간은 최신본 양식의 것이다. 실측상 그 밖은 전부 무효과다 —
+     * 세면기 시트에는 {@code C}·{@code U} 접두가 0건, 소변기·수채 시트에는 {@code C}·{@code L}이 0건이고,
+     * 세 시트를 통틀어 가장 많은 {@code I} 접두는 여러 대분류에 걸쳐 있어 <b>판별에 쓰지 않는다.</b>
+     *
+     * @return 접두가 말하는 대분류. 판단할 수 없으면 {@code sheetCategory} 그대로
+     */
+    private static String resolveDogiCategory(String sheetCategory, String repCode) {
+        if (repCode == null || repCode.isBlank()) return sheetCategory;
+        switch (Character.toUpperCase(repCode.charAt(0))) {
+            case 'C': return "양변기";
+            case 'L': return "세면기";
+            case 'U': return "소변기";
+            default:  return sheetCategory;
+        }
+    }
+
     /** 부속 슬롯 값이 코드 패턴인지(한글 설명 텍스트가 아닌지). B사 부속코드는 영숫자뿐이라 한글이 있으면 코드가 아니다. */
     private boolean isCodeLike(String s) {
         if (s == null) return false;
@@ -1699,6 +1728,7 @@ public class VendorBExcelParser implements VendorExcelParser {
 
         DogiV2Set cur = null;
         String lastKind = null;
+        String optionName = null;   // N~P 서브테이블의 «직전 품명»(변형이 여러 줄 이어진다)
         int catIdx = 0;
         String category = rules.categories().isEmpty() ? c.sheetName : rules.categories().get(0);
         for (int r = headerRow + 2; r <= last; r++) {   // 헤더는 2행짜리
@@ -1720,7 +1750,13 @@ public class VendorBExcelParser implements VendorExcelParser {
 
             String item = blankOrDash(str(c, r, cols.itemCol()));      // C=품목
             String name = blankOrDash(str(c, r, cols.nameCol()));      // E=품명
-            if (name == null) { cur = flushDogiV2(c, out, cur, rules); continue; }  // 빈 행 → 세트 종료
+            if (name == null) {                                        // 빈 행 → 세트 종료
+                cur = flushDogiV2(c, out, cur, rules);
+                // 세트가 닫혀도 이 행에 옵션이 있을 수 있다. 소변기·수채의 감지기 목록이 그렇고,
+                // 그것들은 열린 세트가 없으므로 독립 부속으로 나간다.
+                optionName = readDogiV2Option(c, cols, r, null, out, category, optionName);
+                continue;
+            }
 
             if (item != null) {                                        // 세트 시작
                 cur = flushDogiV2(c, out, cur, rules);
@@ -1730,8 +1766,13 @@ public class VendorBExcelParser implements VendorExcelParser {
             }
             // 세트 밖의 잔여 행 — 세면기 142행 아래 '품명/제품코드/단가' 부록표가 여기 걸린다.
             // C(품목)가 없어 세트로 시작되지 않고, 직전 세트는 빈 행에서 이미 닫혔다.
-            if (cur == null) continue;
+            if (cur == null) {
+                optionName = readDogiV2Option(c, cols, r, null, out, category, optionName);
+                continue;
+            }
             addDogiV2Row(c, cols, r, name, cur);
+            // 좌측을 처리한 «뒤»에 읽는다 — 세트가 이 행에서 시작하면 그 세트의 옵션이다.
+            optionName = readDogiV2Option(c, cols, r, cur, out, category, optionName);
         }
         flushDogiV2(c, out, cur, rules);
     }
@@ -1830,7 +1871,8 @@ public class VendorBExcelParser implements VendorExcelParser {
         // 대분류가 시트명과 다를 수 있다(소변기,수채 → 소변기 / 수채). 이미지 매칭 키는 시트명이라
         // 10-인자 생성자로 시트명을 따로 넘긴다(§13 sheetName 분리) — 안 그러면 수채 3건의 이미지가 끊긴다.
         // 이로써 V2 도기 3시트는 priceBasis도 시트명이 된다(가격 분리 기준 = 시트, 일관).
-        out.add(new VendorProductSet("B", set.categoryLarge, set.kind, main, set.rows,
+        out.add(new VendorProductSet("B", resolveDogiCategory(set.categoryLarge, set.repCode),
+                set.kind, main, set.rows,
                 set.setPrice, false, imageKeyOf(set.startRow), false, c.sheetName));
         return null;
     }
@@ -1900,8 +1942,116 @@ public class VendorBExcelParser implements VendorExcelParser {
             else if (h.equals("담수") && waterCol < 0) waterCol = col;  // 세면기 전용(규격 병합의 둘째 칸)
         }
         if (codeCol < 0 || priceCol < 0 || totalCol < 0 || itemCol < 0 || nameCol < 0) return null;
+
+        // N~P 서브테이블은 «품명 | 제품코드 | 단가»가 붙어 있다. 제품코드 위치를 이미 찾았으므로
+        // 좌우 한 칸씩 보되, 헤더 글자가 맞을 때만 인정한다 — 모양만으로 잡으면 다른 시트의
+        // «코드|단가» 비교 메모가 딸려 들어온다(부속류 시트에서 실제로 그럴 뻔했다).
+        int subNameCol = -1, subPriceCol = -1;
+        if (subCodeCol > 0) {
+            if ("품명".equals(noSpace(str(c, headerRow + 1, subCodeCol - 1)))) subNameCol = subCodeCol - 1;
+            if ("단가".equals(noSpace(str(c, headerRow + 1, subCodeCol + 1)))) subPriceCol = subCodeCol + 1;
+        }
         return new DogiV2Cols(0, kindCol, itemCol, ksCol, nameCol, codeCol, altCodeCol, subCodeCol,
-                priceCol, totalCol, specCol, waterCol, noteCol);
+                priceCol, totalCol, specCol, waterCol, noteCol, subNameCol, subPriceCol);
+    }
+
+
+
+    /**
+     * 이 선택 옵션이 «지금 열린 세트»의 것인가.
+     *
+     * <p>행 정렬만으로는 갈리지 않는다 — 양변기 시트 첫머리의 F/V 6건은 {@code IC552EF} 구간에
+     * 놓여 있지만 코드 계열이 전혀 다르다(302·502·702 vs 552). 그건 그 세트의 옵션이 아니라
+     * <b>시트 공통 선택지</b>다. 반대로 탱크뚜껑은 19건 중 18건이 대표품목과 코드 계열이 맞는다.
+     *
+     * <p>그래서 «행 정렬 + 코드 계열»을 함께 본다. 계열은 두 갈래로 인정한다.
+     * <ul>
+     *   <li><b>대표품목과 숫자 줄기가 같다</b> — {@code IC702E} ↔ 뚜껑 {@code …702…}</li>
+     *   <li><b>이 세트의 부속과 긴 접두를 공유한다</b> — {@code U352E}의 감지기 {@code 43yjk0350b}와
+     *       옵션 {@code 43yjk0350e}는 같은 부품의 배터리형/전자식 변형이다</li>
+     * </ul>
+     */
+    private static boolean optionBelongsTo(DogiV2Set set, String optionCode) {
+        if (set == null || optionCode == null) return false;
+
+        String stem = numericStem(set.repCode);
+        if (!stem.isEmpty() && optionCode.contains(stem)) return true;
+
+        for (VendorParsedItem part : set.rows) {
+            String pc = part.productCode();
+            if (pc == null) continue;
+            int slash = pc.indexOf('_');            // 부속 코드는 «대표품번_전산코드» 꼴로 담긴다
+            String bare = slash >= 0 ? pc.substring(slash + 1) : pc;
+            if (sharedPrefixLength(bare, optionCode) >= OPTION_KIN_PREFIX) return true;
+        }
+        return false;
+    }
+
+    /** 옵션이 «같은 부품의 변형»으로 인정되는 최소 공유 접두 길이. 배터리형/전자식처럼 끝 글자만 갈린다. */
+    private static final int OPTION_KIN_PREFIX = 8;
+
+    /** 코드에서 마지막 3~4자리 연속 숫자 — 제품 계열을 가리키는 줄기. */
+    private static String numericStem(String code) {
+        if (code == null) return "";
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{3,4})").matcher(code);
+        String last = "";
+        while (m.find()) last = m.group(1);
+        return last;
+    }
+
+    private static int sharedPrefixLength(String a, String b) {
+        if (a == null || b == null) return 0;
+        String x = a.toLowerCase(), y = b.toLowerCase();
+        int n = Math.min(x.length(), y.length()), i = 0;
+        while (i < n && x.charAt(i) == y.charAt(i)) i++;
+        return i;
+    }
+
+    /**
+     * N~P 선택 옵션 한 행을 읽어 붙인다 (§8 잔여 ① 해소).
+     *
+     * <p><b>소속은 «그 행에 열려 있는 세트»가 정한다.</b> 원본이 옵션을 해당 세트 구간에
+     * 나란히 적어 놓았기 때문이다 — 실측에서 탱크뚜껑 19건 중 18건이 좌측 대표품목과
+     * 코드·행 위치가 함께 맞았다(계획서가 «행이 정렬되지 않는다»고 본 것은 사실과 달랐다).
+     *
+     * <p>열린 세트가 없으면 <b>독립 부속 제품</b>으로 낸다. 소변기·수채 시트의 감지기 목록이
+     * 그렇다 — 좌측 어느 세트에도 붙지 않고 코드도 대응하지 않는다.
+     *
+     * <p>품명은 <b>이어받는다.</b> 같은 품명의 변형이 여러 줄 이어질 때 첫 줄에만 이름이 있다.
+     *
+     * @return 갱신된 «직전 품명»
+     */
+    private String readDogiV2Option(Ctx c, DogiV2Cols cols, int r, DogiV2Set cur,
+                                    List<VendorProductSet> out, String category, String carriedName) {
+        if (!cols.hasOptionTable()) return carriedName;
+
+        String name = blankOrDash(str(c, r, cols.subNameCol()));
+        if (name != null && !"품명".equals(noSpace(name)) && !"부속".equals(noSpace(name))) {
+            carriedName = stripSpace(name);
+        }
+        String code = normalizeCode(str(c, r, cols.subCodeCol()));
+        BigDecimal price = dec(c, r, cols.subPriceCol());
+        if (code == null || price == null) return carriedName;   // 헤더·빈칸·«-» 는 항목이 아니다
+
+        // 비고(Q)는 이 행에 옵션이 있으면 «옵션» 설명이다 — 종전에는 좌측에 잘못 붙는 것을 피하려
+        // 통째로 버렸다. 이제 제 주인이 생겼으므로 옵션에 싣는다.
+        DogiV2Note note = splitDogiV2Note(cols.noteCol() >= 0 ? str(c, r, cols.noteCol()) : null, false);
+
+        String label = carriedName == null ? "선택 옵션" : carriedName;
+
+        if (optionBelongsTo(cur, code)) {
+            cur.rows.add(new VendorParsedItem(partCode(cur.repCode, code), label, null, null,
+                    VendorParsedItem.RELATION_OPTION, price, note.remark(), note.description()));
+            // partSum에는 더하지 않는다 — 원본 計가 기본 구성만 센다.
+            return carriedName;
+        }
+
+        // 열린 세트가 없거나, 있어도 그 세트의 계열이 아니다 → 독립 부속 제품 1건
+        VendorParsedItem single = new VendorParsedItem(code, label, null, null,
+                VendorParsedItem.RELATION_MAIN, price, note.remark(), note.description());
+        out.add(new VendorProductSet("B", category, label, single, new ArrayList<>(),
+                price, false, null, false, c.sheetName));
+        return carriedName;
     }
 
     /** 이 행이 N~P 부속 서브테이블에 항목을 갖고 있는가(= 비고가 그쪽 설명일 수 있는가). */
@@ -1946,7 +2096,11 @@ public class VendorBExcelParser implements VendorExcelParser {
     /** 최신본 도기 시트의 컬럼 위치(헤더에서 읽는다). 없는 컬럼은 -1. */
     private record DogiV2Cols(int divCol, int kindCol, int itemCol, int ksCol, int nameCol,
                               int codeCol, int altCodeCol, int subCodeCol, int priceCol, int totalCol,
-                              int specCol, int waterCol, int noteCol) {}
+                              int specCol, int waterCol, int noteCol,
+                              int subNameCol, int subPriceCol) {
+        /** N~P 선택 옵션 서브테이블을 읽을 수 있는가(품명·제품코드·단가 셋이 다 잡혔는가). */
+        boolean hasOptionTable() { return subNameCol >= 0 && subCodeCol >= 0 && subPriceCol >= 0; }
+    }
 
     /** 조립 중인 세트 1건(대표품목 + 부속 행들). */
     private static final class DogiV2Set {
