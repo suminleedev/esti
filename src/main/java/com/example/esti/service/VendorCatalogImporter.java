@@ -121,10 +121,6 @@ public class VendorCatalogImporter {
         int total = Math.max(sets.size(), 1);
         if (jobId != null) progressStore.update(jobId, 35, "DB 저장 시작");
 
-        // 이번 실행에서 낡은 것을 이미 걷어낸 (대표품목, priceBasis). 같은 짝이 여러 세트에 걸릴 수 있으므로
-        // "처음 만났을 때 한 번만" 지운다 — 매번 지우면 방금 넣은 앞 세트를 스스로 지운다. (G-1 / Task 3)
-        Set<String> purged = new HashSet<>();
-
         // 이번 실행이 실제로 넣거나 갱신한 대표품목 가격행. 루프가 끝나면 "이 집합에 없는 것"이
         // 최신본에서 사라진 행이다(S2). 부속(PART)은 담지 않는다 — 공유 자원이라 정리 대상이 아니다.
         Set<Long> touched = new HashSet<>();
@@ -137,7 +133,7 @@ public class VendorCatalogImporter {
         int created = 0;
         int updated = 0;
         for (VendorProductSet set : sets) {
-            boolean mainCreated = saveSet(vendor, set, images, purged, touched, claimed);
+            boolean mainCreated = saveSet(vendor, set, images, touched, claimed);
             // 대표품목(세트) 단위 집계 — main 있는 세트만 카운트(빈 세트는 saveSet에서 null 처리)
             if (set.main() != null) {
                 if (mainCreated) created++; else updated++;
@@ -162,8 +158,13 @@ public class VendorCatalogImporter {
      * 최신본에서 <b>사라진</b> 대표품목 가격행과, 그 결과 남겨진 제품을 걷어낸다(S1·S3~S6).
      *
      * <p>임포트는 upsert라 갱신만 하고 삭제를 하지 않는다. 파일에서 빠진 행은 DB에 그대로 남아
-     * 카탈로그에 현재 데이터인 얼굴로 선다. {@link #purgeStaleSetRows}는 <b>이번 파일에 여전히
-     * 등장하는 제품</b>만 훑으므로 여기까지 닿지 않는다.
+     * 카탈로그에 현재 데이터인 얼굴로 선다.
+     *
+     * <p><b>구성이 바뀐 세트의 옛 행도 여기서 걷힌다</b>(F-007). 세트 정체성이 {@code setHash}라
+     * 구성이 달라지면 옛 해시 행은 {@code touched}에 들지 않고, 그대로 «사라진 행»으로 잡힌다.
+     * 예전에는 적재 <b>전에</b> 그 제품·basis의 SET 행을 통째로 지우고 다시 넣었는데,
+     * 그러면 내용이 같은 행까지 새 ID를 받아 <b>가격행 ID를 경로로 쓰는 수정·삭제 API가
+     * 죽은 ID를 가리켰다.</b> 지울 자리를 여기 하나로 모아 ID를 지킨다.
      *
      * <p><b>범위는 이번 업로드가 실제로 산출한 basis뿐이다.</b> 한 공급사를 여러 파일로 나눠 올리므로
      * 전체를 기준으로 지우면 이번에 올리지 않은 파일의 제품이 통째로 날아간다.
@@ -241,7 +242,7 @@ public class VendorCatalogImporter {
      */
     private boolean saveSet(Vendor vendor, VendorProductSet set,
                             Map<String, Map<Integer, ExtractedImage>> images,
-                            Set<String> purged, Set<Long> touched, Set<Long> claimed) {
+                            Set<Long> touched, Set<Long> claimed) {
         VendorParsedItem mainItem = set.main();
         if (mainItem == null) return false;
 
@@ -251,10 +252,6 @@ public class VendorCatalogImporter {
                 set.categoryLarge(), set.categorySmall(), ITEM_TYPE_SET, mainItem.description(), mainItem.specs(),
                 mainItem.unit(), set.seriesName(), claimed);
         VendorProduct mainProduct = mainRes.product();
-
-        // 이 (제품, priceBasis)의 낡은 대표품목 가격행·관계를 처음 만났을 때 한 번만 걷어낸다.
-        // 임포터에 delete가 없어 세트 구성이 바뀌면 낡은 부속 연결이 남는다(Task 3).
-        purgeStaleSetRows(vendor, mainProduct, set.priceBasis(), purged);
 
         // 임베디드 이미지 연결 (D15) — 대표품목 행에 앵커된 그림
         applyImage(mainProduct, set, images);
@@ -344,27 +341,6 @@ public class VendorCatalogImporter {
         return ownPrice.compareTo(setPrice) == 0 ? null : ownPrice;
     }
 
-    private void purgeStaleSetRows(Vendor vendor, VendorProduct mainProduct,
-                                   String priceBasis, Set<String> purged) {
-        if (mainProduct.getId() == null || priceBasis == null) return;
-        if (!purged.add(mainProduct.getId() + "\u0000" + priceBasis)) return;
-
-        List<VendorItemPrice> stale = vendorItemPriceRepository
-                .findAllByVendorAndVendorProductAndPriceTypeAndPriceBasis(
-                        vendor, mainProduct, ITEM_TYPE_SET, priceBasis);
-
-        // 그 가격행들이 가리키던 세트의 관계만 지운다. 다른 basis(=다른 파일)의 세트는 그대로 둔다.
-        stale.stream()
-                .map(VendorItemPrice::getSetHash)
-                .filter(java.util.Objects::nonNull)
-                .distinct()
-                .forEach(h -> vendorProductRelationRepository.deleteAllBySourceProductAndSetHash(mainProduct, h));
-
-        // 세트 축 도입 전에 쌓인 관계(setHash=null)는 재적재 한 번으로 정리된다.
-        vendorProductRelationRepository.deleteAllBySourceProductAndSetHashIsNull(mainProduct);
-
-        if (!stale.isEmpty()) vendorItemPriceRepository.deleteAll(stale);
-    }
 
     /**
      * 부속 동일성 키 — 관계 유일키 {@code (target, relationType)}와 같은 축.
