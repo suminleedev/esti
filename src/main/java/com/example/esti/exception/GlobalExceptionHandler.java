@@ -39,6 +39,12 @@ public class GlobalExceptionHandler {
         return body(HttpStatus.CONFLICT, e.getMessage());
     }
 
+    /** 쿨다운에 걸렸다. «이미 실행 중»(409)과 달리 기다릴 일이 아니라 안 해도 되는 일이다. */
+    @ExceptionHandler(RateLimitedException.class)
+    public ResponseEntity<ErrorResponse> handleRateLimited(RateLimitedException e) {
+        return body(HttpStatus.TOO_MANY_REQUESTS, e.getMessage());
+    }
+
     @ExceptionHandler({BadRequestException.class, IllegalArgumentException.class})
     public ResponseEntity<ErrorResponse> handleBadRequest(RuntimeException e) {
         return body(HttpStatus.BAD_REQUEST, e.getMessage());

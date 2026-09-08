@@ -3,6 +3,8 @@ package com.example.esti.crawler.service;
 import com.example.esti.crawler.common.CrawledProduct;
 import com.example.esti.crawler.common.ProductImageCrawler;
 import com.example.esti.exception.InvalidStateException;
+import com.example.esti.repository.SyncRunRepository;
+import com.example.esti.service.SyncRunService;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -13,8 +15,13 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import java.util.Optional;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * 크롤러 동시 실행 잠금 (C-1).
@@ -86,7 +93,11 @@ class ProductImageSyncLockTest {
         List<ManufacturerProductSyncHandler> hs = cs.stream()
                 .map(c -> (ManufacturerProductSyncHandler) new NoopHandler(c.maker()))
                 .toList();
-        return new ProductImageSyncService(cs, hs);
+        // 기록은 비어 있다 — 스텁 크롤러의 cooldownMinutes()는 기본값 0이라 쿨다운도 걸리지 않는다.
+        // 이 클래스가 보는 것은 잠금뿐이고, 쿨다운은 ProductImageSyncCooldownTest가 본다.
+        SyncRunRepository repo = mock(SyncRunRepository.class);
+        when(repo.findByRunTypeAndRunKey(any(), any())).thenReturn(Optional.empty());
+        return new ProductImageSyncService(cs, hs, new SyncRunService(repo));
     }
 
     /** 첫 호출을 임계구역에 붙잡아 둔 채로 검사할 일을 시킨다. */

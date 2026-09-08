@@ -1,5 +1,6 @@
 package com.example.esti.controller;
 
+import com.example.esti.crawler.service.CrawlerRunStatus;
 import com.example.esti.crawler.service.ImageSyncReport;
 import com.example.esti.crawler.service.ProductImageSyncService;
 import lombok.RequiredArgsConstructor;
@@ -27,8 +28,21 @@ public class CrawlerAdminController {
     @PostMapping("/{maker}/images")
     public ResponseEntity<ImageSyncReport> syncImages(
             @PathVariable String maker,
-            @RequestParam(defaultValue = "false") boolean dryRun
+            @RequestParam(defaultValue = "false") boolean dryRun,
+            @RequestParam(defaultValue = "false") boolean force
     ) throws Exception {
-        return ResponseEntity.ok(productImageSyncService.syncByMaker(maker.toUpperCase(), dryRun));
+        return ResponseEntity.ok(productImageSyncService.syncByMaker(maker.toUpperCase(), dryRun, force));
+    }
+
+    /**
+     * 실행 상태 (C-3).
+     * 예) GET /api/admin/crawler/{maker}/status
+     *
+     * <p>지금 돌아도 되는지(실행 중·쿨다운)와 <b>돌 필요가 있는지</b>(마지막 업로드 이후
+     * 크롤링했는가)를 함께 낸다. 막는 대신 알려 주는 자리라, 판단은 사람이 한다.
+     */
+    @GetMapping("/{maker}/status")
+    public ResponseEntity<CrawlerRunStatus> status(@PathVariable String maker) {
+        return ResponseEntity.ok(productImageSyncService.statusOf(maker.toUpperCase()));
     }
 }

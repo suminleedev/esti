@@ -3,14 +3,20 @@ package com.example.esti.crawler.service;
 import com.example.esti.crawler.common.CrawlResult;
 import com.example.esti.crawler.common.CrawledProduct;
 import com.example.esti.crawler.common.ProductImageCrawler;
+import com.example.esti.entity.SyncRunType;
 import com.example.esti.exception.InvalidStateException;
+import com.example.esti.exception.RateLimitedException;
+import com.example.esti.service.SyncRunService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -21,6 +27,7 @@ public class ProductImageSyncService {
 
     private final List<ProductImageCrawler> crawlers;
     private final List<ManufacturerProductSyncHandler> syncHandlers;
+    private final SyncRunService syncRunService;
 
     /**
      * 제조사별 «실행 중» 표시 (C-1).
@@ -52,6 +59,14 @@ public class ProductImageSyncService {
      *               덮어쓰기라 첫 실행이 기존 이미지를 갈아치우므로, 무엇이 바뀔지 먼저 보기 위한 것이다
      */
     public ImageSyncReport syncByMaker(String maker, boolean dryRun) throws Exception {
+        return syncByMaker(maker, dryRun, false);
+    }
+
+    /**
+     * @param force 참이면 쿨다운을 건너뛴다. <b>동시 실행 잠금은 건너뛰지 않는다</b> —
+     *              그건 «지금 안 해도 되는 일»이 아니라 «겹치면 안 되는 일»이라 강제할 대상이 아니다
+     */
+    public ImageSyncReport syncByMaker(String maker, boolean dryRun, boolean force) throws Exception {
         ProductImageCrawler crawler = crawlers.stream()
                 .filter(c -> c.maker().equalsIgnoreCase(maker))
                 .findFirst()
@@ -71,11 +86,116 @@ public class ProductImageSyncService {
         }
 
         try {
-            return runSync(maker, dryRun, crawler, handler);
+            // 쿨다운은 잠금을 잡은 뒤에 본다 — 판정이 겹치지 않도록.
+            // «이미 실행 중»이 «너무 이름»보다 먼저 나오는 것도 맞다: 앞엣것은 기다릴 일이고 뒤엣것은 아니다.
+            if (!force) requireCooldownPassed(maker, crawler.cooldownMinutes());
+
+            ImageSyncReport report = runSync(maker, dryRun, crawler, handler);
+
+            // 기록은 성공한 실행만 남긴다. 실패한 배치 때문에 다음 시도가 막히면 안 된다.
+            syncRunService.record(SyncRunType.IMAGE_CRAWL, maker, !dryRun);
+
+            return report;
         } finally {
             // 예외로 죽어도 반드시 푼다. 안 풀면 재기동 전까지 그 제조사가 잠긴 채로 남는다.
             running.remove(key);
         }
+    }
+
+    /** 마지막 실행에서 충분히 지났는지 본다. 아니면 429. */
+    private void requireCooldownPassed(String maker, int cooldownMinutes) {
+        if (cooldownMinutes <= 0) return;
+
+        Optional<LocalDateTime> last = syncRunService.lastRunAt(SyncRunType.IMAGE_CRAWL, maker);
+        if (last.isEmpty()) return;
+
+        Duration elapsed = Duration.between(last.get(), LocalDateTime.now());
+        Duration cooldown = Duration.ofMinutes(cooldownMinutes);
+        if (elapsed.compareTo(cooldown) >= 0) return;
+
+        Duration remaining = cooldown.minus(elapsed);
+        log.warn("[{}] 쿨다운에 걸려 요청을 거절했다 (남은 {}분)", maker, remaining.toMinutes());
+        throw new RateLimitedException(
+                maker + " 이미지 동기화는 " + cooldownMinutes + "분에 한 번만 돕니다. "
+                        + "약 " + (remaining.toMinutes() + 1) + "분 뒤에 다시 시도하거나, "
+                        + "지금 꼭 돌려야 하면 force=true로 요청해 주세요.");
+    }
+
+    /** 지금 도는 중인가. 상태 조회용. */
+    public boolean isRunning(String maker) {
+        return running.contains(maker.toUpperCase(Locale.ROOT));
+    }
+
+    /** 등록된 제조사의 크롤러를 찾는다. 없으면 400. */
+    public ProductImageCrawler crawlerOf(String maker) {
+        return crawlers.stream()
+                .filter(c -> c.maker().equalsIgnoreCase(maker))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("지원하지 않는 제조사 식별자: " + maker));
+    }
+
+    /**
+     * 실행 상태 (C-3). 지금 돌아도 되는지, 돌 필요가 있는지를 판단할 재료를 낸다.
+     *
+     * <p><b>모르는 것은 모른다고 답한다</b> — 기록을 시작하기 전의 업로드는 남아 있지 않아
+     * 그때는 {@code appliedSinceLastUpload}가 {@code null}이다. 「안 했음」으로 답하면
+     * 매번 «크롤링 필요»로 보여 표시 자체가 쓸모없어진다.
+     */
+    public CrawlerRunStatus statusOf(String maker) {
+        ProductImageCrawler crawler = crawlerOf(maker);
+        String name = crawler.maker();
+
+        LocalDateTime lastRun = syncRunService.lastRunAt(SyncRunType.IMAGE_CRAWL, name).orElse(null);
+        LocalDateTime lastApplied = syncRunService.lastAppliedAt(SyncRunType.IMAGE_CRAWL, name).orElse(null);
+        LocalDateTime lastUpload = syncRunService
+                .lastAppliedAt(SyncRunType.CATALOG_UPLOAD, crawler.vendorCode()).orElse(null);
+
+        Boolean appliedSinceUpload = (lastUpload == null)
+                ? null
+                : lastApplied != null && lastApplied.isAfter(lastUpload);
+
+        int cooldownMinutes = crawler.cooldownMinutes();
+        long remaining = 0;
+        if (cooldownMinutes > 0 && lastRun != null) {
+            Duration left = Duration.ofMinutes(cooldownMinutes)
+                    .minus(Duration.between(lastRun, LocalDateTime.now()));
+            remaining = Math.max(0, left.toSeconds());
+        }
+
+        boolean isRunning = isRunning(name);
+
+        return new CrawlerRunStatus(
+                name, crawler.vendorCode(), isRunning,
+                lastRun, lastApplied, lastUpload, appliedSinceUpload,
+                cooldownMinutes, remaining,
+                describeStatus(isRunning, lastRun, appliedSinceUpload, remaining));
+    }
+
+    private static String describeStatus(
+            boolean isRunning, LocalDateTime lastRun, Boolean appliedSinceUpload, long remainingSeconds) {
+
+        if (isRunning) return "지금 돌고 있다.";
+
+        StringBuilder sb = new StringBuilder();
+        if (lastRun == null) {
+            sb.append("아직 돌린 적이 없다");
+        } else if (remainingSeconds > 0) {
+            sb.append("쿨다운 중 — 약 ").append(remainingSeconds / 60 + 1).append("분 남음");
+        } else {
+            sb.append("지금 돌릴 수 있다");
+        }
+
+        // «업로드 이후 했나»는 어느 경우에도 붙인다. 한 번도 안 돌린 상태에서 조기 반환하면
+        // 정작 가장 쓸모 있는 신호(«업로드했는데 아직 안 돌렸다»)가 사라진다.
+
+        if (appliedSinceUpload == null) {
+            sb.append(" | 마지막 업로드 기록이 없어 «업로드 이후 크롤링 여부»는 알 수 없다");
+        } else if (appliedSinceUpload) {
+            sb.append(" | 마지막 업로드 이후 크롤링했다 — 다시 돌릴 이유가 없을 수 있다");
+        } else {
+            sb.append(" | 마지막 업로드 이후 크롤링하지 않았다 — 돌릴 만하다");
+        }
+        return sb.toString();
     }
 
     private ImageSyncReport runSync(
