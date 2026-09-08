@@ -683,6 +683,11 @@ const isEditMode = ref(false)
 /* ====== 서버 status ====== */
 const proposalStatus = ref('DRAFT') // 기본값
 
+// 서버가 준 제안서 버전 (F-026). 저장할 때 그대로 돌려보내면,
+// 그 사이 다른 탭이 먼저 저장했는지를 서버가 알아채고 덮어쓰기를 막는다.
+// 신규 작성에는 없다 — 아직 저장된 것이 없으니 비교할 대상도 없다.
+const proposalVersion = ref(null)
+
 const isDraft = computed(() => proposalStatus.value === 'DRAFT')
 const isSubmitted = computed(() => proposalStatus.value === 'SUBMITTED')
 const isSent = computed(() => proposalStatus.value === 'SENT')
@@ -839,6 +844,29 @@ function toNumber(value) { return Number(value ?? 0) }
  */
 function errorMessage(e, fallback) {
   return e?.response?.data?.message || fallback
+}
+
+/**
+ * 저장 실패를 다룬다. 409(다른 곳에서 이미 수정됨)만 다르게 대접한다 (F-026).
+ *
+ * 다른 실패는 «다시 누르면 될 수도» 있지만 이건 아니다 — 화면이 들고 있는 내용이
+ * 이미 낡았으므로, 새로 불러오지 않는 한 몇 번을 눌러도 같은 답이 온다.
+ * 그래서 그 자리에서 새로 고침을 제안한다. 덮어쓰기를 막는 것이 이 기능의 요지라
+ * «그래도 내 것으로 덮기»는 두지 않는다.
+ *
+ * @returns 충돌을 처리했으면 true
+ */
+async function handleSaveConflict(e) {
+  if (e?.response?.status !== 409) return false
+
+  const ok = await confirm({
+    title: '다른 곳에서 수정됐습니다',
+    message: errorMessage(e, '다른 곳에서 이미 수정된 제안서입니다.')
+      + '\n\n지금 새로 고치면 최신 내용을 불러옵니다. 방금 입력한 내용은 사라집니다.',
+    confirmLabel: '새로 고치기',
+  })
+  if (ok) await loadProposal(proposalId.value)
+  return true
 }
 
 function newUid() {
@@ -1365,6 +1393,7 @@ async function onDeleteTemplate() {
 /* ====== Proposal payload ====== */
 function buildPayload() {
   return {
+    version: proposalVersion.value,
     templateId: selectedTemplateId.value || null,
     projectName: form.projectName,
     manager: form.manager,
@@ -1427,6 +1456,7 @@ async function saveDraft () {
     if (isNew.value) {
       // 초안 신규 생성
       const res = await axios.post('/api/proposals/drafts', payload)
+      proposalVersion.value = res.data?.version ?? null
       toast.success(`임시저장되었습니다. (ID: ${res.data.id})`)
 
       // 같은 컴포넌트 재사용될 수 있어서 replace 추천
@@ -1437,11 +1467,14 @@ async function saveDraft () {
       proposalStatus.value = 'DRAFT'
     } else {
       // 이미 id가 있으면 초안 업데이트(백엔드에 맞게 PUT/PATCH)
-      await axios.put(`/api/proposals/${proposalId.value}/draft`, payload)
+      const res = await axios.put(`/api/proposals/${proposalId.value}/draft`, payload)
+      // 저장할 때마다 버전이 오른다. 안 받아 두면 다음 저장이 낡은 버전으로 가 헛충돌이 난다.
+      proposalVersion.value = res.data?.version ?? proposalVersion.value
       toast.success('임시저장되었습니다.')
       proposalStatus.value = 'DRAFT'
     }
   } catch (e) {
+    if (await handleSaveConflict(e)) return
     console.error('임시저장 실패', e)
     toast.error(errorMessage(e, '임시저장 중 오류가 발생했습니다.'))
   }
@@ -1461,6 +1494,7 @@ async function submit() {
     if (isNew.value) {
       // 신규: 생성 + 저장
       const res = await axios.post('/api/proposals/submit', payload)
+      proposalVersion.value = res.data?.version ?? null
       toast.success(`제안서가 저장되었습니다. (ID: ${res.data.id})`)
       await router.replace({ name: 'proposal-detail', params: { id: res.data.id } })
       proposalStatus.value = res.data.status || 'SUBMITTED'
@@ -1470,10 +1504,12 @@ async function submit() {
     // 기존: id 기반 제출
     const res = await axios.post(`/api/proposals/${proposalId.value}/submit`, payload)
 
+    proposalVersion.value = res.data?.version ?? proposalVersion.value
     toast.success('저장되었습니다.')
     proposalStatus.value = res.data?.status || 'SUBMITTED'
     isEditMode.value = false
   } catch (e) {
+    if (await handleSaveConflict(e)) return
     console.error('제안서 저장 실패', e)
     toast.error(errorMessage(e, '제안서 저장 중 오류가 발생했습니다.'))
   }
@@ -1489,7 +1525,9 @@ async function sendFinal() {
   if (!ok) return
 
   try {
-    await axios.post(`/api/proposals/${proposalId.value}/send`)
+    const res = await axios.post(`/api/proposals/${proposalId.value}/send`)
+    // 발송도 상태를 바꾸므로 버전이 오른다. 화면이 낡은 값을 들고 있지 않게 받아 둔다.
+    proposalVersion.value = res.data?.version ?? proposalVersion.value
     toast.success('발송 확정되었습니다.')
     proposalStatus.value = 'SENT'
   } catch (e) {
@@ -1595,6 +1633,7 @@ async function loadProposal(id) {
     isEditMode.value = false
     step.value = 0
     proposalStatus.value = p.status || 'DRAFT'
+    proposalVersion.value = p.version ?? null
   } catch (e) {
     console.error('제안서 불러오기 실패', e)
     toast.error('제안서를 불러오지 못했습니다.')

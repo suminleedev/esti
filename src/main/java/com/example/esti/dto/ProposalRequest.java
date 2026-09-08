@@ -29,6 +29,14 @@ import java.util.List;
 public class ProposalRequest {
 
     // 템플릿 기반으로 만든 경우 (없으면 null)
+    /**
+     * 화면이 들고 있던 제안서 버전 (F-026).
+     *
+     * <p>신규 작성에는 없다. <b>기존 건을 고치는 경로에서는 반드시 보낸다</b> —
+     * 없으면 서버가 «다른 곳에서 바뀌었는지»를 알 방법이 없어 마지막 쓰기가 그냥 이긴다.
+     */
+    private Long version;
+
     private Long templateId;
 
     @Size(max = 200, message = "현장명은 200자까지 입력할 수 있습니다.")

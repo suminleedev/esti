@@ -11,6 +11,10 @@ import java.util.List;
 public class ProposalResponse {
 
     private Long id;
+
+    /** 낙관적 잠금 버전 (F-026). 화면은 이 값을 들고 있다가 저장할 때 그대로 돌려보낸다. */
+    private Long version;
+
     private Long templateId;
 
     private String projectName;
