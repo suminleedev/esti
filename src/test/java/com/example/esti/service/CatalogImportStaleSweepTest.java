@@ -25,6 +25,9 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.Set;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -162,6 +165,13 @@ class CatalogImportStaleSweepTest {
         return importer.importVendorCatalog("A", buildFixture(toilets, basins), null);
     }
 
+    /** 그 basis의 대표품목 가격행 — 품번 → 가격행 ID. */
+    private Map<String, Long> setPriceIds(String basis) {
+        Vendor a = vendorRepository.findByVendorCode("A").orElseThrow();
+        return priceRepository.findAllByVendorAndPriceTypeAndPriceBasis(a, "SET", basis).stream()
+                .collect(Collectors.toMap(VendorItemPrice::getMainItemCode, VendorItemPrice::getId));
+    }
+
     /** 그 basis의 대표품목 가격행에 남아 있는 품번들. */
     private List<String> setPriceCodes(String basis) {
         Vendor a = vendorRepository.findByVendorCode("A").orElseThrow();
@@ -261,5 +271,66 @@ class CatalogImportStaleSweepTest {
     /** 합계행 — C/D/E/F 비고 G만. */
     private static void total(Sheet s, int r, double sum) {
         row(s, r).createCell(6).setCellValue(sum);
+    }
+
+    // ====== F-007: 재업로드가 가격행 ID를 갈지 않는다 ======
+
+    /**
+     * <b>F-007.</b> 같은 파일을 다시 올리면 내용이 같은데도 대표품목 가격행이
+     * 전부 삭제·재삽입돼 ID가 갈렸다.
+     *
+     * <p>기존 제안서는 안 끊긴다({@code ProposalLine.productId}가 담는 것은 제품 ID다).
+     * 끊기는 것은 <b>가격행 ID를 경로로 쓰는 카탈로그 수정·삭제 API</b>다 —
+     * 목록을 열어둔 채 업로드가 끼면 그 화면의 수정·삭제가 죽은 ID를 가리킨다.
+     */
+    @Test
+    void 같은_파일을_다시_올려도_가격행_ID가_유지된다() {
+        importAll(TOILETS, BASINS);
+        Map<String, Long> before = setPriceIds("양변기");
+
+        importAll(TOILETS, BASINS);
+
+        assertThat(setPriceIds("양변기"))
+                .as("내용이 같으면 같은 행이어야 한다")
+                .isEqualTo(before);
+    }
+
+    /** 부속 가격행은 종전에도 ID가 유지됐다. 고치면서 이쪽이 깨지지 않는지 함께 본다. */
+    @Test
+    void 재업로드해도_부속_가격행_ID가_유지된다() {
+        importAll(TOILETS, BASINS);
+        Vendor a = vendorRepository.findByVendorCode("A").orElseThrow();
+        Set<Long> before = priceRepository.findByVendor_VendorCode(a.getVendorCode()).stream()
+                .filter(p -> "PART".equals(p.getPriceType()))
+                .map(VendorItemPrice::getId)
+                .collect(Collectors.toSet());
+
+        importAll(TOILETS, BASINS);
+
+        Set<Long> after = priceRepository.findByVendor_VendorCode(a.getVendorCode()).stream()
+                .filter(p -> "PART".equals(p.getPriceType()))
+                .map(VendorItemPrice::getId)
+                .collect(Collectors.toSet());
+        assertThat(after).isEqualTo(before);
+    }
+
+    /**
+     * ID를 유지하더라도 <b>구성이 바뀐 세트의 옛 행은 남으면 안 된다.</b>
+     * 사전 삭제를 걷어낸 뒤 이 자리를 사후 정리가 받는지 확인한다.
+     */
+    @Test
+    void 세트_구성이_바뀌면_옛_가격행이_남지_않는다() {
+        importAll(TOILETS, BASINS);
+        assertThat(setPriceCodes("양변기")).containsExactlyInAnyOrder("T1", "T2", "T3");
+
+        // T1의 부속 단가를 바꾼다 → 구성이 달라져 setHash가 갈린다
+        List<SetSpec> changed = List.of(
+                new SetSpec("T1", "원피스양변기", 100, 999),
+                TOILETS.get(1), TOILETS.get(2));
+        importAll(changed, BASINS);
+
+        assertThat(setPriceCodes("양변기"))
+                .as("T1이 두 행으로 늘어나면 안 된다")
+                .containsExactlyInAnyOrder("T1", "T2", "T3");
     }
 }
