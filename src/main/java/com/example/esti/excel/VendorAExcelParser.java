@@ -76,6 +76,9 @@ public class VendorAExcelParser implements VendorExcelParser {
 
         String currentLargeCategory = null;
         String currentSmallCategory = null;
+        // C열이 «데이터 행에 얹혀» 들고 있는 세트(시리즈)명. 소분류와 같은 열이지만 층이 다르다.
+        // 세로 병합 구간은 첫 행에만 값이 있고 나머지는 빈 칸이라, 여기 담아 두면 자연히 이어진다.
+        String currentSeriesName = null;
 
         List<VendorParsedItem> buffer = new ArrayList<>(); // 합계행 전까지 누적된 품목
 
@@ -88,9 +91,10 @@ public class VendorAExcelParser implements VendorExcelParser {
             Map.Entry<Integer, String> section = sections.floorEntry(rowIdx);
             if (section != null && !section.getValue().equals(currentLargeCategory)) {
                 // 버퍼에 남은 품목은 아직 직전 구간의 것이다. 분류를 바꾸기 전에 먼저 내보낸다.
-                flushOrphans(buffer, currentLargeCategory, currentSmallCategory, result);
+                flushOrphans(buffer, currentLargeCategory, currentSmallCategory, currentSeriesName, result);
                 currentLargeCategory = section.getValue();
                 currentSmallCategory = null;
+                currentSeriesName = null;   // 대분류가 바뀌면 시리즈 맥락도 끝난다
             }
 
             // A(0)·B(1)열은 제외(D11)
@@ -117,13 +121,14 @@ public class VendorAExcelParser implements VendorExcelParser {
 
             // 2) 합계행: C/D/E/F 비고 G만 있음 → 세트 종료 + 가격 확정
             if (!cP && !dP && !eP && !fP && gP) {
-                closeSetWithTotal(buffer, colG, currentLargeCategory, currentSmallCategory, result);
+                closeSetWithTotal(buffer, colG, currentLargeCategory, currentSmallCategory, currentSeriesName, result);
                 continue;
             }
 
             // 3) C 라벨 전용 행(C만 있고 데이터 없음) = 소분류
             if (cP && !dataP) {
-                flushOrphans(buffer, currentLargeCategory, currentSmallCategory, result);
+                flushOrphans(buffer, currentLargeCategory, currentSmallCategory, currentSeriesName, result);
+                currentSeriesName = null;   // 새 소분류 구간이 열리면 직전 시리즈는 끝난다
                 String cNorm = normalizeNoSpace(colC.trim());
                 if (!sections.isEmpty()) {
                     // A-3: 대분류가 B열 구간에서 오므로 추론 성공 여부와 무관하게 소분류로 확정한다.
@@ -142,7 +147,9 @@ public class VendorAExcelParser implements VendorExcelParser {
 
             // 4) 세트 시작 행(C=세트명 + 데이터): 이전 잔여 정리 후 첫 품목으로 버퍼에 추가
             if (cP && dataP) {
-                flushOrphans(buffer, currentLargeCategory, currentSmallCategory, result);
+                // 잔여를 먼저 비운다 — 그 품목들은 «직전» 시리즈 소속이다. 순서를 바꾸면 이름이 밀린다.
+                flushOrphans(buffer, currentLargeCategory, currentSmallCategory, currentSeriesName, result);
+                currentSeriesName = colC.trim();
                 buffer.add(buildItem(colD, colE, colF, colG));
                 continue;
             }
@@ -154,13 +161,13 @@ public class VendorAExcelParser implements VendorExcelParser {
         }
 
         // EOF: 남은 잔여는 개별 제품으로
-        flushOrphans(buffer, currentLargeCategory, currentSmallCategory, result);
+        flushOrphans(buffer, currentLargeCategory, currentSmallCategory, currentSeriesName, result);
         return result;
     }
 
     /** 합계행 도달 시 세트 확정 (D16). */
     private void closeSetWithTotal(List<VendorParsedItem> buffer, BigDecimal total,
-                                   String large, String small, List<VendorProductSet> out) {
+                                   String large, String small, String series, List<VendorProductSet> out) {
         if (buffer.isEmpty()) {
             logger.warn("[VendorA] 합계행이지만 직전 품목 버퍼가 비어있음. total={}", total);
             return;
@@ -169,19 +176,19 @@ public class VendorAExcelParser implements VendorExcelParser {
         int k = findTrailingRunStart(buffer, total);
         if (k >= 0) {
             // 일치: buffer[k..]가 세트, 그 앞(orphan)은 개별 제품
-            for (int i = 0; i < k; i++) emitStandalone(buffer.get(i), large, small, out);
+            for (int i = 0; i < k; i++) emitStandalone(buffer.get(i), large, small, series, out);
 
             VendorParsedItem main = withRelation(buffer.get(k), VendorParsedItem.RELATION_MAIN);
             List<VendorParsedItem> parts = new ArrayList<>();
             for (int i = k + 1; i < buffer.size(); i++) {
                 parts.add(withRelation(buffer.get(i), VendorParsedItem.RELATION_ACCESSORY));
             }
-            out.add(newSet(large, small, main, parts, total, false));
+            out.add(newSet(large, small, series, main, parts, total, false));
         } else {
             // 불일치: 대표품목(첫 행)만 합계가로 저장 + 검수 플래그, 나머지는 개별
             VendorParsedItem main = withRelation(buffer.get(0), VendorParsedItem.RELATION_MAIN);
-            out.add(newSet(large, small, main, new ArrayList<>(), total, true));
-            for (int i = 1; i < buffer.size(); i++) emitStandalone(buffer.get(i), large, small, out);
+            out.add(newSet(large, small, series, main, new ArrayList<>(), total, true));
+            for (int i = 1; i < buffer.size(); i++) emitStandalone(buffer.get(i), large, small, series, out);
             logger.warn("[VendorA] 합계≠부속합산 → 검수필요. total={}, bufferSize={}, main={}",
                     total, buffer.size(), main.productName());
         }
@@ -206,7 +213,7 @@ public class VendorAExcelParser implements VendorExcelParser {
      *
      * <p>생성 지점이 셋(합계 일치/불일치/독립품목)이라 규칙을 각자 넣으면 어긋난다.
      */
-    private VendorProductSet newSet(String large, String small, VendorParsedItem main,
+    private VendorProductSet newSet(String large, String small, String series, VendorParsedItem main,
                                     List<VendorParsedItem> parts, BigDecimal price, boolean needsReview) {
         String resolvedLarge = large;
         String resolvedSmall = resolveSmallCategory(large, small, main);
@@ -220,8 +227,10 @@ public class VendorAExcelParser implements VendorExcelParser {
                 resolvedSmall = null;
             }
         }
+        // 시리즈명은 정규 생성자로만 넘긴다. 나머지 인자는 9-인자 호환 생성자와 같은 값이다
+        // (대분류 == 가격기준 == 시트명).
         return new VendorProductSet("A", resolvedLarge, resolvedSmall, main, parts,
-                price, false, null, needsReview);
+                price, false, null, needsReview, resolvedLarge, resolvedLarge, blankToNull(series));
     }
 
     /** 대분류 {@code 수전} — 이 구간만 소분류를 제품명에서 뽑는다(분류 후속 ①). */
@@ -301,16 +310,21 @@ public class VendorAExcelParser implements VendorExcelParser {
     }
 
     /** 버퍼의 모든 품목을 개별(독립) 제품으로 방출하고 버퍼 비움. */
-    private void flushOrphans(List<VendorParsedItem> buffer, String large, String small,
+    private void flushOrphans(List<VendorParsedItem> buffer, String large, String small, String series,
                               List<VendorProductSet> out) {
-        for (VendorParsedItem it : buffer) emitStandalone(it, large, small, out);
+        for (VendorParsedItem it : buffer) emitStandalone(it, large, small, series, out);
         buffer.clear();
     }
 
-    private void emitStandalone(VendorParsedItem it, String large, String small,
+    private void emitStandalone(VendorParsedItem it, String large, String small, String series,
                                 List<VendorProductSet> out) {
         VendorParsedItem main = withRelation(it, VendorParsedItem.RELATION_MAIN);
-        out.add(newSet(large, small, main, new ArrayList<>(), it.unitPrice(), false));
+        out.add(newSet(large, small, series, main, new ArrayList<>(), it.unitPrice(), false));
+    }
+
+    /** 빈 문자열은 null로 — «값이 없다»를 한 가지 모양으로 둔다. */
+    private static String blankToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s.trim();
     }
 
     private VendorParsedItem buildItem(String colD, String colE, String colF, BigDecimal colG) {

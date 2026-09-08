@@ -249,7 +249,7 @@ public class VendorCatalogImporter {
         UpsertResult mainRes = upsertVendorProduct(
                 vendor, mainItem.productCode(), mainItem.productName(),
                 set.categoryLarge(), set.categorySmall(), ITEM_TYPE_SET, mainItem.description(), mainItem.specs(),
-                mainItem.unit(), claimed);
+                mainItem.unit(), set.seriesName(), claimed);
         VendorProduct mainProduct = mainRes.product();
 
         // 이 (제품, priceBasis)의 낡은 대표품목 가격행·관계를 처음 만났을 때 한 번만 걷어낸다.
@@ -293,10 +293,12 @@ public class VendorCatalogImporter {
 
             // 부속 전용 소분류가 있으면 그것으로(§10 S4: 국산/OEM 출처). 없으면 세트 소분류.
             String partCategorySmall = part.categorySmall() != null ? part.categorySmall() : set.categorySmall();
+            // 시리즈명은 넘기지 않는다. 시리즈는 «세트»의 속성이고 부속은 여러 세트에 공유되므로
+            // (공유 부속 단가가 코드당 1건인 것과 같은 이유), 부속 행에 실으면 마지막 세트 이름만 남는다.
             VendorProduct partProduct = upsertVendorProduct(
                     vendor, part.productCode(), part.productName(),
                     set.categoryLarge(), partCategorySmall, ITEM_TYPE_PART, part.description(), part.specs(),
-                    part.unit(), claimed).product();
+                    part.unit(), null, claimed).product();
 
             // 공유 부속 단가는 코드당 1건 유지(D13) → priceBasis=null, setHash=null
             upsertPrice(vendor, partProduct, part, part.unitPrice(), part.remark(), ITEM_TYPE_PART,
@@ -471,7 +473,7 @@ public class VendorCatalogImporter {
     private UpsertResult upsertVendorProduct(Vendor vendor, String productCode, String productName,
                                              String categoryLarge, String categorySmall, String itemType,
                                              String description, String specs, String unit,
-                                             Set<Long> claimed) {
+                                             String seriesName, Set<Long> claimed) {
         VendorProduct product = null;
 
         // 1) 코드(품번)가 있으면 코드로만 식별 — 공급사 범위 내.
@@ -500,6 +502,9 @@ public class VendorCatalogImporter {
         product.setItemType(itemType);
         if (description != null && !description.isBlank()) product.setDescription(description);
         if (specs != null && !specs.isBlank()) product.setSpecs(specs);
+        // 시리즈명은 A사 C열에만 있는 층이라 나머지 시트는 null로 온다.
+        // 빈 값이면 손대지 않는다 — description·specs와 같은 관례다. 다른 시트의 기존 값이 지워지지 않는다.
+        if (seriesName != null && !seriesName.isBlank()) product.setCollectionName(seriesName);
         // 단위는 원본에 단위 컬럼이 있는 시트만 채워 온다(현재 B사 부속류). null이면 손대지 않아
         // 엔티티 기본값(SET)이 그대로 남는다 — 다른 시트의 기존 값이 바뀌지 않는다.
         if (unit != null && !unit.isBlank()) product.setUnit(unit);
