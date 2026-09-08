@@ -21,6 +21,9 @@ public class AstdCrawler implements ProductImageCrawler {
 
     private static final String AJAX_LIST_PATH = "/main/product/ajaxList.do";
 
+    @Value("${app.crawler.astd.cooldown-minutes}")
+    private int cooldownMinutes;
+
     @Value("${app.crawler.astd.maker}")
     private String maker;
 
@@ -52,6 +55,11 @@ public class AstdCrawler implements ProductImageCrawler {
     @Override
     public String vendorCode() {
         return vendorCode;
+    }
+
+    @Override
+    public int cooldownMinutes() {
+        return cooldownMinutes;
     }
 
     @Override

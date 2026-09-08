@@ -1,8 +1,10 @@
 package com.example.esti.service;
 
+import com.example.esti.entity.SyncRunType;
 import com.example.esti.progress.ImportProgressStore;
 import com.example.esti.service.VendorCatalogImporter.ImportResult;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -17,12 +19,14 @@ import java.nio.file.Path;
  * 예외를 삼켜 롤백 마킹이 되지 않고 부분 적재분이 커밋됐던 것이 원래 버그다.
  * 지금은 예외가 트랜잭션(=importer 프록시 호출)을 빠져나온 <b>뒤에</b> 잡히므로 롤백이 끝난 상태다.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class CatalogImportAsyncService {
 
     private final VendorCatalogImporter importer;
     private final ImportProgressStore progressStore;
+    private final SyncRunService syncRunService;
 
     @Async
     public void importVendorCatalogAsync(String jobId, String vendorCode, Path savedPath) {
@@ -35,6 +39,9 @@ public class CatalogImportAsyncService {
                     + result.created() + " · 갱신 " + result.updated()
                     + (result.removed() > 0 ? " · 정리 " + result.removed() : "") + ")";
             progressStore.done(jobId, message, result.created(), result.updated());
+            // 언제 적재했는지 남긴다 (C-3). 유추가 안 되기 때문이다 —
+            // VendorProduct.updatedAt은 크롤링도 함께 움직여 업로드와 구분되지 않는다.
+            recordUpload(vendorCode);
         } catch (Exception e) {
             // 여기 도달했을 때 적재분은 이미 롤백된 상태다(부분 적재 없음).
             progressStore.fail(jobId, "실패: " + e.getClass().getSimpleName() + " - " + e.getMessage());
@@ -50,6 +57,22 @@ public class CatalogImportAsyncService {
      * @return 적재한 세트(VendorProductSet) 수
      */
     public int importVendorCatalog(String vendorCode, Path savedPath) {
-        return importer.importVendorCatalog(vendorCode, savedPath, null).total();
+        int total = importer.importVendorCatalog(vendorCode, savedPath, null).total();
+        recordUpload(vendorCode);
+        return total;
+    }
+
+    /**
+     * 적재 시각을 남긴다.
+     *
+     * <p><b>실패해도 삼킨다.</b> 적재는 이미 끝났고 이건 «언제 했나»를 남기는 부수 기록이다.
+     * 여기서 터져 적재 성공이 실패로 뒤집히면 본말이 뒤집힌다.
+     */
+    private void recordUpload(String vendorCode) {
+        try {
+            syncRunService.record(SyncRunType.CATALOG_UPLOAD, vendorCode, true);
+        } catch (Exception e) {
+            log.warn("적재 시각을 남기지 못했다: {} ({})", vendorCode, e.getMessage());
+        }
     }
 }

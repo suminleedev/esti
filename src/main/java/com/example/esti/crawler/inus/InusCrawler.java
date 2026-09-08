@@ -35,6 +35,9 @@ public class InusCrawler implements ProductImageCrawler {
      */
     private static final int MAX_BODY_SIZE = 10 * 1024 * 1024;
 
+    @Value("${app.crawler.inus.cooldown-minutes}")
+    private int cooldownMinutes;
+
     @Value("${app.crawler.inus.maker}")
     private String maker;
 
@@ -66,6 +69,11 @@ public class InusCrawler implements ProductImageCrawler {
     @Override
     public String vendorCode() {
         return vendorCode;
+    }
+
+    @Override
+    public int cooldownMinutes() {
+        return cooldownMinutes;
     }
 
     @Override
