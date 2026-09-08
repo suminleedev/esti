@@ -578,7 +578,7 @@ onMounted(() => {
               v-model="searchInput"
               type="search"
               class="form-control form-control-sm"
-              placeholder="검색 (품번/제품명/분류/규격)"
+              placeholder="검색 (품번/제품명/분류/규격/시리즈)"
               @keyup.esc="clearSearch"
             />
             <button
@@ -691,6 +691,15 @@ onMounted(() => {
                   <td>{{ p.categoryLarge }}</td>
                   <td>{{ p.categorySmall }}</td>
                   <td>
+                    <!--
+                      시리즈명 — 원본이 «데이터 행에 얹어» 적은 세 번째 분류 층(A사).
+                      소분류가 하나뿐인 구간(세면수전 706건)을 실제로 가르는 값이라,
+                      제품명 위에 둬서 «어느 계열인지»가 먼저 읽히게 한다.
+                      열을 하나 더 만들지 않은 것은 표가 이미 12열이라서다.
+                    -->
+                    <div v-if="p.collectionName" class="series-badge" :title="`시리즈: ${p.collectionName}`">
+                      {{ p.collectionName }}
+                    </div>
                     {{ p.productName }}
                     <!--
                       구성 요약 (G-1) — 세트 축을 넣으면 같은 품번의 여러 세트가 각각의 행이 된다.
@@ -922,6 +931,15 @@ onMounted(() => {
    상위 테이블이 nowrap/ellipsis라 요약도 한 줄로 잘린다(전체는 드릴다운에서 본다) */
 .set-summary {
   font-size: 0.7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 시리즈명 — 제품명보다 작고 흐리게. 분류 축이지 제품 이름이 아니라는 걸 보이게 한다. */
+.series-badge {
+  font-size: 0.7rem;
+  line-height: 1.2;
+  color: var(--bs-secondary-color, #6c757d);
   overflow: hidden;
   text-overflow: ellipsis;
 }

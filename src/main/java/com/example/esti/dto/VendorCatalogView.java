@@ -23,6 +23,9 @@ public record VendorCatalogView(
         String description,      // VendorProduct.description (원본 품번/부가 설명. 예: 수전부속 원본 B열)
         String specs,            // VendorProduct.specs (규격. 비고 분류 정책(C-2)의 규격성 비고 + 향후 크롤링 규격)
         String unit,             // VendorProduct.unit (견적서 C열 단위. 미설정 행은 기본값 SET으로 접힌다, O-1b)
+        String collectionName,   // 세트(시리즈)명. 원본 C열이 «데이터 행에 얹혀» 들고 있던 층(A사).
+                                 // 소분류가 하나뿐인 구간을 실제로 가르는 값이라 목록·검색에 낸다.
+                                 // B사는 전부 null — 그 원본에는 이 층이 없다.
         String setSummary,       // 구성 요약 한 줄. 같은 품번의 여러 세트가 각각 행이 되므로 목록에서 이걸로 가른다(G-1)
         BigDecimal mainUnitPrice // 본품 자체 단가. 세트가와 별개(G-2). null이면 화면이 종전 판정을 쓴다
 ) {
@@ -45,6 +48,7 @@ public record VendorCatalogView(
                 vip.getVendorProduct().getDescription(),
                 vip.getVendorProduct().getSpecs(),
                 VendorProduct.unitOrDefault(vip.getVendorProduct().getUnit()),
+                vip.getVendorProduct().getCollectionName(),
                 vip.getSetSummary(),
                 vip.getMainUnitPrice()
         );

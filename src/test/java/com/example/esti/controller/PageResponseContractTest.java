@@ -52,7 +52,7 @@ class PageResponseContractTest {
     private static final VendorCatalogView ROW = new VendorCatalogView(
             1L, 10L, "A", "A사", "양변기", "투피스양변기", "양변기 세트",
             "T-1", null, "양변기 세트", null, BigDecimal.ONE, "양변기",
-            null, null, null, "SET", null, null);
+            null, null, null, "SET", null, null, null);   // 끝: collectionName(시리즈명)·setSummary·mainUnitPrice
 
     @Test
     void 페이지_메타는_page_아래로_모인다() throws Exception {

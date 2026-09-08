@@ -61,6 +61,11 @@ class VendorCatalogSearchTest {
         row(a, "IL672", "반다리세면기", "세면기", "반다리세면기", "500mm", "단종", null);
         row(a, "FA1701", "1H세면수전", "수전", "세면수전", null, null, null);
         row(b, "G-0130", "벽붙이주방수전", "주방수전", "벽붙이주방수전", "50%할인", "규격 A_B", null);
+
+        // 시리즈명 — 소분류가 하나뿐인 구간을 실제로 가르는 층(A사 C열).
+        // 아래 둘은 소분류가 같고 시리즈만 다르다. 그게 이 값의 존재 이유다.
+        seriesRow(a, "FA2001", "2H세면수전", "수전", "세면수전", "가나시리즈");
+        seriesRow(a, "FA2002", "3H세면수전", "수전", "세면수전", "다라시리즈");
     }
 
     // ====== 무엇으로 찾히나 ======
@@ -83,7 +88,8 @@ class VendorCatalogSearchTest {
     @Test
     void 분류로_찾는다() {
         // 대분류 '수전'이 걸린다 — 제품명에 '수전'이 없어도 분류가 맞으면 나와야 한다
-        assertThat(codes(search("A", "수전"))).containsExactly("FA1701");
+        assertThat(codes(search("A", "수전")))
+                .containsExactlyInAnyOrder("FA1701", "FA2001", "FA2002");
     }
 
     @Test
@@ -110,17 +116,18 @@ class VendorCatalogSearchTest {
 
     @Test
     void 검색어가_비면_전건을_돌려준다() {
-        assertThat(search("A", null).getTotalElements()).isEqualTo(3);
-        assertThat(search("A", "   ").getTotalElements()).isEqualTo(3);
+        assertThat(search("A", null).getTotalElements()).isEqualTo(5);
+        assertThat(search("A", "   ").getTotalElements()).isEqualTo(5);
     }
 
     @Test
     void 공급사_범위를_넘지_않는다() {
-        // '수전'은 A사 1건 · B사 1건이지만, 공급사를 지정하면 그 안에서만 찾는다
-        assertThat(codes(search("A", "수전"))).containsExactly("FA1701");
+        // '수전'은 A사 3건 · B사 1건이지만, 공급사를 지정하면 그 안에서만 찾는다
+        assertThat(codes(search("A", "수전")))
+                .containsExactlyInAnyOrder("FA1701", "FA2001", "FA2002");
         assertThat(codes(search("B", "수전"))).containsExactly("G-0130");
         assertThat(codes(service.getVendorCatalogPageAll("수전", FIRST)))
-                .containsExactlyInAnyOrder("FA1701", "G-0130");
+                .containsExactlyInAnyOrder("FA1701", "FA2001", "FA2002", "G-0130");
     }
 
     @Test
@@ -166,6 +173,15 @@ class VendorCatalogSearchTest {
         return vendorRepository.save(v);
     }
 
+    /** 시리즈명을 가진 행. 나머지는 {@link #row}와 같다. */
+    private void seriesRow(Vendor vendor, String code, String name, String large, String small,
+                           String series) {
+        row(vendor, code, name, large, small, null, null, null);
+        VendorProduct p = productRepository.findByVendorAndProductCode(vendor, code).orElseThrow();
+        p.setCollectionName(series);
+        productRepository.save(p);
+    }
+
     private void row(Vendor vendor, String code, String name, String large, String small,
                      String specs, String remark, String oldCode) {
         VendorProduct p = new VendorProduct();
@@ -191,5 +207,42 @@ class VendorCatalogSearchTest {
         vip.setPriceBasis(large);
         vip.setCurrency("KRW");
         priceRepository.save(vip);
+    }
+
+    // ====== 시리즈명 (PR #40에서 담기 시작한 층) ======
+
+    /**
+     * 소분류가 하나뿐인 구간을 실제로 가르는 값이라 검색에 넣는다.
+     * 세면수전 706건이 한 소분류에 뭉쳐 있던 것이 이 층을 버려서였다.
+     */
+    @Test
+    void 시리즈명으로_찾는다() {
+        assertThat(codes(search("A", "가나시리즈"))).containsExactly("FA2001");
+    }
+
+    /** 같은 소분류 안에서 시리즈로 갈린다 — 이 기능의 요지다. */
+    @Test
+    void 같은_소분류라도_시리즈로_갈린다() {
+        assertThat(codes(search("A", "세면수전")))
+                .as("소분류로 찾으면 셋 다 나온다")
+                .contains("FA1701", "FA2001", "FA2002");
+        assertThat(codes(search("A", "다라시리즈")))
+                .as("시리즈로 좁히면 하나만 나온다")
+                .containsExactly("FA2002");
+    }
+
+    /** 목록이 값을 실어 보내야 화면이 쓴다. */
+    @Test
+    void 목록에_시리즈명이_실린다() {
+        assertThat(search("A", "FA2001"))
+                .singleElement()
+                .extracting(com.example.esti.dto.VendorCatalogView::collectionName)
+                .isEqualTo("가나시리즈");
+    }
+
+    /** 시리즈명이 없는 행도 그대로 찾힌다 — B사는 이 층이 아예 없다. */
+    @Test
+    void 시리즈명이_없어도_검색이_깨지지_않는다() {
+        assertThat(codes(search("B", "주방수전"))).containsExactly("G-0130");
     }
 }
