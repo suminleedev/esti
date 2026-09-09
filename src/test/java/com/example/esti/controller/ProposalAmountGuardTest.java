@@ -5,7 +5,9 @@ import com.example.esti.service.ProposalService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import com.example.esti.config.SecurityConfig;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -23,6 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * QA에서는 셋 다 그대로 통과했다 — 수량 −3이 총액을 음수로 만들었고, 수량 2.5는 2로 조용히 잘렸다.
  */
 @WebMvcTest(ProposalController.class)
+@Import(SecurityConfig.class)
 class ProposalAmountGuardTest {
 
     @Autowired private MockMvc mockMvc;

@@ -8,7 +8,9 @@ import com.example.esti.service.VendorCatalogCommandService;
 import com.example.esti.service.VendorCatalogQueryService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import com.example.esti.config.SecurityConfig;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -40,6 +42,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * {@code content}는 그대로라서 화면이 비지도 않는다. 그래서 여기서 못 박는다.
  */
 @WebMvcTest(VendorCatalogController.class)
+@Import(SecurityConfig.class)
 class PageResponseContractTest {
 
     @Autowired private MockMvc mockMvc;

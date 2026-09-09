@@ -6,7 +6,9 @@ import com.example.esti.service.ProposalExcelService;
 import com.example.esti.service.ProposalService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import com.example.esti.config.SecurityConfig;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -23,6 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(ProposalController.class)
+@Import(SecurityConfig.class)
 class GlobalExceptionHandlerTest {
 
     @Autowired private MockMvc mockMvc;
@@ -118,12 +121,15 @@ class GlobalExceptionHandlerTest {
      * 없는 주소는 404다 — 예전엔 500이었다.
      *
      * <p>컨트롤러가 없는 경로는 정적 리소스 조회로 흘러가 {@code NoResourceFoundException}이 되고,
-     * 그게 catch-all에 걸려 «서버 내부 오류»로 나갔다. demo 프로파일에서 크롤러를 빼면(D-4)
-     * 그 경로가 바로 이 자리로 오므로, 데모가 「없는 기능」을 500으로 답하지 않게 하려면 필요하다.
+     * 그게 catch-all에 걸려 «서버 내부 오류»로 나갔다. demo 프로파일에서는 크롤러 컨트롤러가
+     * 아예 뜨지 않으므로(D-4) 그런 요청이 실제로 이 자리로 온다.
+     *
+     * <p>관리자 경로로 확인하지 않는 이유 — 거기는 인증이 앞에 서서 401이 먼저 나간다(D-7).
+     * 있는지 없는지 알려 주지 않는 편이 맞고, 그건 {@code AdminApiSecurityTest}가 본다.
      */
     @Test
     void 없는_경로는_404() throws Exception {
-        mockMvc.perform(get("/api/admin/crawler/ASTD/status"))
+        mockMvc.perform(get("/api/such-endpoint-does-not-exist"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value(containsString("찾을 수 없습니다")));
     }

@@ -10,7 +10,9 @@ import com.example.esti.service.VendorCatalogQueryService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
+import com.example.esti.config.SecurityConfig;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -34,6 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 화면은 늘 전체를 보내 멀쩡했으므로 API를 직접 부를 때만 드러났다.
  */
 @WebMvcTest(VendorCatalogController.class)
+@Import(SecurityConfig.class)
 class VendorCatalogUpdateContractTest {
 
     @Autowired private MockMvc mockMvc;
