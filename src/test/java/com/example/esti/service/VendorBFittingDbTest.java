@@ -4,7 +4,6 @@ import com.example.esti.entity.VendorProduct;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.context.TestPropertySource;
 
-import java.math.BigDecimal;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;

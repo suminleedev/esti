@@ -37,12 +37,6 @@ public class VendorItemPrice {
     @JoinColumn(name = "vendor_product_id", nullable = false)
     private VendorProduct vendorProduct;
 
-    /** VendorProduct로 대체 -- 미사용 예정 */
-    // 내 기준 카탈로그와 연결
-//    @ManyToOne(fetch = FetchType.LAZY)
-//    @JoinColumn(name = "catalog_id", nullable = false)
-//    private ProductCatalog catalog;
-
     // ===== 품번/코드 관련 =====
     @Column(length = 50)
     private String proposalItemCode;  // 제안서에 찍힐 품번 (A: 메인부속 신품번, B: 제품 품번)

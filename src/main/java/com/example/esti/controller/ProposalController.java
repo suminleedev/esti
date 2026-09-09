@@ -27,11 +27,6 @@ public class ProposalController {
     private final ProposalService service;
     private final ProposalExcelService excelService;
 
-//    @PostMapping
-//    public ResponseEntity<ProposalResponse> create(@RequestBody ProposalRequest req) throws Exception {
-//        return ResponseEntity.ok(service.create(req));
-//    }
-
     /**
      * 기존 저장 로직에서
      * 1. 임시저장, 2. 제출, 3. 전송 으로 수정
