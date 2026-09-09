@@ -11,6 +11,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
@@ -111,6 +112,30 @@ class GlobalExceptionHandlerTest {
                         .content("{\"projectName\":\"현장\",\"lines\":[{\"productName\":\"" + tooLong + "\"}]}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value(containsString("품목명은")));
+    }
+
+    /**
+     * 없는 주소는 404다 — 예전엔 500이었다.
+     *
+     * <p>컨트롤러가 없는 경로는 정적 리소스 조회로 흘러가 {@code NoResourceFoundException}이 되고,
+     * 그게 catch-all에 걸려 «서버 내부 오류»로 나갔다. demo 프로파일에서 크롤러를 빼면(D-4)
+     * 그 경로가 바로 이 자리로 오므로, 데모가 「없는 기능」을 500으로 답하지 않게 하려면 필요하다.
+     */
+    @Test
+    void 없는_경로는_404() throws Exception {
+        mockMvc.perform(get("/api/admin/crawler/ASTD/status"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value(containsString("찾을 수 없습니다")));
+    }
+
+    /** 업로드 한도 초과도 500이 아니다 — 얼마까지 되는지 알려 준다(데모 2MB / 실사용 100MB). */
+    @Test
+    void 업로드_한도_초과는_413() throws Exception {
+        when(proposalService.get(anyLong()))
+                .thenThrow(new MaxUploadSizeExceededException(2L * 1024 * 1024));
+        mockMvc.perform(get("/api/proposals/1"))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.message").value(containsString("너무 큽니다")));
     }
 
     @Test
