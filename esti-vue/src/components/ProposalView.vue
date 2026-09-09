@@ -738,7 +738,7 @@ const categoryChoices = computed(() => withSaved(masterCategories.value, form.re
 
 /* ====== 카탈로그 ====== */
 const search = ref('')
-const items = ref([]) // /catalog/list 결과
+const items = ref([]) // 공급사 카탈로그 목록
 
 /* 카테고리 연관검색어 사전 (A-3)
    검색어(키)를 카탈로그 categoryLarge/categorySmall 의 표제어(값)로 확장한다.
@@ -1644,7 +1644,6 @@ async function loadProposal(id) {
 /* ====== 카탈로그 로드 ====== */
 async function loadCatalog () {
   try {
-    // const res = await axios.get('/api/catalog/list') // Vite 프록시로 백엔드 8080
     const res = await axios.get('/api/vendor-catalog/list') // Vite 프록시로 백엔드 8080
     items.value = res.data
   } catch (e) {

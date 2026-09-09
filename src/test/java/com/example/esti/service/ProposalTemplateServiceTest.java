@@ -34,7 +34,7 @@ class ProposalTemplateServiceTest {
         req.setAreas(List.of("욕실1"));
         req.setRequiredCategories(List.of("양변기"));
         ProposalTemplateRequest.Line line = new ProposalTemplateRequest.Line();
-        line.setProductId(77L); // ProductCatalog에 존재하지 않는 임의 id — 조회 없이 스냅샷 저장돼야 함
+        line.setProductId(77L); // 어디에도 없는 임의 id — 조회 없이 스냅샷으로 저장돼야 함
         line.setVendorItemName("스냅샷 품목");
         line.setMainItemCode("SNAP-001");
         line.setUnitPrice(BigDecimal.valueOf(50000));

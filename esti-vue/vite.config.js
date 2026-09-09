@@ -30,16 +30,6 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
-      // 프록시: 프론트의 /catalog → 백엔드 http://localhost:8080/catalog
-      '/catalog': {
-        target: 'http://localhost:8080',
-        changeOrigin: true,
-      },
-      // (선택) 샘플 파일 정적 제공도 8080 쪽에 두는 경우
-      '/product_catalog_sample.xlsx': {
-        target: 'http://localhost:8080',
-        changeOrigin: true,
-      },
       // 백엔드가 서빙하는 정적 자원. BASE_URL이 비어 있어도(=.env 없이도)
       // 개발 서버에서 이미지·샘플이 그대로 보이게 한다.
       '/uploads': {

@@ -1,6 +1,5 @@
 package com.example.esti.repository;
 
-import com.example.esti.entity.ProductCatalog;
 import com.example.esti.entity.Vendor;
 import com.example.esti.entity.VendorItemPrice;
 import com.example.esti.entity.VendorProduct;
@@ -78,10 +77,6 @@ public interface VendorItemPriceRepository extends JpaRepository<VendorItemPrice
     // 페이징 처리하여 반환
     Page<VendorItemPrice> findByVendor_VendorCode(String vendorCode, Pageable pageable);
 
-    // (선택) 검색까지 하고 싶으면
-    // Page<VendorItemPrice> findByVendor_VendorCodeAndProposalItemCodeContaining(
-    //        String vendorCode, String keyword, Pageable pageable);
-
     /**
      * 카탈로그 화면 검색 (F-015) — 공급사 지정.
      *
@@ -131,8 +126,5 @@ public interface VendorItemPriceRepository extends JpaRepository<VendorItemPrice
 
     // 크롤링
     Optional<VendorItemPrice> findByVendor_VendorCodeAndProposalItemCode(String vendorCode, String proposalItemCode);
-
-    // 크롤링 : ASTD
-    List<VendorItemPrice> findAllByVendor_VendorCode(String vendorCode);
 }
 

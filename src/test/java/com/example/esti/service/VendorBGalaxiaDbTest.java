@@ -3,7 +3,6 @@ package com.example.esti.service;
 import com.example.esti.entity.VendorProduct;
 import org.junit.jupiter.api.Test;
 
-import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static com.example.esti.support.ExpectedPrices.price;

@@ -24,7 +24,7 @@ public class ProposalTemplateLine extends BaseEntity {
     private ProposalTemplate template;
 
     // 카탈로그 상품 id (VendorProduct 기준) — ProposalLine과 동일한 역정규화 스냅샷 방식.
-    // 폐기 예정 ProductCatalog FK를 제거하고 평범한 Long 컬럼으로 보관한다.
+    // 카탈로그 FK가 아니라 평범한 Long 컬럼으로 보관한다 — 참조 무결성에 묶이지 않는 스냅샷이다.
     @Column(name = "product_id")
     private Long productId;
 

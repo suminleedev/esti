@@ -43,48 +43,6 @@ public class ProposalService {
     /** 마진율 백분율 계산용 상수 */
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
-//    /* CREATE */
-//    public ProposalResponse create(ProposalRequest req) throws Exception {
-//        Proposal p = new Proposal();
-//
-//        if (req.getTemplateId() != null) {
-//            ProposalTemplate template = templateRepo.findById(req.getTemplateId())
-//                    .orElseThrow(() -> new NotFoundException("Template not found"));
-//            p.setTemplate(template);
-//        }
-//
-//        p.setProjectName(req.getProjectName());
-//        p.setManager(req.getManager());
-//        p.setDate(req.getDate());
-//        p.setApartmentType(req.getApartmentType());
-//        p.setHouseholds(req.getHouseholds());
-//        p.setNote(req.getNote());
-//
-//        p.setAreasJson(mapper.writeValueAsString(req.getAreas()));
-//        p.setRequiredCategoriesJson(mapper.writeValueAsString(req.getRequiredCategories()));
-//
-//        proposalRepo.save(p);
-//
-//        // lines
-//        for (ProposalRequest.Line lineReq : req.getLines()) {
-//            ProposalLine line = new ProposalLine();
-//            line.setProposal(p);
-//
-//            ProductCatalog product = catalogRepo.findById(lineReq.getProductId())
-//                    .orElseThrow(() -> new RuntimeException("Product not found: " + lineReq.getProductId()));
-//
-//            line.setProduct(product);
-//            line.setArea(lineReq.getArea());
-//            line.setCategory(lineReq.getCategory());
-//            line.setQty(lineReq.getQty());
-//            line.setNote(lineReq.getNote());
-//
-//            lineRepo.save(line);
-//        }
-//
-//        return get(p.getId());
-//    }
-
     /**
      * 기존 저장 로직에서
      * 1. 임시저장, 2. 제출, 3. 전송 으로 수정
