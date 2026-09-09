@@ -40,6 +40,20 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
+      // 백엔드가 서빙하는 정적 자원. BASE_URL이 비어 있어도(=.env 없이도)
+      // 개발 서버에서 이미지·샘플이 그대로 보이게 한다.
+      '/uploads': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/demo-images': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/samples': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
       // 제안서 템플릿 API 프록시
       '/proposal-templates': {
         target: 'http://localhost:8080',
