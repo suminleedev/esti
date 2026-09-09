@@ -73,6 +73,17 @@ class DeployProfileGuardTest {
     }
 
     @Test
+    @DisplayName("관리자 잠금은 기본이 켜짐이고, 실사용만 끈다")
+    void 관리자_잠금은_기본이_켜짐() throws IOException {
+        // 끄는 쪽이 «명시적인 선택»이어야 한다. 기본값이 꺼짐이면 새 프로파일을 만들 때
+        // 아무것도 안 적은 쪽이 열린 채로 뜬다.
+        assertThat(common().getProperty("app.admin.auth-enabled")).isEqualTo("true");
+        assertThat(local().getProperty("app.admin.auth-enabled")).isEqualTo("false");
+        // 배포본은 공통 기본값을 그대로 쓴다 — 여기에 값이 있으면 의도가 갈린 것이다.
+        assertThat(demo().getProperty("app.admin.auth-enabled")).isNull();
+    }
+
+    @Test
     @DisplayName("크롤러 컨트롤러는 데모에서 아예 뜨지 않는다")
     void 크롤러는_데모에서_비활성() {
         Profile profile = CrawlerAdminController.class.getAnnotation(Profile.class);

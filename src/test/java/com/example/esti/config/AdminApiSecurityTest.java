@@ -16,6 +16,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>필터 체인은 «어디를 열고 어디를 잠갔나»가 전부라, 설정을 읽는 대신 <b>실제로 요청해서</b>
  * 확인한다. 여기서 조용히 뒤집히면 관리자 경로가 열리거나 반대로 화면 전체가 401이 된다.
+ *
+ * <p>잠금을 <b>명시적으로 켜고</b> 검사한다 — 기본 프로파일({@code local})은 꺼 두므로
+ * 그대로 두면 이 클래스가 «열린 상태»를 검사하게 된다. 꺼진 쪽은
+ * {@link AdminApiOpenWhenAuthDisabledTest}가 본다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestPropertySource(properties = {
@@ -23,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.jpa.hibernate.ddl-auto=create-drop",
         "spring.jpa.show-sql=false",
         "app.crawler.image-dir=target/test-product-images",
+        "app.admin.auth-enabled=true",
         "app.admin.username=admin",
         "app.admin.password=test-secret"
 })
