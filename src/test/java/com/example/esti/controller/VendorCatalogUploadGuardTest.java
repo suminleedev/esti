@@ -9,7 +9,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import com.example.esti.config.SecurityConfig;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -33,6 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 물어봐야 실패를 알 수 있었다. 이제 <b>디스크에도 진행률 저장소에도 자국을 남기지 않고</b> 400이다.
  */
 @WebMvcTest(VendorCatalogController.class)
+@Import(SecurityConfig.class)
 class VendorCatalogUploadGuardTest {
 
     @Autowired private MockMvc mockMvc;

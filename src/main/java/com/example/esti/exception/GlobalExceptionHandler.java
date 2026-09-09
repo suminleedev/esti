@@ -1,6 +1,7 @@
 package com.example.esti.exception;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -11,6 +12,8 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.stream.Collectors;
 
@@ -28,6 +31,10 @@ import java.util.stream.Collectors;
 public class GlobalExceptionHandler {
 
     public record ErrorResponse(int status, String message) {}
+
+    /** 업로드 한도 — 프로파일마다 다르다(실사용 100MB / 데모 2MB). 거절 메시지에 그대로 적는다. */
+    @Value("${spring.servlet.multipart.max-file-size:1MB}")
+    private String maxFileSize;
 
     @ExceptionHandler(NotFoundException.class)
     public ResponseEntity<ErrorResponse> handleNotFound(NotFoundException e) {
@@ -97,6 +104,34 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleDataIntegrity(DataIntegrityViolationException e) {
         log.warn("DB 제약 위반 — 요청 단계 검증이 놓친 값이다", e);
         return body(HttpStatus.BAD_REQUEST, "저장할 수 없는 값이 있습니다. 입력 길이와 범위를 확인해 주세요.");
+    }
+
+    /**
+     * 그런 경로가 없다 (F-020과 같은 갈래).
+     *
+     * <p>컨트롤러가 없는 URL은 정적 리소스 조회로 흘러가 {@link NoResourceFoundException}이 되는데,
+     * 그게 아래 catch-all에 걸려 <b>500 «서버 내부 오류»</b>로 나갔다. 주소를 잘못 부른 것은
+     * 클라이언트 실수라 404가 맞고, 서버 로그에 스택을 쌓을 일도 아니다.
+     *
+     * <p>{@code demo} 프로파일에서 크롤러 컨트롤러를 빼면(D-4) 그 경로가 바로 이 자리로 온다.
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNoResource(NoResourceFoundException e) {
+        log.warn("없는 경로: {}", e.getResourcePath());
+        return body(HttpStatus.NOT_FOUND, "요청한 경로를 찾을 수 없습니다.");
+    }
+
+    /**
+     * 파일이 한도보다 크다 (F-020과 같은 갈래).
+     *
+     * <p>멀티파트 해석 단계에서 던져지는 예외라 컨트롤러에 닿지도 않고 catch-all로 흘러
+     * <b>500 «서버 내부 오류»</b>가 나갔다. 올린 쪽이 고칠 수 있는 일이므로 413으로 답하고,
+     * <b>한도가 얼마인지</b> 알려 준다 — 데모(2MB)와 실사용(100MB)이 다르기 때문이다.
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleTooLarge(MaxUploadSizeExceededException e) {
+        log.warn("업로드 한도 초과 (한도 {})", maxFileSize);
+        return body(HttpStatus.PAYLOAD_TOO_LARGE, "파일이 너무 큽니다. " + maxFileSize + "까지 올릴 수 있습니다.");
     }
 
     @ExceptionHandler(Exception.class)

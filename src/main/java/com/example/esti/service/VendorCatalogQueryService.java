@@ -6,8 +6,11 @@ import com.example.esti.entity.Vendor;
 import com.example.esti.entity.VendorItemPrice;
 import com.example.esti.entity.VendorProduct;
 import com.example.esti.entity.VendorProductRelation;
+import com.example.esti.dto.VendorOption;
+import com.example.esti.excel.VendorExcelParserFactory;
 import com.example.esti.repository.VendorItemPriceRepository;
 import com.example.esti.repository.VendorProductRelationRepository;
+import com.example.esti.repository.VendorRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -26,6 +29,28 @@ public class VendorCatalogQueryService {
 
     private final VendorItemPriceRepository vendorItemPriceRepository;
     private final VendorProductRelationRepository vendorProductRelationRepository;
+    private final VendorRepository vendorRepository;
+    private final VendorExcelParserFactory parserFactory;
+
+    /**
+     * 화면의 «공급사» 선택지.
+     *
+     * <p>목록은 <b>파서가 있는 코드</b>가 정하고, 이름은 <b>DB에 있으면 DB 것</b>을 쓴다.
+     * 둘을 나눈 이유가 있다 — 공급사 행은 첫 적재 때 생기므로, 아직 아무것도 올리지 않은
+     * DB에서 DB만 보면 선택지가 비어 <b>업로드 자체를 시작할 수 없다</b>.
+     *
+     * <p>이름을 DB에서 가져오는 것이 이 메서드의 요점이다. 예전에는 프론트에 이름이 박혀 있어
+     * 배포되는 파일에 공급사명이 그대로 실렸다.
+     */
+    @Transactional(readOnly = true)
+    public List<VendorOption> getVendorOptions() {
+        return parserFactory.supportedVendorCodes().stream()
+                .map(code -> new VendorOption(code, vendorRepository.findByVendorCode(code)
+                        .map(Vendor::getVendorName)
+                        .filter(name -> name != null && !name.isBlank())
+                        .orElse(code + "사")))
+                .toList();
+    }
 
     // 제안서 작성 화면 : 전체 리스트
     @Transactional(readOnly = true)

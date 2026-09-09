@@ -32,6 +32,21 @@ const SEARCH_DEBOUNCE_MS = 300
 let searchTimer = null
 
 const editingProduct = ref(null) // 수정 중인 제품
+/* ===== 공급사 목록 =====
+   코드와 이름이 여기 박혀 있었다. 공급사가 늘면 화면을 고쳐야 했고, 무엇보다
+   «공급사 이름»이 빌드 산출물 안에 실려 나갔다. 이름은 서버가 준다. */
+const vendors = ref([])
+
+async function loadVendors() {
+  try {
+    const { data } = await axios.get(`${BASE_URL}/api/vendor-catalog/vendors`)
+    vendors.value = data
+  } catch (e) {
+    // 목록을 못 받아도 화면은 떠야 한다 — 선택지가 비면 업로드만 못 할 뿐이다.
+    console.error('공급사 목록을 불러오지 못했습니다.', e)
+  }
+}
+
 /* ===== 공급사 단가표 엑셀 업로드 상태 ===== */
 const uploadVendorCode = ref('A')   // 업로드 영역 전용 : 기본값 A사
 const filterVendorCode = ref('') // 목록 필터 전용 : ALL/A/B
@@ -462,6 +477,7 @@ async function resumeProgressIfRunning() {
 }
 
 onMounted(() => {
+  loadVendors()
   loadVendorCatalog()
   resumeProgressIfRunning()
 })
@@ -487,8 +503,7 @@ onMounted(() => {
           <div class="col-md-3">
             <label class="form-label small mb-1" for="upload-vendorCode">공급사 선택</label>
             <select id="upload-vendorCode" v-model="uploadVendorCode" class="form-select form-select-sm">
-              <option value="A">아메리칸스탠다드</option>
-              <option value="B">이누스</option>
+              <option v-for="v in vendors" :key="v.vendorCode" :value="v.vendorCode">{{ v.vendorName }}</option>
             </select>
           </div>
 
@@ -512,6 +527,18 @@ onMounted(() => {
               {{ vendorUploading ? '공급사 엑셀 업로드 중...' : '공급사 단가표 업로드' }}
             </button>
           </div>
+        </div>
+
+        <!-- 샘플 단가표 (D-9) — 올릴 파일이 없는 사람이 흐름을 끝까지 볼 수 있게 한다.
+             없으면 아무 엑셀이나 던져 보고 «파싱 실패»만 만나게 된다. -->
+        <div class="mt-2 small text-muted">
+          손에 든 단가표가 없다면 샘플로 먼저 시험해 보세요 —
+          <template v-for="(v, i) in vendors" :key="v.vendorCode">
+            <span v-if="i > 0"> · </span>
+            <a :href="`${BASE_URL}/samples/vendor-${v.vendorCode.toLowerCase()}-sample.xlsx`" download>
+              {{ v.vendorName }} 샘플 내려받기
+            </a>
+          </template>
         </div>
 
         <!-- 진행률 -->
@@ -596,8 +623,7 @@ onMounted(() => {
             <label class="text-muted small mb-0" for="filter-vendorCode">공급사</label>
             <select id="filter-vendorCode" v-model="filterVendorCode" class="form-select form-select-sm w-auto">
               <option value="">전체</option>
-              <option value="A">아메리칸스탠다드</option>
-              <option value="B">이누스</option>
+              <option v-for="v in vendors" :key="v.vendorCode" :value="v.vendorCode">{{ v.vendorName }}</option>
             </select>
           </div>
           <!-- 페이지 사이즈 -->
