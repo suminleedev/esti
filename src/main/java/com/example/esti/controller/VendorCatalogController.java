@@ -2,6 +2,7 @@ package com.example.esti.controller;
 
 import com.example.esti.dto.VendorCatalogUpdateRequest;
 import com.example.esti.dto.VendorCatalogView;
+import com.example.esti.dto.VendorOption;
 import com.example.esti.dto.VendorProductPartView;
 import com.example.esti.excel.VendorExcelParserFactory;
 import com.example.esti.exception.BadRequestException;
@@ -107,6 +108,17 @@ public class VendorCatalogController {
     @GetMapping("/upload-progress/{jobId}")
     public ResponseEntity<ImportProgress> getProgress(@PathVariable String jobId) {
         return ResponseEntity.ok(progressStore.get(jobId));
+    }
+
+    /**
+     * 공급사 선택지 조회
+     * - GET /api/vendor-catalog/vendors
+     *
+     * <p>업로드·필터의 «공급사» 드롭다운이 쓴다. 코드와 이름이 프론트에 박혀 있던 것을 걷어냈다.
+     */
+    @GetMapping("/vendors")
+    public ResponseEntity<List<VendorOption>> getVendors() {
+        return ResponseEntity.ok(vendorCatalogQueryService.getVendorOptions());
     }
 
     /**
