@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * 테스트가 실DB를 건드리지 않는지 지킨다 (F-006).
  *
- * <p>{@code application.properties}의 데이터소스는 파일 DB({@code ./data/estimateDB})다.
+ * <p>기본 프로파일({@code local})의 데이터소스는 파일 DB({@code ./data/estimateDB})다.
  * {@code @SpringBootTest}가 이걸 그대로 열면 두 가지가 따라온다 —
  * 앱을 켜 둔 채 테스트를 돌리면 <b>Derby 락이 부딪혀 빌드가 깨지고</b>,
  * {@code ddl-auto=update}라 <b>실DB 스키마에 손을 댈 여지</b>가 생긴다.
