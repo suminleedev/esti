@@ -1,0 +1,87 @@
+# 데모 배포본 이미지를 만들어 ECR 에 올린다. 실사용(local 프로파일)과는 무관하다.
+# 설계 근거는 계획서(로컬 docs/) 의 배포 도구 선정 문서 §6·§7 을 본다.
+
+name: 데모 이미지 빌드·푸시
+
+# master 에 올라간 것만 배포한다. 신뢰 정책도 ref:refs/heads/master 로 잠겨 있어서
+# 다른 브랜치에서 돌리면 AWS 자격증명 단계에서 거부된다 (저장소가 public 이라 의도한 것이다).
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # OIDC 토큰을 받아 AWS 역할을 맡는 데 필요하다. 액세스 키는 쓰지 않는다.
+  contents: read
+
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REPOSITORY: esti-demo
+
+jobs:
+  build-and-push:
+    # ARM64 러너를 쓴다. x86 러너에서 arm64 이미지를 만들려면 QEMU 에뮬레이션이 붙는데,
+    # 여기서는 러너 자체가 arm64 라 그냥 네이티브로 나온다. (public 저장소는 무료)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+
+    steps:
+      # 러너는 «git 에서» 체크아웃한다 — 디스크를 보는 로컬 docker build 와 달리
+      # gitignore 된 docs/samples/·data/·uploads/ 는 애초에 존재하지 않는다.
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: esti-vue/package-lock.json
+
+      # pom 의 frontend 프로파일은 `npm run build` 만 부른다 — 설치는 여기서 한다.
+      - name: 프론트 의존성 설치
+        working-directory: esti-vue
+        run: npm ci
+
+      - name: 백엔드 테스트 + 프론트 빌드 + 단일 jar
+        run: ./mvnw -B -Pfrontend clean package
+
+      # 빌드 컨텍스트를 jar 하나로 좁힌다. 러너에는 실데이터가 없지만,
+      # 로컬과 «같은 명령»으로 같은 이미지가 나오게 하려고 형태를 맞춘다.
+      - name: 빌드 컨텍스트 구성
+        run: cp target/esti-*.jar deploy/esti.jar
+
+      - name: AWS 자격증명 (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/esti-demo-github-actions
+          aws-region: ${{ env.AWS_REGION }}
+
+      - id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # 태그를 커밋 SHA 로 박는다 — latest 만으로는 어느 코드가 떠 있는지 못 알아낸다.
+      - name: 이미지 빌드·푸시
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          SHA=$(git rev-parse --short HEAD)
+          docker build -t "$REGISTRY/$ECR_REPOSITORY:$SHA" \
+                       -t "$REGISTRY/$ECR_REPOSITORY:latest" deploy
+          docker push "$REGISTRY/$ECR_REPOSITORY:$SHA"
+          docker push "$REGISTRY/$ECR_REPOSITORY:latest"
+          echo "pushed=$SHA" >> "$GITHUB_STEP_SUMMARY"
+
+      # 아키텍처 불일치는 첫 배포 사망 원인 1위이고, 죽는 시점이 «ECS 에서» 라 늦게 안다.
+      # 여기서 막는다.
+      - name: 올라간 이미지가 arm64 인지 확인
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          ARCH=$(docker image inspect "$REGISTRY/$ECR_REPOSITORY:latest" --format '{{.Architecture}}')
+          echo "architecture=$ARCH"
+          [ "$ARCH" = "arm64" ] || { echo "::error::arm64 가 아니다 ($ARCH) — Fargate/t4g 에서 exec format error 로 즉사한다"; exit 1; }

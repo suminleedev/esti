@@ -51,3 +51,6 @@ scripts/
 
 docs/
 .playwright-mcp/
+
+# 배포 이미지 빌드 컨텍스트
+deploy/*.jar
