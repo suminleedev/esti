@@ -47,14 +47,24 @@ jobs:
         working-directory: esti-vue
         run: npm ci
 
-      # -Dsample.strict=false 는 «의도된» 설정이다.
+      # CI: 'false' 는 «의도된» 설정이다.
+      #
       # 공급사 실샘플(docs/samples/)은 gitignore 라 러너에 없다 — 없어야 맞다.
-      # TestSamples 는 샘플이 없으면 로컬은 스킵, CI(CI=true)는 fail 로 승격하는데,
-      # 여기서는 그 승격을 끈다. 실샘플이 러너에 갈 일이 «영원히» 없기 때문이다.
-      # 합성 fixture 테스트는 그대로 돌아서 최소 커버리지는 유지된다.
-      # 실샘플 기반 검증은 로컬 `./mvnw -Pfrontend clean package` 가 계속 담당한다.
+      # TestSamples 는 샘플이 없으면 로컬은 스킵, CI(CI=true)에서는 fail 로 승격한다.
+      # 그 승격은 「CI에서 스킵=거짓 초록」을 막으려는 것인데, 여기서는 전제가 다르다.
+      # 실샘플이 공개 러너에 갈 일이 «영원히» 없어서, 승격이 켜져 있으면 CI 는
+      # 고칠 방법 없이 영구히 빨간불이 된다. 빨간불을 방치하면 아무도 안 읽게 된다.
+      #
+      # ⚠️ -Dsample.strict=false 로는 안 된다. Maven CLI 의 -D 는 Maven JVM 에만 붙고
+      #    surefire 가 «포크한» 테스트 JVM 에는 전달되지 않는다(실측으로 확인).
+      #    환경변수는 포크에 반드시 상속되므로 CI 를 직접 끈다.
+      #
+      # 실측: 실행 559 · 실패 0 · 스킵 235 → CI 가 실제로 검증하는 것은 324건.
+      # 빠지는 235건(실샘플 파싱 회귀)은 로컬 빌드가 계속 담당한다.
       - name: 백엔드 테스트 + 프론트 빌드 + 단일 jar
-        run: ./mvnw -B -Dsample.strict=false -Pfrontend clean package
+        env:
+          CI: 'false'
+        run: ./mvnw -B -Pfrontend clean package
 
       - name: 실제로 몇 건이 돌았는지 남긴다
         if: always()
