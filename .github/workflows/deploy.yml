@@ -47,8 +47,29 @@ jobs:
         working-directory: esti-vue
         run: npm ci
 
+      # -Dsample.strict=false 는 «의도된» 설정이다.
+      # 공급사 실샘플(docs/samples/)은 gitignore 라 러너에 없다 — 없어야 맞다.
+      # TestSamples 는 샘플이 없으면 로컬은 스킵, CI(CI=true)는 fail 로 승격하는데,
+      # 여기서는 그 승격을 끈다. 실샘플이 러너에 갈 일이 «영원히» 없기 때문이다.
+      # 합성 fixture 테스트는 그대로 돌아서 최소 커버리지는 유지된다.
+      # 실샘플 기반 검증은 로컬 `./mvnw -Pfrontend clean package` 가 계속 담당한다.
       - name: 백엔드 테스트 + 프론트 빌드 + 단일 jar
-        run: ./mvnw -B -Pfrontend clean package
+        run: ./mvnw -B -Dsample.strict=false -Pfrontend clean package
+
+      - name: 실제로 몇 건이 돌았는지 남긴다
+        if: always()
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import glob, xml.etree.ElementTree as ET
+          t=f=e=s=0
+          for p in glob.glob("target/surefire-reports/TEST-*.xml"):
+              r=ET.parse(p).getroot()
+              t+=int(r.get("tests",0)); f+=int(r.get("failures",0))
+              e+=int(r.get("errors",0)); s+=int(r.get("skipped",0))
+          print(f"백엔드 테스트: 실행 {t} · 실패 {f} · 오류 {e} · 스킵 {s}")
+          print("")
+          print("스킵은 공급사 실샘플이 필요한 테스트다 — 러너에 샘플이 없는 것이 정상이다.")
+          PY
 
       # 빌드 컨텍스트를 jar 하나로 좁힌다. 러너에는 실데이터가 없지만,
       # 로컬과 «같은 명령»으로 같은 이미지가 나오게 하려고 형태를 맞춘다.
