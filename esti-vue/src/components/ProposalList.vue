@@ -27,7 +27,7 @@
               v-model="filters.keyword"
               type="text"
               class="form-control form-control-sm"
-              placeholder="예) 신안 XX아파트, 홍길동"
+              placeholder="예) XX아파트, 홍길동"
             />
           </div>
           <div class="col-md-3">
