@@ -20,8 +20,9 @@ env:
 
 jobs:
   build-and-push:
-    # ARM64 러너를 쓴다. x86 러너에서 arm64 이미지를 만들려면 QEMU 에뮬레이션이 붙는데,
-    # 여기서는 러너 자체가 arm64 라 그냥 네이티브로 나온다. (public 저장소는 무료)
+    # ARM64 러너를 쓴다. arm64 쪽은 네이티브로 나오고, amd64 쪽만 QEMU 를 탄다.
+    # Dockerfile 이 jar 를 COPY 하는 것 말고는 RUN 이 두 줄뿐이라 에뮬레이션 비용이 거의 없다.
+    # (public 저장소는 러너가 무료다)
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
 
@@ -95,24 +96,39 @@ jobs:
       - id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      # amd64 이미지를 arm64 러너에서 만들려면 QEMU 가 필요하다.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      # 🔴 «두 아키텍처를 다» 만든다.
+      #
+      #   linux/amd64 — 1단계 ECS Express 용. create-express-gateway-service 에는
+      #                 runtimePlatform 손잡이가 «없어서» 태스크가 항상 X86_64 로 뜬다.
+      #                 arm64 단일 이미지를 주면 exec format error 로 즉사한다(실제로 겪음).
+      #   linux/arm64 — 2단계 EC2 t4g 용, 그리고 맥 로컬 검증용.
+      #
+      # 한 태그 아래 매니페스트 목록으로 올라가서, 받는 쪽이 자기 아키텍처를 «알아서» 고른다.
       # 태그를 커밋 SHA 로 박는다 — latest 만으로는 어느 코드가 떠 있는지 못 알아낸다.
-      - name: 이미지 빌드·푸시
+      - name: 이미지 빌드·푸시 (amd64 + arm64)
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           SHA=$(git rev-parse --short HEAD)
-          docker build -t "$REGISTRY/$ECR_REPOSITORY:$SHA" \
-                       -t "$REGISTRY/$ECR_REPOSITORY:latest" deploy
-          docker push "$REGISTRY/$ECR_REPOSITORY:$SHA"
-          docker push "$REGISTRY/$ECR_REPOSITORY:latest"
-          echo "pushed=$SHA" >> "$GITHUB_STEP_SUMMARY"
+          docker buildx build --platform linux/amd64,linux/arm64 \
+            -t "$REGISTRY/$ECR_REPOSITORY:$SHA" \
+            -t "$REGISTRY/$ECR_REPOSITORY:latest" \
+            --push deploy
+          echo "pushed=$SHA (amd64+arm64)" >> "$GITHUB_STEP_SUMMARY"
 
       # 아키텍처 불일치는 첫 배포 사망 원인 1위이고, 죽는 시점이 «ECS 에서» 라 늦게 안다.
-      # 여기서 막는다.
-      - name: 올라간 이미지가 arm64 인지 확인
+      # 여기서 막는다 — 둘 중 하나라도 빠지면 실패시킨다.
+      - name: 두 아키텍처가 다 올라갔는지 확인
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
-          ARCH=$(docker image inspect "$REGISTRY/$ECR_REPOSITORY:latest" --format '{{.Architecture}}')
-          echo "architecture=$ARCH"
-          [ "$ARCH" = "arm64" ] || { echo "::error::arm64 가 아니다 ($ARCH) — Fargate/t4g 에서 exec format error 로 즉사한다"; exit 1; }
+          OUT=$(docker buildx imagetools inspect "$REGISTRY/$ECR_REPOSITORY:latest")
+          echo "$OUT" | grep -E 'Platform:'
+          for P in linux/amd64 linux/arm64; do
+            echo "$OUT" | grep -q "Platform: *$P" \
+              || { echo "::error::$P 가 매니페스트에 없다 — 그쪽 환경에서 exec format error 로 즉사한다"; exit 1; }
+          done
