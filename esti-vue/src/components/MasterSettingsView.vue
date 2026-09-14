@@ -1,12 +1,13 @@
 <template>
-  <main class="container-fluid px-3 py-3">
-    <div class="d-flex align-items-center justify-content-between mb-3">
+  <div class="container py-4">
+    <!-- Topbar -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
       <div>
-        <h4 class="mb-1">마스터 관리</h4>
-        <p class="text-muted small mb-0">
+        <h2 class="mb-1">마스터 관리</h2>
+        <div class="text-muted small">
           제안서 화면의 선택지를 직접 관리합니다. 여기서 바꾼 값은 <strong>앞으로 만드는 제안서</strong>에 적용되고,
           이미 저장된 제안서의 값은 그대로 유지됩니다.
-        </p>
+        </div>
       </div>
     </div>
 
@@ -124,7 +125,7 @@
         </p>
       </div>
     </div>
-  </main>
+  </div>
 </template>
 
 <script setup>
