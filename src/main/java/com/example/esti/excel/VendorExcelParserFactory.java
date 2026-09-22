@@ -3,7 +3,10 @@ package com.example.esti.excel;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 
 @Component
 @RequiredArgsConstructor
@@ -41,5 +44,40 @@ public class VendorExcelParserFactory {
         return vendorCode != null
                 && parsers.stream().anyMatch(p -> p.getVendorCode().equalsIgnoreCase(vendorCode));
     }
-}
 
+    /**
+     * 파일 양식이 선택한 공급사와 «명백히» 모순되는지 가린다. 모순이 없으면 빈 값.
+     *
+     * <ol>
+     *   <li>다른 공급사 파서가 {@code YES} → 모순 (그 공급사 코드를 담는다)</li>
+     *   <li>선택한 공급사 파서가 {@code NO} → 모순</li>
+     *   <li>그 외 → 통과 — 판정 근거가 없으면(UNKNOWN) 사용자 선언을 따른다</li>
+     * </ol>
+     *
+     * <p>감지 결과로 공급사를 바꿔 적재하지는 않는다. 양식이 조금 달라진 실파일이 엉뚱한 공급사로
+     * 조용히 들어가는 것이, 거부당해 다시 고르는 것보다 훨씬 나쁘다. 이름은 여기서 모르므로
+     * 안내 문구는 호출한 쪽이 코드로 공급사를 찾아 만든다.
+     */
+    public Optional<FormatMismatch> findFormatMismatch(String vendorCode, Path file) {
+        VendorExcelParser selected = getParser(vendorCode);
+        Optional<String> claimedByOther = parsers.stream()
+                .filter(p -> p != selected)
+                .sorted(Comparator.comparing(VendorExcelParser::getVendorCode))
+                .filter(p -> p.recognize(file) == VendorExcelParser.Recognition.YES)
+                .map(VendorExcelParser::getVendorCode)
+                .findFirst();
+        if (claimedByOther.isPresent()) {
+            return Optional.of(new FormatMismatch(selected.getVendorCode(), claimedByOther.get()));
+        }
+        if (selected.recognize(file) == VendorExcelParser.Recognition.NO) {
+            return Optional.of(new FormatMismatch(selected.getVendorCode(), null));
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * 양식 모순. {@code detectedVendorCode}는 파일을 자기 양식이라 판정한 다른 공급사 —
+     * 선택한 공급사가 «아니다»라고만 했고 알아본 곳이 없으면 {@code null}.
+     */
+    public record FormatMismatch(String selectedVendorCode, String detectedVendorCode) {}
+}

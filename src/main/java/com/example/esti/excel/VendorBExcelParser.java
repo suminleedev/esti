@@ -128,6 +128,28 @@ public class VendorBExcelParser implements VendorExcelParser {
     }
 
     /**
+     * B 양식 판정 — B «특유의» 시트명(판별이 {@code SINGLE}이 아닌 시트)이 하나라도 있으면 YES, 없으면 NO.
+     *
+     * <p>{@code family(String)}은 못 알아본 시트명도 {@code SINGLE}로 떨어뜨리므로 «B가 이 시트를 알아보나»는
+     * 항상 참이다 — 그래서 SINGLE이 아닌 시트의 유무를 신호로 쓴다. 시트명 규칙을 따로 두지 않고
+     * 파싱과 같은 {@code family()}를 재사용해, 양식이 개편돼도(D-B1) 판정과 파싱이 어긋나지 않는다.
+     * 숨김·{@code (삭제)} 시트는 파싱 대상이 아니므로 판정에서도 뺀다.
+     */
+    @Override
+    public Recognition recognize(Path path) {
+        try (InputStream is = Files.newInputStream(path);
+             Workbook wb = WorkbookFactory.create(is)) {
+            for (int i = 0; i < wb.getNumberOfSheets(); i++) {
+                if (isSkippedSheet(wb, i)) continue;
+                if (family(wb.getSheetAt(i).getSheetName()) != Family.SINGLE) return Recognition.YES;
+            }
+            return Recognition.NO;
+        } catch (Exception e) {
+            throw wrap("B사 엑셀 양식 판정 중 오류", e);
+        }
+    }
+
+    /**
      * 시트별 판별 결과를 진단용으로 노출한다(시트명 → {@code Family} 이름, 스킵된 시트는 {@code SKIPPED}).
      *
      * <p>파싱 결과만으로는 "구본 파서가 헤더를 못 찾아 0건"과 "신양식으로 판별돼 스킵돼서 0건"이 구분되지 않는다.
