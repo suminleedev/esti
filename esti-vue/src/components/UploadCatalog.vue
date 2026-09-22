@@ -434,6 +434,17 @@ async function clearSearch() {
   await loadVendorCatalog()
 }
 
+/**
+ * 샘플을 내려받으면 «공급사 선택»도 그 공급사로 맞춘다 (V-5).
+ * 내려받은 파일 이름(vendor-b-sample.xlsx)만으로는 드롭다운과 이어지지 않아,
+ * B사 샘플을 A사로 둔 채 올리는 실수가 났다. 서버 검사가 막아 주지만 애초에 안 만드는 게 낫다.
+ * 업로드 중에는 바꾸지 않는다 — 아래 watch가 진행 중인 폴링을 끊는다.
+ */
+function selectSampleVendor(vendorCode) {
+  if (vendorUploading.value) return
+  uploadVendorCode.value = vendorCode
+}
+
 // 업로드 중 vendorCode 바꾸면 업로드 중지
 watch(uploadVendorCode, async () => {
   stopProgressPolling()
@@ -535,7 +546,11 @@ onMounted(() => {
           손에 든 단가표가 없다면 샘플로 먼저 시험해 보세요 —
           <template v-for="(v, i) in vendors" :key="v.vendorCode">
             <span v-if="i > 0"> · </span>
-            <a :href="`${BASE_URL}/samples/vendor-${v.vendorCode.toLowerCase()}-sample.xlsx`" download>
+            <a
+              :href="`${BASE_URL}/samples/vendor-${v.vendorCode.toLowerCase()}-sample.xlsx`"
+              download
+              @click="selectSampleVendor(v.vendorCode)"
+            >
               {{ v.vendorName }} 샘플 내려받기
             </a>
           </template>
