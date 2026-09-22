@@ -10,6 +10,7 @@ import { useToast } from "@/composables/useToast"
 import { useConfirm } from "@/composables/useConfirm"
 import { partsSumStatus, sumParts, PARTS_SUM_BADGE_CLASS } from "@/utils/partsSum"
 import { UNITS } from "@/constants/labels"
+import { uploadErrorMessage } from "@/utils/uploadError"
 
 const toast = useToast()
 const { confirm } = useConfirm()
@@ -252,9 +253,10 @@ async function uploadVendorExcel() {
     stopProgressPolling()
     vendorUploading.value = false
 
-    vendorError.value =
-      '공급사 엑셀 업로드/처리 중 오류가 발생했습니다: ' +
-      (err?.response?.data || err?.message || '')
+    // 전송 중에 띄운 «업로드 중... (100%)»가 오류 문구 위에 초록색으로 남지 않게 걷는다
+    vendorMessage.value = ''
+    vendorProgress.value = 0
+    vendorError.value = uploadErrorMessage(err)
   } finally {
     vendorUploading.value = false
   }
