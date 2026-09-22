@@ -1,6 +1,8 @@
 package com.example.esti.excel;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigDecimal;
 import java.nio.file.Path;
@@ -11,6 +13,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.example.esti.support.TestSamples.requireSample;
 import static com.example.esti.support.ExpectedPrices.price;
 import static com.example.esti.support.ExpectedCodes.code;
+import static com.example.esti.excel.VendorExcelParser.Recognition.NO;
+import static com.example.esti.excel.VendorExcelParser.Recognition.YES;
 
 /**
  * P3 검증: B사 파서가 시트 양식 패밀리별로 대표품목 + 부속 + 관계를 정확히 묶는지.
@@ -162,5 +166,44 @@ class VendorBExcelParserTest {
                 .orElseThrow(() -> new AssertionError("메탈호스 1.5m 미발견"));
         assertEquals("1.5m", metal.main().description());
         assertTrue(metal.parts().isEmpty());
+    }
+
+    // ============================================================
+    // 양식 판정(recognize) — 업로드 전 «선택한 공급사와 모순되는가» 검사의 근거
+    // ============================================================
+
+    /** 커밋된 합성 샘플 — 실샘플 없이 CI에서 돈다. */
+    @Test
+    void 합성_샘플_판정_B는_YES_A는_NO() {
+        assertEquals(YES, parser.recognize(Path.of("src/main/resources/static/samples/vendor-b-sample.xlsx")));
+        assertEquals(NO, parser.recognize(Path.of("src/main/resources/static/samples/vendor-a-sample.xlsx")));
+    }
+
+    /**
+     * 거짓 거부 방지 — 지금 올라가는 B 실파일은 통째든 시트별 분할본이든 전부 YES여야 한다.
+     * NO가 나오면 B를 골라도 업로드가 막힌다.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "B사 단가표_sample.xlsx", "B사 단가표_2026최신.xlsx",
+            "B사 2026 (바스).xlsx", "B사 2026 (부속류).xlsx", "B사 2026 (세면기).xlsx",
+            "B사 2026 (소변기수채).xlsx", "B사 2026 (수전금구류).xlsx", "B사 2026 (액세사리류).xlsx",
+            "B사 2026 (양변기).xlsx", "B사 2026 (품번코드).xlsx",
+            "B사 test (수전금구OEM).xlsx", "B사 test (수전부속).xlsx",
+            "B사 test (신규 OEM 부속).xlsx", "B사 test (악세사리 단가표).xlsx"
+    })
+    void B_실파일은_전부_YES(String file) {
+        Path real = Path.of("docs/samples", file);
+        requireSample(real);
+        assertEquals(YES, parser.recognize(real), () -> file + " → " + parser.diagnoseSheetFamilies(real));
+    }
+
+    /** 거짓 거부 방지 — A 실파일이 B로 판정되면 A를 골라도 «B사 양식» 이라며 막힌다. */
+    @ParameterizedTest
+    @ValueSource(strings = {"A사 단가표_sample.xlsx", "A사 단가표_2021최신.xls"})
+    void A_실파일은_NO(String file) {
+        Path real = Path.of("docs/samples", file);
+        requireSample(real);
+        assertEquals(NO, parser.recognize(real), () -> file + " → " + parser.diagnoseSheetFamilies(real));
     }
 }
