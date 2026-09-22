@@ -85,4 +85,12 @@ class VendorAExcelParserTest {
                         && BigDecimal.ZERO.compareTo(m.unitPrice()) == 0);
         assertTrue(found, "신품번 없는 행(예: 비데 B타입)이 '(신품번 없음)'으로 저장돼야 함");
     }
+
+    /** A 파서는 시트명을 안 보므로 양식 판정 근거가 없다 — 합성 샘플은 커밋돼 있어 CI에서도 돈다. */
+    @Test
+    void 양식_판정_근거가_없어_UNKNOWN() {
+        Path synthetic = Path.of("src/main/resources/static/samples/vendor-a-sample.xlsx");
+
+        assertEquals(VendorExcelParser.Recognition.UNKNOWN, parser.recognize(synthetic));
+    }
 }
