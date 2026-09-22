@@ -22,6 +22,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -29,8 +30,11 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/vendor-catalog")
@@ -66,36 +70,91 @@ public class VendorCatalogController {
         //    여기서 막으면 잘못된 요청이 디스크에도, 진행률 저장소에도 자국을 남기지 않는다.
         requireUploadable(vendorCode, file);
 
-        // 1) 진행률 job 생성
+        // 1) 톰캣 임시파일이 아니라, 우리가 관리하는 폴더에 저장
+        //    양식 검사(2)가 파일을 열어 봐야 해서 job보다 먼저 저장한다.
+        Path savedPath;
+        try {
+            savedPath = saveUpload(file);
+        } catch (Exception e) {
+            String jobId = progressStore.createJob();
+            progressStore.fail(jobId, "업로드 파일 저장 실패: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(new UploadResponse(jobId));
+        }
+
+        // 2) 파일 양식이 선택한 공급사와 모순되지 않는지 — 역시 jobId를 돌려주기 «전»에 본다.
+        //    거부하면 임시파일을 지워, 1)에서 남긴 자국도 없앤다.
+        try {
+            requireMatchingFormat(vendorCode, savedPath);
+        } catch (RuntimeException e) {
+            deleteQuietly(savedPath);
+            throw e;
+        }
+
+        // 3) 진행률 job 생성
         String jobId = progressStore.createJob();
 
-        // 2) 톰캣 임시파일이 아니라, 우리가 관리하는 폴더에 저장
-        //    (원하는 경로로 변경 가능: 예 "uploads/tmp")
-        Path dir = Paths.get("uploads", "tmp");
-
         try {
-            Files.createDirectories(dir);
-
-            // 파일명 충돌 방지 + 원본 파일명 일부 유지
-            String original = file.getOriginalFilename();
-            String safeOriginal = (original == null) ? "upload.xlsx" : original.replaceAll("[\\\\/:*?\"<>|]", "_");
-            String storedName = UUID.randomUUID() + "_" + safeOriginal;
-
-            Path savedPath = dir.resolve(storedName);
-
-            try (InputStream in = file.getInputStream()) {
-                Files.copy(in, savedPath, StandardCopyOption.REPLACE_EXISTING);
-            }
-
-            // 3) 비동기 처리 시작 (MultipartFile 넘기면 안됨!)
+            // 4) 비동기 처리 시작 (MultipartFile 넘기면 안됨!)
             catalogImportAsyncService.importVendorCatalogAsync(jobId, vendorCode, savedPath);
 
-            // 4) 프론트는 jobId로 진행률 폴링
+            // 5) 프론트는 jobId로 진행률 폴링
             return ResponseEntity.ok(new UploadResponse(jobId));
 
         } catch (Exception e) {
-            progressStore.fail(jobId, "업로드 파일 저장 실패: " + e.getMessage());
+            deleteQuietly(savedPath);
+            progressStore.fail(jobId, "적재 시작 실패: " + e.getMessage());
             return ResponseEntity.internalServerError().body(new UploadResponse(jobId));
+        }
+    }
+
+    /** 업로드를 {@code uploads/tmp}에 저장한다. 파일명 충돌 방지 + 원본 파일명 일부 유지. */
+    private Path saveUpload(MultipartFile file) throws IOException {
+        Path dir = Paths.get("uploads", "tmp");
+        Files.createDirectories(dir);
+
+        String original = file.getOriginalFilename();
+        String safeOriginal = (original == null) ? "upload.xlsx" : original.replaceAll("[\\\\/:*?\"<>|]", "_");
+        Path savedPath = dir.resolve(UUID.randomUUID() + "_" + safeOriginal);
+
+        try (InputStream in = file.getInputStream()) {
+            Files.copy(in, savedPath, StandardCopyOption.REPLACE_EXISTING);
+        }
+        return savedPath;
+    }
+
+    /**
+     * 파일이 선택한 공급사 양식과 «명백히» 모순되면 {@code 400}. 판정 규칙은
+     * {@link VendorExcelParserFactory#findFormatMismatch}에 있고, 여기서는 공급사 이름으로 문구만 만든다.
+     *
+     * <p>판정하려고 여는 중에 실패하면(손상·암호 등) 어차피 파싱도 못 하므로 같은 자리에서 400으로 돌려준다.
+     */
+    private void requireMatchingFormat(String vendorCode, Path savedPath) {
+        Optional<VendorExcelParserFactory.FormatMismatch> mismatch;
+        try {
+            mismatch = parserFactory.findFormatMismatch(vendorCode, savedPath);
+        } catch (RuntimeException e) {
+            throw new BadRequestException("엑셀 파일을 열 수 없습니다. 손상됐거나 암호가 걸린 파일인지 확인해 주세요.");
+        }
+        mismatch.ifPresent(m -> {
+            Map<String, String> names = vendorCatalogQueryService.getVendorOptions().stream()
+                    .collect(Collectors.toMap(o -> o.vendorCode().toUpperCase(Locale.ROOT), VendorOption::vendorName, (a, b) -> a));
+            String selected = names.getOrDefault(m.selectedVendorCode().toUpperCase(Locale.ROOT), m.selectedVendorCode());
+            if (m.detectedVendorCode() != null) {
+                String detected = names.getOrDefault(m.detectedVendorCode().toUpperCase(Locale.ROOT), m.detectedVendorCode());
+                // 이름은 DB 값이라 받침을 모른다 — 조사를 붙이지 않는 문형으로 쓴다
+                throw new BadRequestException("이 파일은 " + detected + " 양식으로 보입니다 (선택한 공급사: "
+                        + selected + "). 공급사를 바꿔 다시 올려 주세요.");
+            }
+            throw new BadRequestException("이 파일은 " + selected + " 양식으로 보이지 않습니다. "
+                    + "선택한 공급사가 맞는지 확인해 주세요.");
+        });
+    }
+
+    private static void deleteQuietly(Path path) {
+        try {
+            Files.deleteIfExists(path);
+        } catch (IOException ignored) {
+            // 지우지 못한 임시파일은 uploads/tmp 정리에 맡긴다 — 거부 응답을 500으로 바꿀 일은 아니다
         }
     }
 
