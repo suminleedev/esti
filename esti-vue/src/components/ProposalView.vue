@@ -56,7 +56,9 @@
         현장 정보와 위생기구 구성을 제안서로 저장하거나 템플릿으로 재사용할 수 있습니다.<br>
         템플릿을 활용하면 평형/적용부위/기본 구성을 자동으로 불러올 수 있습니다.
       </div>
-      <div class="d-flex gap-2">
+      <!-- 읽기 모드(DRAFT·SUBMITTED·SENT 상세)에서는 템플릿 조작 전체를 잠근다 (E1).
+           아래 상세 영역과 같은 방식 — fieldset disabled라 키보드로도 우회되지 않는다 -->
+      <fieldset class="d-flex gap-2 border-0 p-0 m-0" :disabled="!isEditMode">
         <!-- 템플릿 선택 -->
         <select
           v-model="selectedTemplateId"
@@ -105,7 +107,7 @@
         >
           현재 구성 템플릿 저장
         </button>
-      </div>
+      </fieldset>
     </div>
 
     <!-- Step Nav (편집/신규 모드에서만 노출 — 읽기 모드는 요약 뷰) -->
