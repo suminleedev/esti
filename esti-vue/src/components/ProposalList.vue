@@ -19,6 +19,7 @@
     <!-- Filters -->
     <div class="card mb-3">
       <div class="card-body">
+        <!-- 열 폭 합은 12를 넘지 않는다 (4+2+2+2+2) — 넘치면 초기화 버튼이 다음 줄로 밀린다 (E3) -->
         <div class="row g-2 align-items-end">
           <div class="col-md-4">
             <label class="form-label small mb-1" for="filter-keyword">검색어 (현장명/담당자)</label>
@@ -30,14 +31,14 @@
               placeholder="예) XX아파트, 홍길동"
             />
           </div>
-          <div class="col-md-3">
+          <div class="col-md-2">
             <label class="form-label small mb-1" for="filter-apartmentType">평형</label>
             <select id="filter-apartmentType" v-model="filters.apartmentType" class="form-select form-select-sm">
               <option value="">전체</option>
               <option v-for="t in apartmentTypeChoices" :key="t" :value="t">{{ t }}</option>
             </select>
           </div>
-          <div class="col-md-3">
+          <div class="col-md-2">
             <label class="form-label small mb-1" for="filter-templateFilter">템플릿 기반 여부</label>
             <select id="filter-templateFilter" v-model="filters.templateFilter" class="form-select form-select-sm">
               <option value="">전체</option>
@@ -45,7 +46,7 @@
               <option value="manual">직접 작성</option>
             </select>
           </div>
-          <div class="col-md-3">
+          <div class="col-md-2">
             <label class="form-label small mb-1" for="filter-status">상태</label>
             <select id="filter-status" v-model="filters.status" class="form-select form-select-sm">
               <option value="">전체</option>
