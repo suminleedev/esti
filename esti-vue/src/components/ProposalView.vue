@@ -350,42 +350,65 @@
                     </template>
                   </EmptyState>
                 </li>
-                <li
-                  v-for="item in filteredItems"
-                  :key="item.vendorItemPriceId"
-                  class="list-group-item d-flex align-items-center"
-                  @click="selectCandidate(item)"
-                  @keydown.enter="selectCandidate(item)"
-                  @keydown.space.prevent="selectCandidate(item)"
-                  role="button"
-                  tabindex="0"
-                  :aria-label="`${item.productName} 선택`"
-                  style="cursor:pointer"
-                >
-                  <img
-                    :src="productImage(item.imageUrl)"
-                    class="me-3 rounded"
-                    style="width:50px;height:50px;object-fit:contain"
-                    :alt="`${item.productName} 제품 이미지`"
-                    loading="lazy"
-                    decoding="async"
-                    @error="onImgErr($event)"
-                  />
-                  <div class="flex-grow-1">
-                    <div class="fw-bold">{{ item.productName }}</div>
-                    <small class="text-muted">{{ item.mainItemCode }} · {{ item.vendorName}}</small>
-                    <!--
-                      구성 요약 (G-1) — 같은 품번의 여러 세트가 각각 행으로 오므로 이걸로 가른다.
-                      제안서에 담을 때 세트가가 스냅샷되니, 여기서 맞는 구성을 골라야 금액이 맞는다.
-                    -->
-                    <div v-if="item.setSummary" class="small text-muted">{{ item.setSummary }}</div>
-                    <div class="small text-muted">{{ item.specs }}</div> <!-- 규격 -->
-                  </div>
-                  <div class="text-end small flex-shrink-0">
-                    <div class="text-muted">참고가</div>
-                    <div class="fw-semibold">{{ item.unitPrice != null ? won(item.unitPrice) : '-' }}</div>
-                  </div>
-                </li>
+                <!-- 대분류 섹션 (E2) — 헤더를 눌러 접고 편다. 스크롤해도 헤더가 위에 붙어 있다 -->
+                <template v-for="group in catalogGroups" :key="group.name">
+                  <li class="list-group-item p-0 catalog-section-header">
+                    <button
+                      type="button"
+                      class="btn btn-sm w-100 d-flex align-items-center justify-content-between rounded-0 px-3 py-2"
+                      :aria-expanded="isSectionOpen(group.name)"
+                      @click="toggleSection(group.name)"
+                    >
+                      <span class="fw-semibold">
+                        <i
+                          class="bi me-1"
+                          :class="isSectionOpen(group.name) ? 'bi-chevron-down' : 'bi-chevron-right'"
+                          aria-hidden="true"
+                        ></i>
+                        {{ group.name }}
+                      </span>
+                      <span class="badge text-bg-light border">{{ group.items.length }}</span>
+                    </button>
+                  </li>
+                  <template v-if="isSectionOpen(group.name)">
+                    <li
+                      v-for="item in group.items"
+                      :key="item.vendorItemPriceId"
+                      class="list-group-item d-flex align-items-center"
+                      @click="selectCandidate(item)"
+                      @keydown.enter="selectCandidate(item)"
+                      @keydown.space.prevent="selectCandidate(item)"
+                      role="button"
+                      tabindex="0"
+                      :aria-label="`${item.productName} 선택`"
+                      style="cursor:pointer"
+                    >
+                      <img
+                        :src="productImage(item.imageUrl)"
+                        class="me-3 rounded"
+                        style="width:50px;height:50px;object-fit:contain"
+                        :alt="`${item.productName} 제품 이미지`"
+                        loading="lazy"
+                        decoding="async"
+                        @error="onImgErr($event)"
+                      />
+                      <div class="flex-grow-1">
+                        <div class="fw-bold">{{ item.productName }}</div>
+                        <small class="text-muted">{{ item.mainItemCode }} · {{ item.vendorName}}</small>
+                        <!--
+                          구성 요약 (G-1) — 같은 품번의 여러 세트가 각각 행으로 오므로 이걸로 가른다.
+                          제안서에 담을 때 세트가가 스냅샷되니, 여기서 맞는 구성을 골라야 금액이 맞는다.
+                        -->
+                        <div v-if="item.setSummary" class="small text-muted">{{ item.setSummary }}</div>
+                        <div class="small text-muted">{{ item.specs }}</div> <!-- 규격 -->
+                      </div>
+                      <div class="text-end small flex-shrink-0">
+                        <div class="text-muted">참고가</div>
+                        <div class="fw-semibold">{{ item.unitPrice != null ? won(item.unitPrice) : '-' }}</div>
+                      </div>
+                    </li>
+                  </template>
+                </template>
               </ul>
             </div>
           </div>
@@ -657,6 +680,7 @@ import axios from 'axios'
 import noImg from '@/assets/no-image.svg'
 import { productImage } from '@/utils/image'
 import { won, number, date } from '@/utils/format'
+import { groupByCategoryLarge } from '@/utils/catalogGroups'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { useToast } from '@/composables/useToast'
@@ -803,6 +827,29 @@ const filteredItems = computed(() => {
     return categoryTerms.some((term) => categories.some((c) => c.includes(term)))
   })
 })
+
+/* 카탈로그 대분류 섹션 (E2)
+   평소에는 전부 접어 두고 사용자가 연 섹션만 펼친다(openSections).
+   검색 중에는 결과가 있는 섹션만 남으므로 전부 펼쳐 보이고, 그 상태에서 접은 것만 따로 기억한다
+   (collapsedWhileSearching). 검색어가 바뀌면 그 기억은 버리고, 검색어를 비우면 평소 상태로 돌아간다. */
+const catalogGroups = computed(() => groupByCategoryLarge(filteredItems.value))
+const openSections = ref(new Set())
+const collapsedWhileSearching = ref(new Set())
+const isSearching = computed(() => search.value.trim() !== '')
+
+watch(search, () => collapsedWhileSearching.value.clear())
+
+function isSectionOpen(name) {
+  return isSearching.value
+    ? !collapsedWhileSearching.value.has(name)
+    : openSections.value.has(name)
+}
+
+function toggleSection(name) {
+  const set = isSearching.value ? collapsedWhileSearching.value : openSections.value
+  if (set.has(name)) set.delete(name)
+  else set.add(name)
+}
 
 /* ====== 상세 선택 + 입력 ====== */
 const candidate = reactive({
@@ -1703,6 +1750,14 @@ onMounted(() => {
   outline: 2px solid var(--bs-primary);
   outline-offset: -2px;
   z-index: 1;
+}
+
+/* 카탈로그 대분류 섹션 헤더 — 스크롤 영역 위에 붙여 지금 어느 섹션인지 보이게 한다 (E2) */
+.catalog-section-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bs-tertiary-bg);
 }
 
 /* 제품 상세 이미지 표시 */
