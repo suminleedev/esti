@@ -138,9 +138,9 @@ function goDetail(id) {
 }
 
 .menu-card {
-  border: 2px solid #e9ecef;
+  border: 2px solid var(--bs-border-color);
   border-radius: 18px;
-  background: white;
+  background: var(--bs-body-bg);
   padding: 22px 18px;
   text-align: left;
   transition: transform 0.08s ease, box-shadow 0.08s ease, border-color 0.08s ease;
@@ -149,7 +149,7 @@ function goDetail(id) {
 .menu-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
-  border-color: #ced4da;
+  border-color: var(--esti-border-strong);
 }
 
 .icon {
@@ -166,7 +166,7 @@ function goDetail(id) {
 
 .desc {
   font-size: 13px;
-  color: #6c757d;
+  color: var(--bs-secondary-color);
 }
 
 /* 최근 제안서 행 키보드 포커스 가시화 (H-9 접근성) */

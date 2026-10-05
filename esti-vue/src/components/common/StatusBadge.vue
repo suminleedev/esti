@@ -7,7 +7,7 @@ const props = defineProps({
 })
 
 const info = computed(
-  () => PROPOSAL_STATUS[props.status] ?? { label: props.status, badgeClass: 'bg-secondary' },
+  () => PROPOSAL_STATUS[props.status] ?? { label: props.status, badgeClass: 'bg-secondary-subtle text-secondary-emphasis border' },
 )
 </script>
 

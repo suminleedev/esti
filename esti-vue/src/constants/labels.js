@@ -2,7 +2,8 @@
 // 화면에 표시되는 용어는 반드시 이 파일에서 가져온다. (DB enum 값은 키로만 사용)
 
 export const PROPOSAL_STATUS = {
-  DRAFT: { label: '임시저장', badgeClass: 'bg-secondary' },
+  // 임시저장은 옅은 배지 — 작성완료(메인 색 채움)와 색뿐 아니라 밝기로도 갈리게 한다
+  DRAFT: { label: '임시저장', badgeClass: 'bg-secondary-subtle text-secondary-emphasis border' },
   SUBMITTED: { label: '작성완료', badgeClass: 'bg-primary' },
   SENT: { label: '발송완료', badgeClass: 'bg-success' },
 }
