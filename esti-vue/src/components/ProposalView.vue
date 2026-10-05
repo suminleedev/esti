@@ -9,7 +9,7 @@
 <!--        <span v-if="!isNew && !isEditMode" class="badge bg-dark-subtle ms-2">읽기</span>-->
 <!--        <span v-if="isNew && isEditMode" class="badge bg-success ms-2">신규작성</span>-->
 <!--        <span v-if="!isNew && isEditMode" class="badge bg-primary ms-2">편집 중</span>-->
-        <span v-if="isNew" class="badge bg-success ms-2">신규작성</span>
+        <span v-if="isNew" class="badge bg-secondary-subtle text-secondary-emphasis border ms-2">신규작성</span>
         <StatusBadge v-else :status="proposalStatus" class="ms-2" />
       </h2>
 
@@ -30,7 +30,7 @@
           @click="submit">작성 완료</button>
         <button
           v-if="!isNew && isSubmitted"
-          class="btn btn-dark btn-sm"
+          class="btn btn-primary btn-sm"
           @click="sendFinal">발송 확정</button>
         <!-- 삭제 -->
         <button
@@ -122,7 +122,7 @@
           <i
             v-else
             class="bi bi-circle me-1"
-            :class="step === i ? '' : 'text-danger'"
+            :class="step === i ? '' : 'text-secondary'"
           ></i>
           {{ s }}
         </button>

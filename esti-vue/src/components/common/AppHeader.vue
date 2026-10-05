@@ -1,5 +1,5 @@
 <template>
-  <header class="navbar navbar-expand sticky-top bg-white border-bottom app-header">
+  <header class="navbar navbar-expand sticky-top bg-body border-bottom app-header">
     <nav class="container-fluid px-3">
       <router-link to="/" class="navbar-brand fw-bold">esti</router-link>
       <ul class="navbar-nav me-auto">

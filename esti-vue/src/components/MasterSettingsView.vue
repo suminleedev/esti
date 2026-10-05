@@ -125,6 +125,9 @@
         </p>
       </div>
     </div>
+
+    <!-- 화면 색(테마) — 마스터 값과 무관한 개인 설정이라 맨 아래에 둔다 -->
+    <ThemePicker />
   </div>
 </template>
 
@@ -132,6 +135,7 @@
 import { computed, onMounted, ref } from 'vue'
 import axios from 'axios'
 import EmptyState from '@/components/common/EmptyState.vue'
+import ThemePicker from '@/components/common/ThemePicker.vue'
 import { MASTER_TYPES } from '@/constants/labels'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'

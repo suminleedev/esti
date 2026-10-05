@@ -5,6 +5,13 @@
     <link rel="icon" href="/favicon.ico">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>esti — 견적·제안서 관리</title>
+    <!-- 화면 색 테마를 첫 화면이 그려지기 전에 적용한다(깜빡임 방지). 키·값은 src/composables/useTheme.js와 같다 -->
+    <script>
+      try {
+        var t = localStorage.getItem('esti-theme')
+        if (t === 'indigo' || t === 'clay') document.documentElement.setAttribute('data-esti-theme', t)
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="app"></div>

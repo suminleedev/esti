@@ -117,7 +117,7 @@
               <td>
                   <span
                     v-if="p.templateId"
-                    class="badge bg-success-subtle text-success-emphasis border"
+                    class="badge bg-primary-subtle text-primary-emphasis border"
                   >
                     템플릿 기반
                   </span>
