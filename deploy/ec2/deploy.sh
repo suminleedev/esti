@@ -48,4 +48,6 @@ code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost/ || true)
 [ "$code" = "200" ] || { echo "🔴 Caddy 경유 응답이 $code — docker compose logs caddy app" >&2; exit 1; }
 
 docker image prune -f >/dev/null
-echo "✅ 배포 완료 ($(docker compose images app --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | tail -1))"
+# 레지스트리 주소(계정 ID 포함)는 찍지 않는다 — 태그와 이미지 ID 앞자리만
+image_id=$(docker inspect -f '{{.Image}}' "$(docker compose ps -q app)" | cut -d: -f2 | cut -c1-12)
+echo "✅ 배포 완료 (esti-demo:${TAG}, 이미지 ${image_id})"
