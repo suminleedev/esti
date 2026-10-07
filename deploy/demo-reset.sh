@@ -13,6 +13,7 @@
 
 set -euo pipefail
 cd "$(dirname "$0")"
+. lib/wait-seed.sh
 
 SEED_TIMEOUT=${SEED_TIMEOUT:-300}   # 시드 완료 로그를 기다리는 최대 초
 
@@ -39,27 +40,13 @@ echo "3/4 업로드 이미지 정리"
 docker compose run --rm --no-deps -T --entrypoint sh app -c \
   'd=/app/uploads/product-images; [ -d "$d" ] || exit 0; n=$(find "$d" -type f ! -name "demo-*" | wc -l); find "$d" -type f ! -name "demo-*" -delete; echo "   지운 파일 $n개"'
 
-# 4) 다시 띄우고 «시드 완료»까지 기다린다.
-#    🔑 「Started」를 기다리면 안 된다 — Spring Boot 는 Started 로그 «뒤에» 시드를 돈다(G11-2에서 실측)
+# 4) 다시 띄우고 «시드 완료»까지 기다린다 (Started 가 아니라 시드 완료 — lib/wait-seed.sh)
 echo "4/4 앱 기동 — 시드 완료까지 대기 (최대 ${SEED_TIMEOUT}초)"
 since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 docker compose start app
 
-deadline=$(( $(date +%s) + SEED_TIMEOUT ))
-while [ "$(date +%s)" -lt "$deadline" ]; do
-  logs=$(docker compose logs --no-log-prefix --since "$since" app 2>/dev/null || true)
-  if printf '%s' "$logs" | grep -qE '적재 실패|APPLICATION FAILED'; then
-    printf '%s\n' "$logs" | grep -E '\[데모시드\]|APPLICATION FAILED' | sed 's/^.*\(\[데모시드\]\)/   \1/' >&2
-    echo "🔴 시드 실패 — docker compose logs app 으로 원인을 본다" >&2
-    exit 1
-  fi
-  if printf '%s' "$logs" | grep -q '플레이스홀더 이미지 [0-9]*건 연결'; then
-    printf '%s\n' "$logs" | grep '\[데모시드\]' | sed 's/^.*\(\[데모시드\]\)/   \1/'
-    echo "✅ 시드 상태로 되돌렸다"
-    exit 0
-  fi
-  sleep 3
-done
-
-echo "🔴 ${SEED_TIMEOUT}초 안에 시드 완료 로그가 없다 — docker compose logs app 으로 확인한다" >&2
-exit 1
+if wait_seed "$since" "$SEED_TIMEOUT"; then
+  echo "✅ 시드 상태로 되돌렸다"
+else
+  exit 1
+fi
