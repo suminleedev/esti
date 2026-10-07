@@ -62,18 +62,26 @@ class MasterCodeServiceTest {
      * {@code ddl-auto=update}는 이미 있는 check 제약을 갱신하지 못한다 — 종류를 하나 추가하는 순간
      * 기존 DB에서 그 값의 insert가 터진다(기동은 멀쩡하다). 실제로 APARTMENT_TYPE 추가 때 한 번 겪었다.
      * 인메모리 테스트는 매번 새로 만들어져 그 상황을 재현하지 못하므로, 제약의 부재 자체를 못박는다.
+     *
+     * <p>데모 DB(PostgreSQL, G11)도 같은 함정이 있어 두 DB 모두 본다. 시스템 카탈로그는 DB마다 달라
+     * 여기서만 갈라 쓴다({@code ESTI_TEST_DB=postgres}로 돌 때).
      */
     @Test
     @Order(2)
     void code_type에_check_제약이_붙지_않는다() throws Exception {
         List<String> checks = new ArrayList<>();
         try (Connection conn = dataSource.getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(
-                     "select con.constraintname from sys.sysconstraints con "
-                             + "join sys.systables t on t.tableid = con.tableid "
-                             + "where t.tablename = 'MASTER_CODE' and con.type = 'C'")) {
-            while (rs.next()) checks.add(rs.getString(1));
+             Statement stmt = conn.createStatement()) {
+            String sql = "PostgreSQL".equals(conn.getMetaData().getDatabaseProductName())
+                    ? "select con.conname from pg_constraint con "
+                            + "join pg_class t on t.oid = con.conrelid "
+                            + "where t.relname = 'master_code' and con.contype = 'c'"
+                    : "select con.constraintname from sys.sysconstraints con "
+                            + "join sys.systables t on t.tableid = con.tableid "
+                            + "where t.tablename = 'MASTER_CODE' and con.type = 'C'";
+            try (ResultSet rs = stmt.executeQuery(sql)) {
+                while (rs.next()) checks.add(rs.getString(1));
+            }
         }
 
         assertThat(checks).isEmpty();
