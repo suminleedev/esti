@@ -1,0 +1,51 @@
+# 데모 배포본 — 앱 + PostgreSQL (G11). 실사용(local)과는 무관하다.
+#
+# 이 파일은 EC2 구성(G11-4)의 뼈대다. 지금은 로컬 확인과 초기화 스크립트(demo-reset.sh) 검증용으로
+# 앱·DB 두 개만 둔다. HTTPS 앞단(Caddy)·자원 제한은 EC2 단계에서 붙인다.
+#
+#   준비:  ./mvnw -Pfrontend clean package && cp target/esti-*.jar deploy/esti.jar
+#          deploy/.env 에 ESTI_DB_PASSWORD=... (gitignore — 파일에 비밀번호를 적지 않는다)
+#   실행:  docker compose -f deploy/compose.yml up -d --build
+#   초기화: deploy/demo-reset.sh
+#
+# 🔑 서비스 이름(app·db)과 볼륨 이름은 demo-reset.sh 가 그대로 쓴다. 바꾸면 스크립트도 같이.
+
+name: esti-demo
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: esti
+      POSTGRES_USER: esti
+      POSTGRES_PASSWORD: ${ESTI_DB_PASSWORD:?deploy/.env 에 ESTI_DB_PASSWORD 를 넣어라}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U esti -d esti"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ESTI_DB_URL: jdbc:postgresql://db:5432/esti
+      ESTI_DB_USER: esti
+      ESTI_DB_PASSWORD: ${ESTI_DB_PASSWORD}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      APP_CORS_ALLOWED_ORIGINS: ${APP_CORS_ALLOWED_ORIGINS:-http://localhost:8080}
+    volumes:
+      # 제품 이미지(플레이스홀더·방문자 업로드)를 컨테이너 교체에도 남긴다
+      - uploads:/app/uploads
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:
+  uploads:
