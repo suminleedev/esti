@@ -7,6 +7,7 @@ import com.example.esti.repository.VendorRepository;
 import com.example.esti.service.CatalogImportAsyncService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
@@ -18,6 +19,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -26,9 +28,11 @@ import java.util.Set;
 /**
  * 데모 배포본을 기동할 때 합성 카탈로그를 적재한다 (D-3).
  *
- * <p>데모는 인메모리 DB라 <b>뜰 때마다 빈 상태</b>다. 카탈로그가 비면 방문자가 볼 수 있는 게
- * 업로드 화면뿐이라, 기동 시 합성 단가표(D-2)를 한 벌 넣어 둔다. 방문자가 카탈로그를 망쳐도
- * 재시작하면 이 상태로 돌아온다.
+ * <p>카탈로그가 비면 방문자가 볼 수 있는 게 업로드 화면뿐이라, 기동 시 합성 단가표(D-2)를 넣어 둔다.
+ *
+ * <p><b>영속 DB에서 몇 번 떠도 한 벌이다</b> (G11). 데모 DB가 PostgreSQL로 바뀌어 재시작해도 데이터가
+ * 남는다 — 그래서 <b>제품이 0건인 공급사에만</b> 적재한다. 전체 건수로 판정하면 한 공급사만 들어가고
+ * 다른 쪽이 실패했을 때 그쪽은 영영 다시 시도되지 않는다. 시드 상태로 되돌리는 것은 별도 수단(G11-3)이다.
  *
  * <p><b>적재 로직을 새로 만들지 않는다.</b> 사람이 업로드했을 때와 같은 경로
  * ({@link CatalogImportAsyncService#importVendorCatalog})를 그대로 부른다 — 데모에서만 도는
@@ -77,7 +81,6 @@ public class DemoSeedRunner implements ApplicationRunner {
 
     /** jar 안의 원본 위치와, 내려놓을 자리(실제 제품 이미지와 같은 폴더). */
     private static final String IMAGE_RESOURCE_DIR = "static/demo-images/";
-    private static final Path IMAGE_TARGET_DIR = Path.of("uploads", "product-images");
     private static final String IMAGE_URL_PREFIX = "/uploads/product-images/";
     private static final String IMAGE_FILE_PREFIX = "demo-";
 
@@ -85,16 +88,27 @@ public class DemoSeedRunner implements ApplicationRunner {
     private final VendorProductRepository productRepository;
     private final VendorRepository vendorRepository;
 
+    /** 실제 제품 이미지와 같은 폴더 — 크롤러와 같은 설정을 따른다(테스트는 target/ 아래로 돌린다). */
+    @Value("${app.crawler.image-dir}")
+    private String imageDir;
+
     @Override
     public void run(ApplicationArguments args) {
-        if (productRepository.count() > 0) {
-            log.info("[데모시드] 이미 카탈로그가 있어 건너뛴다 ({}건)", productRepository.count());
-            return;
-        }
+        List<String> seeded = new ArrayList<>();
+        SEEDS.forEach((vendorCode, resourcePath) -> {
+            long existing = productRepository.countByVendor_VendorCode(vendorCode);
+            if (existing > 0) {
+                log.info("[데모시드] {} 이미 {}건 있어 건너뛴다", vendorCode, existing);
+            } else if (seed(vendorCode, resourcePath)) {
+                seeded.add(vendorCode);
+            }
+        });
+        if (!seeded.isEmpty()) renameVendors(seeded);
 
-        SEEDS.forEach(this::seed);
-        renameVendors();
-        assignPlaceholderImages(copyPlaceholderImages());
+        // 그림은 «매 기동» 내려놓는다. DB는 남고 컨테이너만 바뀌면(볼륨 없는 재배포) 파일이 사라져
+        // 이미 연결된 imageUrl이 깨진 이미지가 된다. 덮어쓰기라 몇 번 해도 같다.
+        Set<String> placed = copyPlaceholderImages();
+        if (!seeded.isEmpty()) assignPlaceholderImages(placed);
     }
 
     /**
@@ -103,7 +117,7 @@ public class DemoSeedRunner implements ApplicationRunner {
      * <p><b>실패해도 기동을 막지 않는다.</b> 카탈로그가 빈 데모는 반쪽이지만, 아예 안 뜨는 것보다는
      * 낫다 — 방문자가 같은 파일을 직접 내려받아 올려 볼 수 있는 길이 남아 있다(D-9).
      */
-    private void seed(String vendorCode, String resourcePath) {
+    private boolean seed(String vendorCode, String resourcePath) {
         Path temp = null;
         try {
             temp = Files.createTempFile("demo-seed-" + vendorCode + "-", ".xlsx");
@@ -112,8 +126,10 @@ public class DemoSeedRunner implements ApplicationRunner {
             }
             int total = importService.importVendorCatalog(vendorCode, temp);
             log.info("[데모시드] {} 적재 완료 — 세트 {}건", vendorCode, total);
+            return true;
         } catch (Exception e) {
-            log.error("[데모시드] {} 적재 실패 — 카탈로그가 빈 채로 뜬다: {}", vendorCode, e.toString());
+            log.error("[데모시드] {} 적재 실패 — 이 공급사가 빈 채로 뜬다(다음 기동 때 다시 시도): {}", vendorCode, e.toString());
+            return false;
         } finally {
             if (temp != null) {
                 try { Files.deleteIfExists(temp); } catch (Exception ignore) { /* 임시파일이다 */ }
@@ -129,10 +145,12 @@ public class DemoSeedRunner implements ApplicationRunner {
      * 이 저장소의 규칙이다({@code CLAUDE.md}). 공개 배포본이 그 규칙의 가장 바깥이다.
      *
      * <p>이름은 <b>행을 만들 때만</b> 정해지므로, 여기서 한 번 바꿔 두면 방문자가 나중에
-     * 직접 단가표를 올려도 되돌아가지 않는다.
+     * 직접 단가표를 올려도 되돌아가지 않는다. 그래서 이번에 적재한 공급사만 바꾼다.
      */
-    private void renameVendors() {
-        List<Vendor> vendors = vendorRepository.findAll();
+    private void renameVendors(List<String> vendorCodes) {
+        List<Vendor> vendors = vendorCodes.stream()
+                .flatMap(code -> vendorRepository.findByVendorCode(code).stream())
+                .toList();
         for (Vendor vendor : vendors) {
             vendor.setVendorName(vendor.getVendorCode() + "사");
         }
@@ -151,15 +169,16 @@ public class DemoSeedRunner implements ApplicationRunner {
         icons.add(FALLBACK_IMAGE);
 
         Set<String> placed = new LinkedHashSet<>();
+        Path targetDir = Path.of(imageDir);
         try {
-            Files.createDirectories(IMAGE_TARGET_DIR);
+            Files.createDirectories(targetDir);
         } catch (IOException e) {
             log.warn("[데모시드] 제품 이미지 폴더를 만들지 못했다 — 이미지 없이 뜬다: {}", e.toString());
             return placed;
         }
 
         for (String icon : icons) {
-            Path target = IMAGE_TARGET_DIR.resolve(IMAGE_FILE_PREFIX + icon + ".png");
+            Path target = targetDir.resolve(IMAGE_FILE_PREFIX + icon + ".png");
             try (InputStream is = new ClassPathResource(IMAGE_RESOURCE_DIR + icon + ".png").getInputStream()) {
                 Files.copy(is, target, StandardCopyOption.REPLACE_EXISTING);
                 placed.add(icon);
