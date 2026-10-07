@@ -95,12 +95,17 @@ public class DemoSeedRunner implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         List<String> seeded = new ArrayList<>();
+        List<String> skipped = new ArrayList<>();
+        List<String> failed = new ArrayList<>();
         SEEDS.forEach((vendorCode, resourcePath) -> {
             long existing = productRepository.countByVendor_VendorCode(vendorCode);
             if (existing > 0) {
                 log.info("[데모시드] {} 이미 {}건 있어 건너뛴다", vendorCode, existing);
+                skipped.add(vendorCode);
             } else if (seed(vendorCode, resourcePath)) {
                 seeded.add(vendorCode);
+            } else {
+                failed.add(vendorCode);
             }
         });
         if (!seeded.isEmpty()) renameVendors(seeded);
@@ -109,6 +114,10 @@ public class DemoSeedRunner implements ApplicationRunner {
         // 이미 연결된 imageUrl이 깨진 이미지가 된다. 덮어쓰기라 몇 번 해도 같다.
         Set<String> placed = copyPlaceholderImages();
         if (!seeded.isEmpty()) assignPlaceholderImages(placed);
+
+        // 배포·초기화 스크립트가 기다리는 줄이다(deploy/). 「Started」 뒤에 시드가 돌기 때문에
+        // 「앱이 쓸 수 있는 상태」의 신호는 이 줄뿐이다. 형식을 바꾸면 스크립트도 같이 고친다.
+        log.info("[데모시드] 끝 — 적재 {} · 건너뜀 {} · 실패 {}", seeded, skipped, failed);
     }
 
     /**
