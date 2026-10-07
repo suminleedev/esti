@@ -8,7 +8,9 @@
 #   빌드:  ./mvnw -Pfrontend clean package
 #          cp target/esti-*.jar deploy/esti.jar
 #          docker build -t esti-demo:local deploy
-#   실행:  docker run --rm -p 8080:8080 -m 1g esti-demo:local
+#   실행:  demo 는 PostgreSQL 이 필요하다(G11). DB 주소·비밀번호를 환경변수로 준다.
+#          docker run --rm -p 8080:8080 -m 1g \
+#            -e ESTI_DB_URL=jdbc:postgresql://host.docker.internal:15432/esti -e ESTI_DB_PASSWORD=... esti-demo:local
 #
 # 베이스는 glibc(jammy). Alpine(musl)을 쓰지 않는 이유는 VectorImageConverter 가
 # AWT/ImageIO 를 쓰기 때문이다 — 아끼는 건 90MB 뿐인데 위험은 런타임에 나타난다.

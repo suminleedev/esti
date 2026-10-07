@@ -28,18 +28,28 @@ class DeployProfileGuardTest {
     private static final Path RESOURCES = Path.of("src", "main", "resources");
 
     @Test
-    @DisplayName("데모 프로파일은 인메모리 DB만 연다 — 실 카탈로그 파일 DB를 열 경로가 없어야 한다")
+    @DisplayName("데모 프로파일은 PostgreSQL만 연다 — 실 카탈로그 파일 DB(Derby)를 열 경로가 없어야 한다")
     void 데모는_실DB를_열지_않는다() throws IOException {
-        String url = demo().getProperty("spring.datasource.url");
+        Properties demo = demo();
+        String url = demo.getProperty("spring.datasource.url");
 
         // 이 계획의 제1 원칙이다. 파일 DB에는 공급사 실단가와 전산코드가 들어 있어
         // 배포본이 그걸 열면 저장소에서 뺀 값을 웹으로 내보내는 셈이 된다.
-        assertThat(url)
-                .as("demo 프로파일의 datasource")
-                .startsWith("jdbc:derby:memory:");
-        assertThat(demo().getProperty("spring.jpa.hibernate.ddl-auto"))
-                .as("재시작하면 초기 상태로 돌아가야 한다")
-                .isEqualTo("create-drop");
+        // 실DB는 Derby 파일이라, 데모가 Derby 자체를 쓰지 않으면 열 경로가 없다 (G11 — 예전엔 인메모리 Derby).
+        // URL은 환경변수 자리표시자(${ESTI_DB_URL:기본값})라 기본값까지 통째로 본다.
+        assertThat(url).as("demo 프로파일의 datasource").doesNotContainIgnoringCase("derby");
+        assertThat(url.replaceFirst("^\\$\\{[A-Z_]+:", ""))
+                .as("환경변수가 없을 때의 기본값도 PostgreSQL이어야 한다")
+                .startsWith("jdbc:postgresql:");
+        assertThat(demo.getProperty("spring.datasource.driver-class-name")).isEqualTo("org.postgresql.Driver");
+    }
+
+    @Test
+    @DisplayName("데모 데이터는 재시작·재배포에도 남는다 — 스키마를 지우는 ddl-auto 금지")
+    void 데모_데이터는_남는다() throws IOException {
+        // create·create-drop이면 재배포할 때마다 방문자가 만든 제안서가 사라진다 (G11, D-7의 목적).
+        // 시드는 DemoSeedRunner가 «빈 공급사에만» 넣으므로 update로 둬도 두 벌이 되지 않는다.
+        assertThat(demo().getProperty("spring.jpa.hibernate.ddl-auto")).isEqualTo("update");
     }
 
     @Test
