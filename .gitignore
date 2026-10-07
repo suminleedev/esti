@@ -45,6 +45,8 @@ uploads/
 CLAUDE.md
 .env
 .mcp.json
+# Claude Code 개인 권한 설정 — 전역 gitignore 에만 기대지 않는다(다른 컴퓨터에서 git add -A 로 올라가지 않게)
+.claude/settings.local.json
 
 work-logs/
 scripts/
