@@ -87,10 +87,15 @@ jobs:
       - name: 빌드 컨텍스트 구성
         run: cp target/esti-*.jar deploy/esti.jar
 
+      # 계정 ID는 Variable 이 아니라 Secret 으로 받는다. 저장소가 public 이라 Actions 로그도 공개인데,
+      # Variable 은 로그에 그대로 찍힌다(역할 ARN·ECR 레지스트리 주소·push 메시지 — 실행마다 10줄).
+      # Secret 은 다른 글자에 붙어 나와도 *** 로 가려진다.
+      # 🔑 계정 ID가 든 값(레지스트리 주소 등)을 job outputs 로 다른 job 에 넘기지 않는다 —
+      #    GitHub 이 Secret 이 섞인 job output 을 통째로 버린다. 넘길 일이 생기면 태그만 넘기고 주소는 받는 쪽에서 다시 만든다.
       - name: AWS 자격증명 (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/esti-demo-github-actions
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/esti-demo-github-actions
           aws-region: ${{ env.AWS_REGION }}
 
       - id: login-ecr
