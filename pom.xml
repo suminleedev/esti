@@ -65,6 +65,12 @@
 			<artifactId>derbytools</artifactId>
 			<scope>runtime</scope>
 		</dependency>
+		<!-- 데모 배포본(G11)이 쓸 DB. 실사용 local은 Derby 그대로다(D-8) — URL이 Derby라 이 드라이버는 로드되지 않는다 -->
+		<dependency>
+			<groupId>org.postgresql</groupId>
+			<artifactId>postgresql</artifactId>
+			<scope>runtime</scope>
+		</dependency>
 		<dependency>
 			<groupId>org.projectlombok</groupId>
 			<artifactId>lombok</artifactId>
@@ -73,6 +79,12 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<!-- ESTI_TEST_DB=postgres 일 때만 쓴다 — 테스트를 PostgreSQL 컨테이너로도 돌린다(D-8, PostgresTestDbCustomizerFactory) -->
+		<dependency>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>postgresql</artifactId>
 			<scope>test</scope>
 		</dependency>
         <!-- Apache POI -->

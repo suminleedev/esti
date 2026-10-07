@@ -2,6 +2,7 @@ package com.example.esti.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.Length;
 
 /**
  *  공급사 상품 마스터 : 상품 정보
@@ -97,7 +98,8 @@ public class VendorProduct extends BaseEntity {
     private String detailUrl;
 
     // 크롤링 원문 보관용
-    @Lob
-    @Column(name = "raw_tag_text")
+    // @Lob을 쓰지 않는다 — PostgreSQL(데모, G11)에서 @Lob String은 oid(대형 객체)가 되어 행을 지워도
+    // 본문이 고아로 남고 덤프·조회가 번거롭다. LONG32 길이면 PostgreSQL text / Derby clob으로 같은 의미가 된다.
+    @Column(name = "raw_tag_text", length = Length.LONG32)
     private String rawTagText;
 }

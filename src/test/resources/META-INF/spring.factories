@@ -1,0 +1,3 @@
+# ESTI_TEST_DB=postgres 일 때 @SpringBootTest를 PostgreSQL 컨테이너로 돌린다 (G11-1). 스위치가 없으면 아무 일도 안 한다.
+org.springframework.test.context.ContextCustomizerFactory=\
+com.example.esti.support.PostgresTestDbCustomizerFactory

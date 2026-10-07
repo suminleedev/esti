@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.Length;
 
 import java.math.BigDecimal;
 
@@ -32,7 +33,8 @@ public class ProposalTemplateLine extends BaseEntity {
     @Column(length = 500)
     private String specs;
 
-    @Lob
+    // @Lob 대신 LONG32 — 이유는 VendorProduct.rawTagText와 같다 (PostgreSQL oid 회피, G11)
+    @Column(length = Length.LONG32)
     private String description;
 
     @Column(length = 1000)
