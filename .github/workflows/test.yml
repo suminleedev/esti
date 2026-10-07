@@ -1,0 +1,62 @@
+# 백엔드 테스트를 Derby와 PostgreSQL 두 DB로 돌린다 (G11-1).
+# 실사용(local)은 Derby, 데모 배포본은 PostgreSQL로 간다 — 방언 차이를 머지 «전에» 보려는 것이다.
+# 배포(deploy.yml)와는 독립이다. 설계 근거는 계획서(로컬 docs/)의 G11-1 계획서를 본다.
+
+name: 백엔드 테스트 (Derby · PostgreSQL)
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false   # 한쪽 DB만 깨졌는지가 곧 진단이다 — 다른 쪽을 끊지 않는다
+      matrix:
+        db: [derby, postgres]
+
+    name: test (${{ matrix.db }})
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      # CI: 'false' 는 deploy.yml 과 같은 이유다 — 공급사 실샘플(docs/samples/)은 gitignore 라 러너에 없고,
+      # 승격을 켜 두면 고칠 방법 없이 영구히 빨간불이 된다. 실샘플 테스트는 로컬 빌드가 담당한다.
+      #
+      # ESTI_TEST_DB 는 환경변수여야 한다 — -D 는 surefire 가 포크한 테스트 JVM 에 넘어가지 않는다.
+      # postgres 면 PostgresTestDbCustomizerFactory 가 러너의 Docker 로 postgres:16-alpine 을 띄운다.
+      - name: 테스트
+        env:
+          CI: 'false'
+          ESTI_TEST_DB: ${{ matrix.db == 'postgres' && 'postgres' || '' }}
+        run: ./mvnw -B test
+
+      - name: 실제로 몇 건이 돌았는지 남긴다
+        if: always()
+        env:
+          DB: ${{ matrix.db }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import glob, os, xml.etree.ElementTree as ET
+          t=f=e=s=0
+          for p in glob.glob("target/surefire-reports/TEST-*.xml"):
+              r=ET.parse(p).getroot()
+              t+=int(r.get("tests",0)); f+=int(r.get("failures",0))
+              e+=int(r.get("errors",0)); s+=int(r.get("skipped",0))
+          print(f"백엔드 테스트 ({os.environ['DB']}): 실행 {t} · 실패 {f} · 오류 {e} · 스킵 {s}")
+          print("")
+          print("스킵은 공급사 실샘플이 필요한 테스트다 — 러너에 샘플이 없는 것이 정상이다.")
+          PY
