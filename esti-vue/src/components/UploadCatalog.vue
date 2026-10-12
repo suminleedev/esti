@@ -983,7 +983,7 @@ onMounted(() => {
 .series-badge {
   font-size: 0.7rem;
   line-height: 1.2;
-  color: var(--bs-secondary-color, #6c757d);
+  color: var(--bs-secondary-color);
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -1053,12 +1053,12 @@ onMounted(() => {
   right: 0.5rem;
   transform: translateY(-50%);
   line-height: 1;
-  color: var(--bs-secondary-color, #6c757d);
+  color: var(--bs-secondary-color);
   text-decoration: none;
 }
 
 .search-clear:hover {
-  color: var(--bs-body-color, #212529);
+  color: var(--bs-body-color);
 }
 
 @media (max-width: 576px) {
