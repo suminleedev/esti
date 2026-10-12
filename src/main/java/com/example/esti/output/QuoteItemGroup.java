@@ -21,8 +21,8 @@ public enum QuoteItemGroup {
     /** 수전류. */
     FAUCET(Set.of("세면기 수전", "욕조 수전/슬라이드바", "해바라기샤워수전", "씽크수전")),
 
-    /** 악세사리. */
-    ACCESSORY(Set.of("악세사리")),
+    /** 악세사리 — 제안서 카드 4열과 같은 표기 목록을 쓴다. */
+    ACCESSORY(ProposalCardLayout.ACCESSORY_CATEGORIES),
 
     /** 위 어디에도 없는 유형. 맨 뒤에 모인다. */
     OTHER(Set.of());

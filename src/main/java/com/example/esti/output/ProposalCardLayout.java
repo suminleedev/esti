@@ -30,8 +30,13 @@ public final class ProposalCardLayout {
     /** 카드 열 개수. 양식이 4열 고정이다. */
     public static final int COLUMNS = 4;
 
-    /** 악세사리 유형명. 이 값이면 4열로 간다. */
-    public static final String ACCESSORY_CATEGORY = "악세사리";
+    /**
+     * 악세사리 유형명. 이 값이면 4열로 간다.
+     *
+     * <p>유형명은 마스터 관리에서 고칠 수 있는 값이라 표준 표기 「액세서리」로 바꿔도 걸리게 둘 다 받는다.
+     * 하나만 알아보면 이름을 고친 순간 견적서 소계 묶음({@link QuoteItemGroup})과 이 열이 조용히 빗나간다.
+     */
+    public static final Set<String> ACCESSORY_CATEGORIES = Set.of("악세사리", "액세서리");
 
     /**
      * 선택사항(유상옵션) 열(0-based). 이 열은 <b>세대당 합계에 넣지 않는다.</b>
@@ -66,7 +71,7 @@ public final class ProposalCardLayout {
      */
     public static int columnOf(ProposalLine line) {
         if (Boolean.TRUE.equals(line.getOptional())) return OPTION_COLUMN;
-        if (ACCESSORY_CATEGORY.equals(line.getCategory())) return 3;
+        if (line.getCategory() != null && ACCESSORY_CATEGORIES.contains(line.getCategory())) return 3;
 
         boolean bathroom = line.getArea() != null && line.getArea().contains("욕실");
         boolean main = MAIN_CATEGORIES.contains(line.getCategory());

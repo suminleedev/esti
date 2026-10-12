@@ -59,8 +59,21 @@ describe('groupByCategoryLarge', () => {
       item('악세A', '악세사리'),
     ])
 
-    expect(names(groups)).toEqual(['악세사리', '욕조', OTHER_CATEGORY])
+    expect(names(groups)).toEqual(['액세서리', '욕조', OTHER_CATEGORY])
     expect(groups[2].items.map((i) => i.productName)).toEqual(['원본기타', '빈칸'])
+  })
+
+  // 공급사마다 표기가 달라 섹션이 둘로 갈리던 것
+  it('표기만 다른 악세사리·액세서리는 「액세서리」 한 섹션이다', () => {
+    const groups = groupByCategoryLarge([
+      item('가', '악세사리'),
+      item('나', '액세서리'),
+      item('다', '액세사리'),
+      item('라', '악세서리'),
+    ])
+
+    expect(names(groups)).toEqual(['액세서리'])
+    expect(groups[0].items.map((i) => i.productName)).toEqual(['가', '나', '다', '라'])
   })
 
   it('대분류 앞뒤 공백은 같은 섹션으로 본다', () => {

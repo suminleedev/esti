@@ -24,6 +24,13 @@ class QuoteItemGroupTest {
         assertThat(QuoteItemGroup.of(line("악세사리"))).isEqualTo(QuoteItemGroup.ACCESSORY);
     }
 
+    // 유형명은 마스터 관리에서 고칠 수 있다 — 표준 표기로 바꿔도 「기타」로 빠지면 안 된다
+    @Test
+    @DisplayName("악세사리 묶음은 표준 표기 「액세서리」도 받는다")
+    void 액세서리_표기도_악세사리_묶음() {
+        assertThat(QuoteItemGroup.of(line("액세서리"))).isEqualTo(QuoteItemGroup.ACCESSORY);
+    }
+
     @Test
     @DisplayName("모르는 유형·빈 값은 기타로 모여 항목이 사라지지 않는다")
     void 미분류는_기타() {
