@@ -61,8 +61,8 @@ function pick(t) {
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
 }
 
-/* 고른 칸은 어두운 채움이라, 색점이 묻히지 않게 흰 테두리를 두른다 */
+/* 고른 칸은 채움이라, 색점이 묻히지 않게 그 칸의 글자색으로 테두리를 두른다 */
 .btn-check:checked + .theme-option .swatch {
-  box-shadow: 0 0 0 2px #fff;
+  box-shadow: 0 0 0 2px var(--bs-btn-active-color);
 }
 </style>
