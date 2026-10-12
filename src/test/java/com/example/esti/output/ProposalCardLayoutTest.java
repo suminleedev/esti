@@ -56,6 +56,8 @@ class ProposalCardLayoutTest {
     void 악세사리는_4열() {
         assertThat(ProposalCardLayout.columnOf(line("욕실1", "악세사리", false))).isEqualTo(3);
         assertThat(ProposalCardLayout.columnOf(line("주방", "악세사리", false))).isEqualTo(3);
+        // 마스터 관리에서 표준 표기로 고쳐도 같은 열이다
+        assertThat(ProposalCardLayout.columnOf(line("욕실1", "액세서리", false))).isEqualTo(3);
     }
 
     @Test
