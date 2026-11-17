@@ -1,0 +1,27 @@
+# EC2 공개 앞단 (G11-6) — Cloudflare 프록시 뒤에서 HTTPS 만 받는다.
+#
+#   방문자 --HTTPS--> Cloudflare --HTTPS(Full strict)--> 여기 :443 → app:8080
+#
+# 인증서는 Let's Encrypt 가 아니라 Cloudflare Origin CA 다. 프록시를 켜면 자동 발급(HTTP-01)이
+# 꼬이고, 원본은 Cloudflare 만 만나므로 공개 신뢰 인증서가 필요 없다(15년, 브라우저는 신뢰하지 않는다).
+# 파일은 저장소에 없다 — deploy.sh 가 SSM(/esti-demo/ORIGIN_CERT·ORIGIN_KEY)에서 certs/ 로 쓴다.
+#
+# 보안그룹이 443 을 Cloudflare 대역에만 연다(ec2/cloudflare-sg.sh). 80 은 열지 않는다 —
+# HTTP→HTTPS 전환은 Cloudflare(Always Use HTTPS·.dev HSTS)가 이미 한다.
+{
+	# 원본에서 80 으로 돌려보낼 일이 없다(밖에서 80 에 닿지 않는다)
+	auto_https disable_redirects
+	# Origin CA 인증서에는 OCSP 주소가 없다 — 켜 두면 기동마다 경고만 남는다
+	ocsp_stapling off
+}
+
+{$SITE_DOMAIN} {
+	tls /certs/origin.pem /certs/origin.key
+	import common.caddy
+}
+
+# www 는 루트로 보낸다 — 인증서가 *.{$SITE_DOMAIN} 도 덮는다
+www.{$SITE_DOMAIN} {
+	tls /certs/origin.pem /certs/origin.key
+	redir https://{$SITE_DOMAIN}{uri} permanent
+}
