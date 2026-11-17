@@ -17,7 +17,13 @@ export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-ap-northeast-2}
 TAG=${ESTI_TAG:-latest}
 
 echo "1/6 저장소 갱신"
-git pull --ff-only --depth 1
+# 🔴 pull --ff-only 를 쓰지 않는다. 얕은 clone(--depth 1)은 새 커밋의 부모를 모르니 fast-forward 판정이
+#    늘 실패한다(G11-5에서 발견 — 10-07 이후 서버가 master 갱신을 한 번도 못 받았다).
+#    서버 checkout 은 손대지 않는 사본이라 원격 끝에 맞춘다. .env 는 gitignore 라 reset 이 건드리지 않는다.
+branch=$(git rev-parse --abbrev-ref HEAD)
+git fetch --quiet --depth 1 origin "$branch"
+git reset --quiet --hard FETCH_HEAD
+git log --oneline -1
 cd deploy
 . lib/wait-seed.sh
 
