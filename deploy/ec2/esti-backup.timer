@@ -1,0 +1,12 @@
+# 매일 04:00 KST(= 19:00 UTC)에 데모를 백업한다 (G11-5).
+# Persistent: 인스턴스가 꺼져 있어 놓친 실행은 다음 부팅 뒤 한 번 따라잡는다.
+[Unit]
+Description=esti 데모 백업 매일
+
+[Timer]
+OnCalendar=*-*-* 19:00:00 UTC
+Persistent=true
+RandomizedDelaySec=5m
+
+[Install]
+WantedBy=timers.target

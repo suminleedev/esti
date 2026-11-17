@@ -1,0 +1,9 @@
+# 데모 백업 한 번 (G11-5). esti-backup.timer 가 매일 부른다. 설치는 ec2/deploy.sh 가 한다.
+[Unit]
+Description=esti 데모 백업 (pg_dump + 업로드 → S3)
+Wants=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/esti/deploy/ec2/backup-s3.sh

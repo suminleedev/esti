@@ -56,3 +56,5 @@ docs/
 
 # 배포 이미지 빌드 컨텍스트
 deploy/*.jar
+# 데모 백업 결과(deploy/backup.sh) — 방문자 데이터라 커밋하지 않는다
+deploy/backups/
