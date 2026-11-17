@@ -1,0 +1,5 @@
+# 로컬 확인용 앞단 — HTTP 만 받아 앱으로 넘긴다. EC2 는 site.caddy 를 쓴다(deploy.sh 가 CADDYFILE 로 고른다).
+
+:80 {
+	import common.caddy
+}

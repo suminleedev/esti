@@ -1,0 +1,16 @@
+# 앱 앞단 공통 처리 — local.caddy·site.caddy 의 사이트 블록 안에서 import 한다.
+
+encode zstd gzip
+
+# 업로드 한도(앱 2MB)보다 조금 크게 — 앱이 정중하게 거절할 수 있도록 여기서 먼저 끊지 않는다
+request_body {
+	max_size 3MB
+}
+
+reverse_proxy app:8080
+
+header {
+	X-Content-Type-Options nosniff
+	Referrer-Policy strict-origin-when-cross-origin
+	-Server
+}

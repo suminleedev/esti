@@ -58,3 +58,5 @@ docs/
 deploy/*.jar
 # 데모 백업 결과(deploy/backup.sh) — 방문자 데이터라 커밋하지 않는다
 deploy/backups/
+# Cloudflare Origin CA 인증서·키(deploy/ec2/deploy.sh 가 SSM 에서 쓴다) — 절대 커밋하지 않는다
+deploy/certs/
