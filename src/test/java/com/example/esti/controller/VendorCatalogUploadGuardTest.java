@@ -24,6 +24,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -109,5 +110,30 @@ class VendorCatalogUploadGuardTest {
                 .andExpect(jsonPath("$.jobId").value("job-1"));
 
         verify(importService).importVendorCatalogAsync(anyString(), anyString(), any());
+    }
+
+    /* ===== 파일 자체가 안 왔다 — 클라이언트 잘못이라 400 (F-020과 같은 갈래) =====
+     * 전에는 둘 다 «처리되지 않은 예외»로 500 + 스택트레이스였다. 공개 데모(2026-11-17)에서
+     * 빈 POST 몇 번에 서버 로그가 ERROR로 차는 것을 보고 찾았다. */
+
+    @Test
+    @DisplayName("multipart가 아닌 요청(파일 없는 빈 POST)은 400")
+    void multipart가_아니면_400() throws Exception {
+        mockMvc.perform(post("/api/vendor-catalog/upload-excel/A"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(containsString("파일")));
+
+        verify(progressStore, never()).createJob();
+    }
+
+    @Test
+    @DisplayName("multipart지만 file 파트가 없으면 400")
+    void file_파트가_없으면_400() throws Exception {
+        mockMvc.perform(multipart("/api/vendor-catalog/upload-excel/A")
+                        .file(new MockMultipartFile("other", "book.xlsx", MediaType.APPLICATION_OCTET_STREAM_VALUE, new byte[] {1})))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(containsString("file")));
+
+        verify(progressStore, never()).createJob();
     }
 }
