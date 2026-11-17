@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.stream.Collectors;
@@ -132,6 +134,29 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleTooLarge(MaxUploadSizeExceededException e) {
         log.warn("업로드 한도 초과 (한도 {})", maxFileSize);
         return body(HttpStatus.PAYLOAD_TOO_LARGE, "파일이 너무 큽니다. " + maxFileSize + "까지 올릴 수 있습니다.");
+    }
+
+    /**
+     * 파일이 아예 안 왔다 — multipart 요청이 아니다 (F-020과 같은 갈래).
+     *
+     * <p>업로드 주소에 빈 POST를 보내면 인자 해석 단계에서 던져져 catch-all로 흘렀고
+     * <b>500 + 스택트레이스</b>가 남았다. 공개 데모(2026-11-17)에서 빈 요청 몇 번에 서버 로그가
+     * ERROR로 차는 것을 보고 찾았다.
+     *
+     * <p>{@link MaxUploadSizeExceededException}도 이 예외의 하위 타입이지만, 더 구체적인 위
+     * 핸들러(413)가 먼저 고른다.
+     */
+    @ExceptionHandler(MultipartException.class)
+    public ResponseEntity<ErrorResponse> handleNotMultipart(MultipartException e) {
+        log.warn("multipart 요청이 아님: {}", e.getMessage());
+        return body(HttpStatus.BAD_REQUEST, "업로드할 파일이 없습니다. form-data로 파일을 보내 주세요.");
+    }
+
+    /** multipart이긴 한데 필요한 파트(예: {@code file})가 빠졌다. */
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ErrorResponse> handleMissingPart(MissingServletRequestPartException e) {
+        log.warn("필수 파트 누락: {}", e.getRequestPartName());
+        return body(HttpStatus.BAD_REQUEST, "'" + e.getRequestPartName() + "' 파일이 필요합니다.");
     }
 
     @ExceptionHandler(Exception.class)
