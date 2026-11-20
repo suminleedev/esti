@@ -5,12 +5,15 @@
 #                  --parameters 'commands=["/opt/esti/deploy/ec2/deploy.sh"]'
 #   (런북에 전체 절차가 있다)
 #
-# 하는 일: 저장소 갱신 → SSM 비밀값으로 .env → ECR 로그인 → 이미지 pull → 띄움 → 시드 완료까지 대기 → 백업 타이머 설치·sshd 끄기
+# 하는 일: 저장소 갱신(이 파일이 바뀌었으면 새 내용으로 다시 시작) → SSM 비밀값으로 .env → ECR 로그인 → 이미지 pull
+#          → 띄움 → 시드 완료까지 대기 → 백업 타이머 설치·sshd 끄기
 # ESTI_TAG 로 이미지 태그를 고를 수 있다(기본 latest — 롤백은 커밋 SHA 태그).
 #
 # 종료코드: 0 = 시드 완료·응답 확인 / 1 = 실패
 
 set -euo pipefail
+# 1/6 에서 다시 시작할 때 쓸 이 파일의 경로 — cd 하기 전에 잡는다(상대 경로로 불렸을 수도 있다)
+self=$(readlink -f "${BASH_SOURCE[0]}")
 cd /opt/esti
 
 export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-ap-northeast-2}
@@ -22,9 +25,19 @@ echo "1/6 저장소 갱신"
 # 🔴 pull --ff-only 를 쓰지 않는다. 얕은 clone(--depth 1)은 새 커밋의 부모를 모르니 fast-forward 판정이
 #    늘 실패한다(G11-5에서 발견 — 10-07 이후 서버가 master 갱신을 한 번도 못 받았다).
 #    서버 checkout 은 손대지 않는 사본이라 원격 끝에 맞춘다. .env 는 gitignore 라 reset 이 건드리지 않는다.
-branch=$(git rev-parse --abbrev-ref HEAD)
-git fetch --quiet --depth 1 origin "$branch"
-git reset --quiet --hard FETCH_HEAD
+if [ -z "${ESTI_DEPLOY_REEXEC:-}" ]; then
+  before=$(sha256sum < "$self")
+  branch=$(git rev-parse --abbrev-ref HEAD)
+  git fetch --quiet --depth 1 origin "$branch"
+  git reset --quiet --hard FETCH_HEAD
+  # 🔑 돌고 있는 bash 는 받기 전의 이 파일을 끝까지 실행한다 — 2026-11-20 PR #72 의 sshd 단계가
+  #    첫 배포에서 빠져 발견(그때는 두 번 돌려야 했다). 받은 뒤 이 파일이 바뀌었으면 새 내용으로 처음부터 다시 돈다.
+  #    다시 돌 때는 저장소를 또 받지 않는다(방금 받았다) — 환경변수 표시로 한 번만 다시 시작한다
+  if [ "$(sha256sum < "$self")" != "$before" ]; then
+    echo "   deploy.sh 가 바뀌었다 — 새 내용으로 다시 시작한다"
+    ESTI_DEPLOY_REEXEC=1 exec "$BASH" "$self" "$@"
+  fi
+fi
 git log --oneline -1
 cd deploy
 . lib/wait-seed.sh

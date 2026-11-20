@@ -37,6 +37,13 @@ jobs:
           java-version: '17'
           cache: maven
 
+      # ./mvnw 가 매번 받는 Maven 배포본 — 이유는 test.yml 의 같은 단계에 적었다
+      - name: Maven 배포본 캐시 (mvnw)
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/wrapper
+          key: maven-wrapper-${{ hashFiles('.mvn/wrapper/maven-wrapper.properties') }}
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
