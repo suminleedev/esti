@@ -35,4 +35,8 @@ if [ ! -d /opt/esti/.git ]; then
   git clone --depth 1 "$REPO_URL" /opt/esti
 fi
 
+# 접속은 SSM 만 쓴다(키 페어 없음, 22 는 보안그룹이 막는다). cloud-init.service 가 Wants=sshd.service 라
+# disable 로는 부팅 때 다시 뜬다 → mask. deploy.sh 가 배포 때마다 다시 맞추므로 여기서 실패해도 멈추지 않는다
+systemctl mask --now sshd.service sshd.socket || echo "sshd 를 끄지 못했다 — deploy.sh 가 다시 끈다"
+
 echo "user-data 끝 — 다음: deploy/ec2/deploy.sh"
