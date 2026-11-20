@@ -674,20 +674,25 @@ onMounted(() => {
           <div class="table-scroll">
             <table class="table table-sm table-striped table-bordered mb-0 align-middle">
               <thead class="table-light">
+              <!--
+                글자 칸은 %로 두고(좁으면 말줄임), 내용 폭이 정해진 칸(행 번호·단가·단위·액션)은 px로 고정한다.
+                전부 %였을 때는 표가 좁아지면 단가 앞자리가 잘려 6자리 가격이 4자리처럼 보였다
+                (7자리는 1920에서도, 6자리는 1366 이하에서). 4자리 행 번호도 늘 잘렸다.
+              -->
               <tr class="text-center">
-                <th style="width:3%">#</th>
+                <th style="width:52px">#</th>
                 <th style="width:8%">대분류</th>
                 <th style="width:10%">소분류</th>
                 <th style="width:12%">제품명</th>
                 <th style="width:11%">모델명</th>
                 <th style="width:10%">브랜드</th>
                 <th style="width:10%">비고</th>
-                <th style="width:7%">단가</th>
-                <th style="width:5%">단위</th>
+                <th style="width:110px">단가</th>
+                <th style="width:64px">단위</th>
 <!--                <th style="width:7%">구품번</th>-->
                 <th style="width:8%">설명</th>
                 <th style="width:6%">이미지</th>
-                <th style="width:7%">액션</th>
+                <th style="width:84px">액션</th>
               </tr>
               </thead>
               <tbody>
@@ -710,10 +715,11 @@ onMounted(() => {
                     />
                   </td>
                   <td>
-                    <!-- 견적서 C열 단위(O-1b). 대부분 SET이라 목록에서 고르되 직접 입력도 허용한다 -->
+                    <!-- 견적서 C열 단위(O-1b). 대부분 SET이라 목록에서 고르되 직접 입력도 허용한다.
+                         목록 표시(datalist)가 칸 안에서 16px을 차지해 좌우 여백을 줄인다(px-1) -->
                     <input
                       v-model.trim="editingProduct.unit"
-                      class="form-control form-control-sm"
+                      class="form-control form-control-sm px-1"
                       list="catalog-unit-options"
                       placeholder="SET"
                     />
@@ -1018,9 +1024,10 @@ onMounted(() => {
   background: transparent;
 }
 
-/* 이미지 영역 가운데 정렬 조정 */
+/* 이미지 영역 가운데 정렬 조정. 칸이 80px보다 좁으면 이미지가 같이 줄어든다 — 80px 고정일 때는 오른쪽이 잘렸다 */
 .img-cell {
-  width: 80px;
+  width: 100%;
+  max-width: 80px;
   height: 60px;
   display: flex;
   justify-content: center;

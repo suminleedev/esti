@@ -7,11 +7,16 @@
      큰 화면에선 뷰포트에 맞춰 늘어난다. offset은 기준 뷰포트(≈768px)에서
      기준값과 교차하도록 튜닝(카탈로그 768-480=288 / 제안서 768-670=98). */
   --esti-proposal-scroll-height: max(670px, calc(100vh - 98px));   /* 제안서 카탈로그/제안 항목 목록 스크롤 */
-  --esti-list-card-height: 64vh;                                   /* 제안서 목록 카드 높이(이미 뷰포트 반응형) */
+  /* 제안서 목록 카드 높이. 카탈로그와 같은 방식 — 창 높이에서 카드 위(헤더·제목·필터 카드 ≈ 268px)와
+     아래 여백(24px)을 뺀 만큼만 쓴다. 64vh였을 때는 그 둘을 빼지 않아, 창이 낮으면 표 스크롤에 더해
+     페이지까지 스크롤됐다(1280×620에서 약 70px). 300px(카드 머리·페이지 번호 + 표 4~5행)보다
+     낮은 창에서는 페이지가 조금 스크롤된다. 폭 768px 미만은 필터가 세로로 쌓여 offset이 커진다. */
+  --esti-list-card-height: max(300px, calc(100vh - 292px));
 
   /* 카탈로그 목록 카드 높이. 제안서 목록과 달리 위에 업로드 카드가 하나 더 있어
-     64vh를 그대로 쓰면 세로가 넘친다. offset 340px = 헤더 + topbar + 업로드 카드. */
-  --esti-catalog-list-card-height: max(480px, calc(100vh - 340px));
+     64vh를 그대로 쓰면 세로가 넘친다. offset 362px = 카드 위(헤더 + topbar + 업로드 카드 ≈ 338px)
+     + 아래 여백 24px. 340이었을 때는 아래 여백을 빼지 않아 창이 커도 페이지가 늘 22px 스크롤됐다. */
+  --esti-catalog-list-card-height: max(480px, calc(100vh - 362px));
 
   /* 안내문(placeholder) 색 --esti-placeholder-color는 테마마다 달라 esti-theme.css가 정의한다.
      본문 글자와 붙어 보이지 않게 한 단계 흐리게 두되, 흰 바탕 대비 4.5:1(WCAG AA)은 지킨다. */
