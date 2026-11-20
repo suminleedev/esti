@@ -44,16 +44,6 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
-      // 제안서 템플릿 API 프록시
-      '/proposal-templates': {
-        target: 'http://localhost:8080',
-        changeOrigin: true,
-      },
-      // 제안서 API 프록시
-      '/proposals': {
-        target: 'http://localhost:8080',
-        changeOrigin: true,
-      },
     },
   },
 })

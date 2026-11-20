@@ -5,7 +5,7 @@
 #                  --parameters 'commands=["/opt/esti/deploy/ec2/deploy.sh"]'
 #   (런북에 전체 절차가 있다)
 #
-# 하는 일: 저장소 갱신 → SSM 비밀값으로 .env → ECR 로그인 → 이미지 pull → 띄움 → 시드 완료까지 대기 → 백업 타이머 설치
+# 하는 일: 저장소 갱신 → SSM 비밀값으로 .env → ECR 로그인 → 이미지 pull → 띄움 → 시드 완료까지 대기 → 백업 타이머 설치·sshd 끄기
 # ESTI_TAG 로 이미지 태그를 고를 수 있다(기본 latest — 롤백은 커밋 SHA 태그).
 #
 # 종료코드: 0 = 시드 완료·응답 확인 / 1 = 실패
@@ -70,11 +70,18 @@ code=$(curl -sk -o /dev/null -w '%{http_code}' --resolve "${SITE_DOMAIN}:443:127
 docker image prune -f >/dev/null
 
 # 백업 타이머(G11-5) — user-data 는 첫 부팅에만 돌아서, 유닛은 배포 때마다 저장소 것으로 맞춘다
-echo "6/6 백업 타이머"
+echo "6/6 백업 타이머 · sshd"
 install -m 644 ec2/esti-backup.service ec2/esti-backup.timer /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now esti-backup.timer
 echo "   다음 백업: $(systemctl show esti-backup.timer -p NextElapseUSecRealtime --value)"
+
+# 접속은 SSM 만 쓰고(키 페어 없음) 22 는 보안그룹이 막는다 — sshd 를 띄워 둘 이유가 없다.
+# 🔴 disable 로는 안 꺼진다: cloud-init.service 가 Wants=sshd.service 라 부팅 때마다 다시 띄운다 → mask.
+#    되돌리기: systemctl unmask sshd.service sshd.socket && systemctl start sshd
+# 배포의 본론이 아니라 실패해도 배포를 멈추지 않고 알리기만 한다
+systemctl mask --now --quiet sshd.service sshd.socket || echo "   ⚠️ sshd 를 끄지 못했다" >&2
+echo "   sshd: $(systemctl is-enabled sshd.service 2>/dev/null || true) · $(systemctl is-active sshd.service 2>/dev/null || true)"
 
 # 레지스트리 주소(계정 ID 포함)는 찍지 않는다 — 태그와 이미지 ID 앞자리만
 image_id=$(docker inspect -f '{{.Image}}' "$(docker compose ps -q app)" | cut -d: -f2 | cut -c1-12)

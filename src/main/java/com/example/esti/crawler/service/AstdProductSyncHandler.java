@@ -64,7 +64,7 @@ public class AstdProductSyncHandler implements ManufacturerProductSyncHandler {
 
     @Override
     public int order() {
-        return 10;   // Default(1000)보다 먼저 잡히게 한다
+        return 10;
     }
 
     /**

@@ -123,8 +123,5 @@ public interface VendorItemPriceRepository extends JpaRepository<VendorItemPrice
                 or lower(coalesce(vip.vendorProduct.collectionName, '')) like :pattern escape '!'
             """)
     Page<VendorItemPrice> searchAll(@Param("pattern") String pattern, Pageable pageable);
-
-    // 크롤링
-    Optional<VendorItemPrice> findByVendor_VendorCodeAndProposalItemCode(String vendorCode, String proposalItemCode);
 }
 

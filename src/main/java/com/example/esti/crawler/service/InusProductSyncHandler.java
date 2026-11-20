@@ -20,9 +20,7 @@ import java.util.Set;
 /**
  * INUS(이누스) 이미지 매칭·저장 핸들러.
  *
- * <p>ASTD·Default 핸들러와 다른 점이 하나 있다. 그쪽은 {@code VendorItemPrice}를 찾아
- * {@code VendorProduct}를 만들어 내지만, <b>B사는 엑셀 적재가 이미 만들어 둔 행에
- * 이미지만 붙이는 일이다.</b> 그래서 여기서는 행을 새로 만들지 않는다 —
+ * <p><b>엑셀 적재가 이미 만들어 둔 행에 이미지만 붙인다</b>(A사 핸들러도 같다). 행을 새로 만들지 않는다 —
  * 사이트에만 있고 DB에 없는 제품은 그냥 건너뛴다. 단가가 없는 제품을 카탈로그에 넣지 않는다.
  *
  * <p>매칭 대상은 {@code itemType='SET'}뿐이다. 부속(PART)은 부모 제품과 품번이 겹쳐
@@ -49,7 +47,7 @@ public class InusProductSyncHandler implements ManufacturerProductSyncHandler {
 
     @Override
     public int order() {
-        return 10;   // Default(1000)보다 먼저 잡히게 한다
+        return 10;
     }
 
     /**
