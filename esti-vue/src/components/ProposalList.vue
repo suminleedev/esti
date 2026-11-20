@@ -131,7 +131,8 @@
               <td>
                 <StatusBadge :status="p.status" />
               </td>
-              <td class="text-end" @click.stop>
+              <!-- 버튼 사이에서 줄을 바꾸지 않는다 — 열이 % 폭이라 화면이 좁아지면 보기·출력이 세로로 쌓였다 -->
+              <td class="text-end text-nowrap" @click.stop>
                 <button
                   class="btn btn-outline-secondary btn-sm me-1"
                   @click="goDetail(p)"
@@ -146,12 +147,14 @@
                   삭제
                 </button>
                 <div v-if="p.status === 'SENT'" class="btn-group">
+                  <!-- 메뉴를 position: fixed로 띄운다 — 표 스크롤 영역(overflow) 안에 두면 표 밖으로 나간 부분이 잘린다 -->
                   <button
                     class="btn btn-outline-primary btn-sm dropdown-toggle"
                     type="button"
                     data-bs-toggle="dropdown"
+                    data-bs-popper-config='{"strategy":"fixed"}'
                     aria-expanded="false"
-                    @click="loadQuoteTargets(p.id)"
+                    @click="loadQuoteTargets(p.id, $event.currentTarget)"
                   >
                     출력
                   </button>
@@ -212,9 +215,12 @@
 </template>
 
 <script setup>
-import {ref, reactive, computed, onMounted, watch} from 'vue'
+import {ref, reactive, computed, onMounted, watch, nextTick} from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
+// main.js가 불러오는 번들과 같은 사본이어야 한다. 'bootstrap'(ESM)에서 가져오면
+// 클릭을 처리하는 쪽이 두 벌이 되어 한 번 누를 때 열고 닫기가 같이 돌아 메뉴가 열리지 않는다.
+import { Dropdown } from 'bootstrap/dist/js/bootstrap.bundle.min.js'
 
 import { date } from "@/utils/format"
 import { usePagination } from "@/composables/usePagination"
@@ -353,8 +359,13 @@ async function onDelete (p) {
 const quoteTargets = reactive({})
 const quoteTargetsLoadingId = ref(null)
 
-/** 견적서 대상 목록은 메뉴를 열 때 한 번만 불러온다 (목록 행마다 미리 부르면 N+1). */
-async function loadQuoteTargets(id) {
+/**
+ * 견적서 대상 목록은 메뉴를 열 때 한 번만 불러온다 (목록 행마다 미리 부르면 N+1).
+ *
+ * 메뉴는 목록이 오기 전의 작은 크기로 위·아래 자리를 먼저 정한다. 다 불러와 커진 뒤에
+ * 자리를 다시 잡지 않으면, 아래로 열린 메뉴의 끝이 화면 밖으로 나간다.
+ */
+async function loadQuoteTargets(id, toggleEl) {
   if (quoteTargets[id]) return
   quoteTargetsLoadingId.value = id
   try {
@@ -366,6 +377,8 @@ async function loadQuoteTargets(id) {
     toast.error('견적서 대상을 불러오지 못했습니다.')
   } finally {
     quoteTargetsLoadingId.value = null
+    await nextTick() // 커진 메뉴가 그려진 뒤에
+    Dropdown.getInstance(toggleEl)?.update()
   }
 }
 
