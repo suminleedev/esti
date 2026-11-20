@@ -328,13 +328,16 @@
           </div>
         </div><!-- /STEP 2 -->
 
-        <!-- STEP 3: 카탈로그에서 제안 품목 채우기 -->
+        <!-- STEP 3: 카탈로그에서 제안 품목 채우기
+             패널 비율은 4:3:5 — 제안 항목 쪽에 폭을 더 준다. lg(992px) 미만에서는 세 패널을 세로로 쌓는다.
+             3열을 md까지 끌고 가면 항목 패널이 221px로 줄어 수량 칸·마진 버튼이 들어가지 않았다. -->
         <div v-if="step === 2" class="row g-3">
           <!-- 좌: 카탈로그 -->
-          <div class="col-md-5">
+          <div class="col-lg-4">
             <div class="card h-100">
               <div class="card-header d-flex gap-2 align-items-center">
-                <strong>제품 카탈로그</strong>
+                <!-- 제목은 줄을 바꾸지 않는다 — 검색칸(width:100%)에 밀려 "제품 카탈 / 로그"로 꺾였다 -->
+                <strong class="text-nowrap">제품 카탈로그</strong>
                 <input v-model="search" class="form-control form-control-sm" placeholder="검색 (이름/모델/브랜드/규격)" />
               </div>
               <ul class="list-group list-group-flush overflow-auto" style="max-height: var(--esti-proposal-scroll-height)">
@@ -414,7 +417,7 @@
           </div>
 
           <!-- 중: 선택/입력 상세 -->
-          <div class="col-md-3">
+          <div class="col-lg-3">
             <div class="card h-100">
               <div class="card-body d-flex flex-column">
                 <div class="text-center mb-3 img-box">
@@ -497,14 +500,19 @@
           </div>
 
           <!-- 우: 제안 항목 리스트 -->
-          <div class="col-md-4 d-flex flex-column">
+          <div class="col-lg-5 d-flex flex-column">
             <!-- 상단: 일괄 마진율 설정 -->
             <div class="card mb-2">
               <div class="card-body py-2 px-3">
-                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                  <div class="small fw-semibold text-secondary">일괄 마진율</div>
-                  <!-- marginOptions -->
-                  <div class="btn-group btn-group-sm" role="group" aria-label="global margin">
+                <div class="d-flex align-items-center flex-wrap gap-2">
+                  <!-- 배지는 지우지 않는다 — 버튼에 없는 값(템플릿·예전 제안서의 12% 등)이면
+                       체크되는 버튼이 없어, 지금 값을 보여 주는 곳이 여기뿐이다 -->
+                  <div class="small fw-semibold text-secondary me-auto">
+                    일괄 마진율
+                    <span class="badge text-bg-primary ms-1">{{ form.globalMarginRate }}%</span>
+                  </div>
+                  <!-- marginOptions — 좁으면 버튼 폭이 같이 줄어든다 (.margin-group) -->
+                  <div class="btn-group btn-group-sm margin-group" role="group" aria-label="global margin">
                     <template v-for="rate in marginOptions" :key="rate">
                       <input
                         :id="`gm-${rate}`"
@@ -519,8 +527,6 @@
                       </label>
                     </template>
                   </div>
-
-                  <span class="badge text-bg-primary">{{ form.globalMarginRate }}%</span>
                 </div>
               </div>
             </div>
@@ -538,77 +544,25 @@
                 </div>
 
                 <div v-else class="flex-grow-1 overflow-auto" style="max-height: var(--esti-proposal-scroll-height);">
-                  <table class="table table-sm table-bordered mb-0 align-middle">
-                    <thead class="table-light">
-                    <tr>
-                      <th>품목</th>
-                      <th style="width:64px">수량</th>
-                      <th style="width:116px">마진</th>
-                      <th style="width:96px" class="text-end">금액</th>
-                      <th style="width:40px"></th>
-                      <th style="width:48px"></th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    <tr v-for="(r, idx) in lines" :key="r.uid">
-                      <td>
-                        {{ r.vendorItemName }}
-                        <div class="small text-muted">{{ r.mainItemCode }} · {{ r.vendorName }}</div>
-                        <div class="small text-muted">{{ r.category }} · {{ r.area }}</div>
-                        <div v-if="r.buildingType" class="small text-muted">{{ r.buildingType }}</div>
-                        <div class="small text-muted">원가 {{ won(r.catalogUnitPrice) }} · 단위 {{ r.unit }}</div>
-                        <span v-if="r.optional" class="badge bg-warning-subtle text-warning-emphasis">유상옵션</span>
-                      </td>
-
-                      <td>
-                        <input
-                          v-model.number="r.qty"
-                          type="number"
-                          min="1"
-                          max="10000"
-                          class="form-control form-control-sm"
-                          @input="recalculateLine(r)"
-                        />
-                      </td>
-
-                      <td>
-                        <div v-if="r.useManualMargin" class="input-group input-group-sm">
-                          <input
-                            v-model.number="r.marginRate"
-                            type="number"
-                            min="0"
-                            max="100"
-                            class="form-control text-end"
-                            @input="recalculateLine(r)"
-                          />
-                          <span class="input-group-text px-2">%</span>
-                          <button
-                            class="btn btn-outline-secondary px-2"
-                            type="button"
-                            @click="disableManualMargin(r)"
-                            title="일괄 마진으로 복귀"
-                          >
-                            ↺
-                          </button>
+                  <!--
+                    줄마다 2단 — 윗단은 품목 정보와 순서·삭제, 아랫단은 수량·마진·금액.
+                    6열 표일 때는 패널이 좁아지면 수량 칸부터 눌려 120이 "12"로 보이거나 빈칸이 됐다.
+                  -->
+                  <ul class="list-group list-group-flush">
+                    <li v-for="(r, idx) in lines" :key="r.uid" class="list-group-item px-2 py-2">
+                      <div class="d-flex align-items-start gap-2">
+                        <div class="flex-grow-1 line-info">
+                          <div>{{ r.vendorItemName }}</div>
+                          <div class="small text-muted">{{ r.mainItemCode }} · {{ r.vendorName }}</div>
+                          <div class="small text-muted">{{ r.category }} · {{ r.area }}</div>
+                          <div v-if="r.buildingType" class="small text-muted">{{ r.buildingType }}</div>
+                          <div class="small text-muted">원가 {{ won(r.catalogUnitPrice) }} · 단위 {{ r.unit }}</div>
+                          <span v-if="r.optional" class="badge bg-warning-subtle text-warning-emphasis">유상옵션</span>
                         </div>
 
-                        <button
-                          v-else
-                          type="button"
-                          class="btn btn-sm btn-light border w-100 text-nowrap"
-                          @click="enableManualMargin(r)"
-                          title="클릭하면 개별 마진 설정"
-                        >
-                          {{ form.globalMarginRate }}%
-                        </button>
-                      </td>
-
-                      <td class="text-end fw-semibold text-primary text-nowrap">{{ won(r.finalAmount) }}</td>
-
-                      <td>
-                        <div class="btn-group-vertical btn-group-sm w-100" role="group" aria-label="항목 순서 이동">
+                        <div class="btn-group btn-group-sm flex-shrink-0" role="group" aria-label="항목 순서 이동">
                           <button
-                            class="btn btn-outline-secondary py-0"
+                            class="btn btn-outline-secondary py-0 px-1"
                             type="button"
                             :disabled="idx === 0"
                             @click="moveLine(idx, -1)"
@@ -618,7 +572,7 @@
                             <i class="bi bi-chevron-up"></i>
                           </button>
                           <button
-                            class="btn btn-outline-secondary py-0"
+                            class="btn btn-outline-secondary py-0 px-1"
                             type="button"
                             :disabled="idx === lines.length - 1"
                             @click="moveLine(idx, 1)"
@@ -628,16 +582,70 @@
                             <i class="bi bi-chevron-down"></i>
                           </button>
                         </div>
-                      </td>
-
-                      <td>
-                        <button class="btn btn-sm btn-outline-danger" @click="removeLine(idx)" aria-label="항목 삭제" title="삭제">
+                        <button
+                          class="btn btn-sm btn-outline-danger py-0 px-1 flex-shrink-0"
+                          type="button"
+                          @click="removeLine(idx)"
+                          aria-label="항목 삭제"
+                          title="삭제"
+                        >
                           <i class="bi bi-trash"></i>
                         </button>
-                      </td>
-                    </tr>
-                    </tbody>
-                  </table>
+                      </div>
+
+                      <!-- 자리가 모자라면 금액이 다음 줄로 내려간다 (flex-wrap) -->
+                      <div class="d-flex align-items-center flex-wrap gap-2 mt-2">
+                        <label class="small text-muted mb-0" :for="`line-qty-${r.uid}`">수량</label>
+                        <input
+                          :id="`line-qty-${r.uid}`"
+                          v-model.number="r.qty"
+                          type="number"
+                          min="1"
+                          max="10000"
+                          class="form-control form-control-sm text-end qty-input no-spin"
+                          @input="recalculateLine(r)"
+                        />
+
+                        <template v-if="r.useManualMargin">
+                          <label class="small text-muted mb-0 ms-1" :for="`line-margin-${r.uid}`">마진</label>
+                          <div class="input-group input-group-sm w-auto flex-nowrap">
+                            <input
+                              :id="`line-margin-${r.uid}`"
+                              v-model.number="r.marginRate"
+                              type="number"
+                              min="0"
+                              max="100"
+                              class="form-control text-end margin-input no-spin"
+                              @input="recalculateLine(r)"
+                            />
+                            <span class="input-group-text px-2">%</span>
+                            <button
+                              class="btn btn-outline-secondary px-2"
+                              type="button"
+                              @click="disableManualMargin(r)"
+                              aria-label="일괄 마진으로 복귀"
+                              title="일괄 마진으로 복귀"
+                            >
+                              ↺
+                            </button>
+                          </div>
+                        </template>
+                        <template v-else>
+                          <span class="small text-muted ms-1">마진</span>
+                          <button
+                            type="button"
+                            class="btn btn-sm btn-light border text-nowrap"
+                            @click="enableManualMargin(r)"
+                            title="클릭하면 개별 마진 설정"
+                          >
+                            {{ form.globalMarginRate }}%
+                          </button>
+                        </template>
+
+                        <span class="ms-auto fw-semibold text-primary text-nowrap">{{ won(r.finalAmount) }}</span>
+                      </div>
+                    </li>
+                  </ul>
                 </div>
               </div>
 
@@ -1774,5 +1782,45 @@ onMounted(() => {
   max-width: 100%;         /* 가로 크기가 영역을 초과하지 않도록 제한 */
   max-height: 100%;        /* 세로 크기가 영역을 초과하지 않도록 제한 */
   object-fit: contain;     /* 이미지 비율을 유지하면서 전체가 보이도록 축소 */
+}
+
+/* 제안 항목 줄 — 품목 정보가 줄 폭을 혼자 쓴다. min-width: 0이어야 flex 안에서 긴 이름이 줄바꿈된다 */
+.line-info {
+  min-width: 0;
+}
+
+/* 수량·개별 마진 칸은 폭을 고정한다. 폭이 %나 자동이면 좁은 패널에서 0까지 눌려 숫자가 안 보였다 */
+.qty-input {
+  width: 4.5rem;
+  flex: none;
+}
+.input-group > .margin-input {
+  width: 3.5rem;
+  flex: none;
+}
+
+/* 숫자 칸의 스핀 버튼을 숨긴다 — 크롬은 마우스를 올리면 스핀 버튼이 숫자 자리를 가린다.
+   키보드 ↑↓로 값을 바꾸는 것은 그대로 된다 */
+.no-spin {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.no-spin::-webkit-inner-spin-button,
+.no-spin::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* 일괄 마진율 버튼 묶음 — 좁으면 버튼이 같이 줄어든다. 기본 btn-group은 줄지 않아 카드 밖으로 나갔다 */
+.margin-group {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 18rem;
+}
+.margin-group > .btn {
+  flex: 1 1 0;
+  min-width: 0;
+  padding-inline: 2px;
+  white-space: nowrap; /* 빼면 좁을 때 "20%"가 "20"과 "%"로 꺾인다 */
 }
 </style>
