@@ -336,7 +336,8 @@
           <div class="col-lg-4">
             <div class="card h-100">
               <div class="card-header d-flex gap-2 align-items-center">
-                <strong>제품 카탈로그</strong>
+                <!-- 제목은 줄을 바꾸지 않는다 — 검색칸(width:100%)에 밀려 "제품 카탈 / 로그"로 꺾였다 -->
+                <strong class="text-nowrap">제품 카탈로그</strong>
                 <input v-model="search" class="form-control form-control-sm" placeholder="검색 (이름/모델/브랜드/규격)" />
               </div>
               <ul class="list-group list-group-flush overflow-auto" style="max-height: var(--esti-proposal-scroll-height)">
