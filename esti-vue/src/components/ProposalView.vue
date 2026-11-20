@@ -50,15 +50,16 @@
       </div>
     </div>
 
-    <!-- 템플릿 영역 -->
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <!-- 템플릿 영역 — 한 줄에 안 들어가면 버튼 묶음이 설명 아래 줄(오른쪽)로 내려간다.
+         줄바꿈 없이 두면 CSS 폭 1093부터 버튼이 눌려 "불러오 / 기"처럼, 911에서는 한 글자씩 꺾였다 -->
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
       <div class="small text-muted">
         현장 정보와 위생기구 구성을 제안서로 저장하거나 템플릿으로 재사용할 수 있습니다.<br>
         템플릿을 활용하면 평형/적용부위/기본 구성을 자동으로 불러올 수 있습니다.
       </div>
       <!-- 읽기 모드(DRAFT·SUBMITTED·SENT 상세)에서는 템플릿 조작 전체를 잠근다 (E1).
            아래 상세 영역과 같은 방식 — fieldset disabled라 키보드로도 우회되지 않는다 -->
-      <fieldset class="d-flex gap-2 border-0 p-0 m-0" :disabled="!isEditMode">
+      <fieldset class="d-flex flex-wrap gap-2 border-0 p-0 m-0 ms-auto template-tools" :disabled="!isEditMode">
         <!-- 템플릿 선택 -->
         <select
           v-model="selectedTemplateId"
@@ -267,8 +268,10 @@
         <div v-if="step === 1" class="card p-3">
           <h5 class="mb-3">평형·적용부위·필수 위생기구 유형</h5>
 
+          <!-- STEP 3과 같이 lg(992px) 미만에서는 카드를 세로로 쌓는다 — md에서 3열이면
+               카드가 220px로 줄어 "거실욕 / 실"처럼 체크박스 글자가 꺾였다 -->
           <div class="row g-3">
-            <div class="col-md-4">
+            <div class="col-lg-4">
               <div class="card h-100">
                 <div class="card-header"><strong>평형 확인</strong></div>
                 <div class="card-body">
@@ -281,10 +284,11 @@
               </div>
             </div>
 
-            <div class="col-md-4">
+            <div class="col-lg-4">
               <div class="card h-100">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                  <strong>적용 부위</strong>
+                <!-- 제목은 꺾지 않고, 자리가 모자라면 안내문이 다음 줄로 내려간다 -->
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap column-gap-2">
+                  <strong class="text-nowrap">적용 부위</strong>
                   <small class="text-muted">중복 선택 가능</small>
                 </div>
                 <div class="card-body">
@@ -301,10 +305,10 @@
               </div>
             </div>
 
-            <div class="col-md-4">
+            <div class="col-lg-4">
               <div class="card h-100">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                  <strong>필수 위생기구 유형</strong>
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap column-gap-2">
+                  <strong class="text-nowrap">필수 위생기구 유형</strong>
                   <small class="text-muted">체크된 항목은 채워야 저장</small>
                 </div>
                 <div class="card-body">
@@ -335,10 +339,11 @@
           <!-- 좌: 카탈로그 -->
           <div class="col-lg-4">
             <div class="card h-100">
-              <div class="card-header d-flex gap-2 align-items-center">
+              <!-- 검색칸이 12rem보다 좁아지면 제목 아래 줄로 내려가 전체 폭을 쓴다 — 안내문이 잘리지 않게 -->
+              <div class="card-header d-flex flex-wrap gap-2 align-items-center">
                 <!-- 제목은 줄을 바꾸지 않는다 — 검색칸(width:100%)에 밀려 "제품 카탈 / 로그"로 꺾였다 -->
                 <strong class="text-nowrap">제품 카탈로그</strong>
-                <input v-model="search" class="form-control form-control-sm" placeholder="검색 (이름/모델/브랜드/규격)" />
+                <input v-model="search" class="form-control form-control-sm catalog-search" placeholder="검색 (이름/모델/브랜드/규격)" />
               </div>
               <ul class="list-group list-group-flush overflow-auto" style="max-height: var(--esti-proposal-scroll-height)">
                 <li v-if="items.length === 0">
@@ -1782,6 +1787,18 @@ onMounted(() => {
   max-width: 100%;         /* 가로 크기가 영역을 초과하지 않도록 제한 */
   max-height: 100%;        /* 세로 크기가 영역을 초과하지 않도록 제한 */
   object-fit: contain;     /* 이미지 비율을 유지하면서 전체가 보이도록 축소 */
+}
+
+/* 템플릿 버튼은 글자를 꺾지 않는다 — Bootstrap 5의 .btn은 줄바꿈을 막지 않아, 줄이 좁으면 버튼 안 글자가 꺾였다 */
+.template-tools .btn {
+  white-space: nowrap;
+}
+
+/* STEP 3 카탈로그 검색칸 — 남는 폭을 채우되 12rem보다 좁아지면 다음 줄로 내려간다 */
+.catalog-search {
+  flex: 1 1 12rem;
+  width: auto;
+  min-width: 0;
 }
 
 /* 제안 항목 줄 — 품목 정보가 줄 폭을 혼자 쓴다. min-width: 0이어야 flex 안에서 긴 이름이 줄바꿈된다 */
