@@ -79,7 +79,9 @@
           <div class="table-scroll">
           <table class="table table-sm table-hover mb-0 align-middle">
             <thead class="table-light">
-            <tr>
+            <!-- 현장명 말고는 줄을 바꾸지 않는다(줄어드는 몫은 현장명이 진다) —
+                 911에서 "세대 / 수", "2026- / 11-10"처럼 머리글·값이 꺾였다 -->
+            <tr class="text-nowrap">
               <th style="width: 5%">ID</th>
               <th style="width: 25%">현장명</th>
               <th style="width: 5%">평형</th>
@@ -101,10 +103,11 @@
               role="button"
               tabindex="0"
               :aria-label="`제안서 #${p.id} ${p.projectName} 상세 열기`"
+              class="text-nowrap"
               style="cursor: pointer"
             >
               <td class="text-muted small">#{{ p.id }}</td>
-              <td>
+              <td class="text-wrap">
                 <div class="fw-semibold" style="text-align: left">{{ p.projectName }}</div>
                 <div class="small text-muted" style="text-align: left" v-if="p.note">
                   {{ p.note }}
