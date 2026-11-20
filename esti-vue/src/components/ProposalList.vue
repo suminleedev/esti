@@ -417,6 +417,22 @@ onMounted(() => {
   flex-direction: column;
 }
 
+/* 카드 body가 남는 높이를 전부 차지해야 .table-scroll의 flex:1이 먹는다 (카탈로그 화면과 같은 규칙).
+   빠져 있던 동안은 표가 스크롤되지 않고 길어져, 창이 낮으면 아래 행과 페이지 번호가 카드 밖으로 넘쳤다 */
+.list-card .card-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.list-card .table-responsive {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .table-scroll {
   flex: 1;                /* 남는 공간 전부 */
   overflow-y: auto;       /* 세로 스크롤 */
